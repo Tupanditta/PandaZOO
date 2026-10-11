@@ -1,0 +1,18 @@
+
+# Requisitos No Funcionales (RNF)
+
+Todos los RNF se han ajustado para ser cuantitativos y testeables bajo métricas formales de ingenieria de software (tiempo de respuesta, límites de memoria, latencias e integridad)
+
+* **RNF-01 (Rendimiento - Tiempo de Renderizado):** El tiempo transcurrido desde una acción del usuario en una ficha técnica hasta el pintado completo de los datos actualizados debe ser inferior a 200 milisegundos. La comprobación deberá realizarse sobre la carga de referencia definida en RNF-04.
+* **RNF-02 (Rendimiento - Latencia de Propagación de Eventos):** El recálculo y la propagación de índices de satisfacción y balances económicos tras consolidar una modificación en una ficha técnica (de espacio o espécimen) o tras finalizar un ciclo de simulación deben completarse en menos de 1000 milisegundos para todas las entidades involucradas. La comprobación deberá realizarse sobre la carga de referencia definida en RNF-04 e incluir la persistencia exigida por RNF-08.
+* **RNF-03 (Rendimiento - Transición de Pantallas):** El cambio entre cualquier vista del sistema debe completarse en un tiempo máximo de 200 milisegundos en el dispositivo móvil objetivo del sistema.
+* **RNF-04 (Capacidad / Consumo de Memoria):** El consumo de memoria RAM de la aplicación no debe sobrepasar los 250 MB al gestionar un parque con una carga de hasta 500 animales y 50 espacios de forma simultánea.
+* **RNF-05 (Eficiencia - Consumo de CPU en Reposo):** Mientras el sistema permanezca en espera pasiva de interrupciones (sin recibir un evento de modificación confirmada de ficha técnica ni un pulso de fin de ciclo de simulación), el uso de CPU de la aplicación no debe superar el 15% del hilo de ejecución principal. La medición deberá excluir los eventos de dominio permitidos por RF-44 y documentar el intervalo empleado.
+* **RNF-06 (Usabilidad / Adaptabilidad de Dispositivo):** La interfaz gráfica del sistema debe ser responsiva y mantenerse operativa en pantallas táctiles móviles con diagonales de 4.7 a 6.7 pulgadas, exclusivamente en orientación vertical.
+* **RNF-07 (Usabilidad / Accesibilidad de Estados Críticos):** Cualquier aviso o estado crítico (hambruna severa o enfermedad) debe representarse de forma simultánea mediante código de color, iconografía distintiva y texto legible explícito.
+* **RNF-08 (Fiabilidad e Integridad de Persistencia):** Toda operación que altere el estado del parque o resuelva un ciclo de simulación debe consolidarse en almacenamiento local asegurando cero pérdidas de datos y consistencia de estado ante cierres inesperados.
+* **RNF-09 (Tolerancia a Fallos y Recuperación):** Si la ejecución de la aplicación se interrumpe durante el cálculo de un ciclo o evento, el sistema debe restaurar el último estado consistente consolidado en menos de 3 segundos desde su siguiente apertura.
+* **RNF-10 (Rendimiento - Recálculo de Prestigio y Misiones):** El tiempo de verificación de condiciones de prestigio y actualización de progreso en los contadores de misiones no debe exceder los 150 milisegundos tras registrarse un evento de modificación en ficha técnica o un evento de fin de ciclo de simulación. La comprobación deberá usar la carga de referencia definida en RNF-04.
+* **RNF-11 (Usabilidad - Diferenciación Taxonómica de Avisos):** El sistema debe separar y estructurar de manera visual y funcional las alertas de acción operativa (interactivas / críticas de salud) de las notificaciones puramente informativas (no interactivas).
+* **RNF-12 (Idempotencia):** Reprocesar una misma transacción, recompensa o ciclo no podrá duplicar sus efectos.
+* **RNF-13 (Consistencia):** Tras una operación confirmada, las referencias, saldos, inventarios, aforos y métricas deberán quedar sincronizados.

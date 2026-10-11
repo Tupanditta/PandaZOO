@@ -1,0 +1,51 @@
+FLUJO DE TRABAJO Y EJECUCIÓN DE COPILOT
+Este es el flujo de trabajo que DEBES SEGUIR cada vez que te pida cambiar algo.
+
+Cada que te pida que hagas algo segiremos los siguientes pasos:
+  1. Modificaré el archivo "Tarea.txt" antes de hacer una llamada al chat.
+
+  2. YO introduciré en el chat que ejecutes este archivo "FLUJO.txt", 
+
+  3. En ese preciso momento el archivo "Tarea.txt" contendrá la tarea que quiero realizar, 
+  este puede ser actualizar, borrar y/o añadir contenido en un espacio en concreto 
+  (Espacios son las siguientes carpetas: BBDD, CasosUso, Requisitos, Restricciones)
+
+  4. Una vez hayas analizado en profundidad la Tarea que debes realizar, debes entender lo siguiente:
+  Si yo te pido que hagas un cambio en un espacio (ej: CasosUso), ese cambio puede requerir otro cambio en 
+  otro/s espacio/s diferente/s (ej: BBDD), por lo que en este paso debes analizar la tarea y decirme por chat
+  que cambios hay que realizar en el espacio base y que cambios habría que hacer en el resto de espacios para 
+  mantener la coherencia del proyecto. 
+  (en este cuarto paso todavía no tienes permiso para modificar, borrar o añadir nada)
+
+  5. Una vez hayas analizado todo, me dirás por pantalla que cambios se deben realizar, y esos cambios 
+  los especificarás claramente en el archivo cambios.txt siguiendo las normas de estilo que se especifican 
+  en el apartado de NORMAS DE ESTILO ARCHIVO CAMBIOS.TXT
+
+  6. Yo te iré diciendo varias modificaciones a ese plan de acción, e irás actualizando el archivo cambios.txt
+  con lo que te vaya diciendo (el resto de archivos quedan intactos por ahora)
+
+  7. Finalmente, cuando te diga que no quiero modificar nada más de cambios.txt, entonces darás por sentado 
+  que el plan de acción de la tarea está verificada. Una vez verificada, procederás a realizar los cambios 
+  especificados en el archivo cambios.txt (Se deberán de hacer todos los cambios que aparecen en el cambios.txt, y no se podrá 
+  hacer ningún cambio que no aparezca en el cambios.txt), aquí es cuando ya porfín tienes permisos para modificar archivos y carpetas.
+
+
+  NOTA: Los requisitos, casos de uso, acotores y restricciones tienen sus propios identificadores para poder relacionarlos en la tabla de
+  trazabilidad. Puedes ver dicha tabla para guiarte y entender mejor las relaciones, y también tienes que modificar dicha tabla
+  conforme vas haciendo cambios y modificaciones en los archivos.
+
+  8. Una vez hayas hecho todos los cambios, revisarás que se han realizado correctamente (Se han hecho todos 
+  los cambios que aparecen en el cambios.txt, y no se ha hecho ningún cambio que no aparece en el cambios.txt).
+  También analizarás que el archivo de Trazabilidad.txt es correcto para el nuevo estado y las actualizaciones y modificaciones
+  realizadas. (En caso de que algo no hubiera salido bien, lo notificarás, y recuperarás el estado anterior a las modificaciones
+  y se volverá a realizar el paso 7 hasta que en el paso 8 se verifique que todo ha salido correctamente)
+
+NORMAS DE ESTILO ARCHIVO CAMBIOS.TXT
+  El archivo.txt separará el contenido según el espacio (Espacios son las siguientes carpetas: BBDD, CasosUso, Requisitos, Restricciones)
+  Se especificará el espacio, y a continuación que cambios se van a realizar
+
+  En principio no indicarás de crear ni borrar ningún archivo o carpeta a menos que te lo pida yo explícitamente por CHAT.
+  El único sitio donde puesdes crear un archivo es en CasosUso, en la carpeta EspecificacionesCU, para crear el archivo. 
+  para una nueva especificación de un caso de uso, y se puede borrar uno de esos archivos solo sí el caso de uso ya no pertenece
+  al catálogo de casos de uso.
+

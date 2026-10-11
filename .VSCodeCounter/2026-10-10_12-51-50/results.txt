@@ -1,0 +1,46 @@
+Date : 2026-10-10 12:51:50
+Directory : c:\Users\ander\Desktop\Kirby\PandaZOO
+Total : 12 files,  901 codes, 0 comments, 177 blanks, all 1078 lines
+
+Languages
++----------+------------+------------+------------+------------+------------+
+| language | files      | code       | comment    | blank      | total      |
++----------+------------+------------+------------+------------+------------+
+| Markdown |         11 |        813 |          0 |        176 |        989 |
+| JSON     |          1 |         88 |          0 |          1 |         89 |
++----------+------------+------------+------------+------------+------------+
+
+Directories
++-----------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                                                          | files      | code       | comment    | blank      | total      |
++-----------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                                                             |         12 |        901 |          0 |        177 |      1,078 |
+| IngenieriaSoftware                                                                            |         12 |        901 |          0 |        177 |      1,078 |
+| IngenieriaSoftware (Files)                                                                    |          2 |        110 |          0 |          4 |        114 |
+| IngenieriaSoftware\BBDD                                                                       |          2 |        569 |          0 |        120 |        689 |
+| IngenieriaSoftware\CasosUso                                                                   |          4 |        130 |          0 |         25 |        155 |
+| IngenieriaSoftware\CasosUso (Files)                                                           |          3 |         85 |          0 |         24 |        109 |
+| IngenieriaSoftware\CasosUso\EspecificacionesCU                                                |          1 |         45 |          0 |          1 |         46 |
+| IngenieriaSoftware\ContextoProyecto                                                           |          1 |          7 |          0 |          7 |         14 |
+| IngenieriaSoftware\Requisitos                                                                 |          2 |         72 |          0 |         19 |         91 |
+| IngenieriaSoftware\Restricciones                                                              |          1 |         13 |          0 |          2 |         15 |
++-----------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++-----------------------------------------------------------------------------------------------+----------+------------+------------+------------+------------+
+| filename                                                                                      | language | code       | comment    | blank      | total      |
++-----------------------------------------------------------------------------------------------+----------+------------+------------+------------+------------+
+| c:\Users\ander\Desktop\Kirby\PandaZOO\IngenieriaSoftware\BBDD\EspecificacionBBDD.md           | Markdown |        439 |          0 |         71 |        510 |
+| c:\Users\ander\Desktop\Kirby\PandaZOO\IngenieriaSoftware\BBDD\ValoresYFormulasPendientes.md   | Markdown |        130 |          0 |         49 |        179 |
+| c:\Users\ander\Desktop\Kirby\PandaZOO\IngenieriaSoftware\CasosUso\ActoresSistema.md           | Markdown |          9 |          0 |          3 |         12 |
+| c:\Users\ander\Desktop\Kirby\PandaZOO\IngenieriaSoftware\CasosUso\CatalogoCasosUso.md         | Markdown |         76 |          0 |         20 |         96 |
+| c:\Users\ander\Desktop\Kirby\PandaZOO\IngenieriaSoftware\CasosUso\DiagramaCU.md               | Markdown |          0 |          0 |          1 |          1 |
+| c:\Users\ander\Desktop\Kirby\PandaZOO\IngenieriaSoftware\CasosUso\EspecificacionesCU\CU-01.md | Markdown |         45 |          0 |          1 |         46 |
+| c:\Users\ander\Desktop\Kirby\PandaZOO\IngenieriaSoftware\ContextoProyecto\Contexto.md         | Markdown |          7 |          0 |          7 |         14 |
+| c:\Users\ander\Desktop\Kirby\PandaZOO\IngenieriaSoftware\Requisitos\Funcionales.md            | Markdown |         57 |          0 |         15 |         72 |
+| c:\Users\ander\Desktop\Kirby\PandaZOO\IngenieriaSoftware\Requisitos\NoFuncionales.md          | Markdown |         15 |          0 |          4 |         19 |
+| c:\Users\ander\Desktop\Kirby\PandaZOO\IngenieriaSoftware\Restricciones\EspecificacionRES.md   | Markdown |         13 |          0 |          2 |         15 |
+| c:\Users\ander\Desktop\Kirby\PandaZOO\IngenieriaSoftware\Trazabilidad.md                      | Markdown |         22 |          0 |          3 |         25 |
+| c:\Users\ander\Desktop\Kirby\PandaZOO\IngenieriaSoftware\valores_y_pesos.json                 | JSON     |         88 |          0 |          1 |         89 |
+| Total                                                                                         |          |        901 |          0 |        177 |      1,078 |
++-----------------------------------------------------------------------------------------------+----------+------------+------------+------------+------------+

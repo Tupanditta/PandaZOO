@@ -1,0 +1,4 @@
+No quiero añadir nada nuevo, ningún concepto. No quiero detallar los pesos, los valores o cualquier dato que se alberga en el JSON. 
+Quiero validar la coherencia entre BBDD y requisitos/restricciones. 
+Analiza todo el flujo de mi proyecto actual para mostrarme (en caso de que hubiera) las incoherencias que han surgido a la hora de
+especificar la BBDD, los requisitos y las restricciones

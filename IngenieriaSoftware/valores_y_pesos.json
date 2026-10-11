@@ -1,0 +1,101 @@
+{
+  "version": "0.1",
+  "estado": "PENDIENTE_DE_RELLENAR",
+  "descripcion": "Estructura base para definir datos por especie, fórmulas de satisfacción, afinidades, costes, alimentos, misiones y recompensas. Los valores se rellenarán más adelante.",
+  "especies": [
+    {
+      "id_especie": "",
+      "nombre": "",
+      "pesos_satisfaccion": {
+        "peso_bio": null,
+        "peso_soc": null,
+        "peso_esp": null,
+        "suma_total": null,
+        "nota": "La suma de peso_bio + peso_soc + peso_esp debe ser 1.00"
+      },
+      "satisfaccion_social": {
+        "pesos": {
+          "pareja": null,
+          "amigo": null,
+          "padre": null,
+          "madre": null,
+          "hermanos": null,
+          "afinidad": null
+        },
+        "suma_total": null,
+        "tope_hermanos": null,
+        "nota": "Los pesos de la satisfacción social deben sumar 1.00"
+      }
+    }
+  ],
+  "matriz_afinidad": {
+    "descripcion": "Matriz de afinidad entre especies. Se especifica por pares y todos los animales de una especie comparten la afinidad con la segunda especie.",
+    "pares": [
+      {
+        "id_especie_a": "",
+        "id_especie_b": "",
+        "valor": null,
+        "nota": "Ejemplo: 0.75, 0.5, 1.0, -0.2, etc."
+      }
+    ]
+  },
+  "familia_y_relaciones": {
+    "descripcion": "Se usan para calcular la parte social de la satisfacción. Se rellenará con las relaciones reales de cada animal.",
+    "animales": [
+      {
+        "id_animal": "",
+        "pareja": null,
+        "mejor_amigo": null,
+        "padre": null,
+        "madre": null,
+        "hermanos": [],
+        "nota": "Los hermanos deben incluir identificadores de animales asociados"
+      }
+    ]
+  },
+  "espacios": [
+    {
+      "id_espacio": "",
+      "id_habitat": "",
+      "id_partida": "",
+      "animales_vivos": [],
+      "nota": "Aquí se indican los animales que comparten el mismo espacio y se consideran para la afinidad media no familiar"
+    }
+  ],
+  "reglas_de_calculo": {
+    "satisfaccion_social": {
+      "escala": "0-1",
+      "formula": "w_pareja * C_pareja + w_amigo * C_amigo + w_padre * C_padre + w_madre * C_madre + w_hermanos * C_hermanos + w_afinidad * C_afinidad",
+      "componentes": {
+        "C_pareja": "1 si tiene pareja; 0 si no",
+        "C_amigo": "1 si tiene mejor amigo; 0 si no",
+        "C_padre": "1 si tiene padre; 0 si no",
+        "C_madre": "1 si tiene madre; 0 si no",
+        "C_hermanos": "min(1, num_hermanos / tope_hermanos)",
+        "C_afinidad": "media de afinidad entre las especies de los animales del mismo espacio que no son familiares"
+      },
+      "nota": "Se deben rellenar los valores concretos de los pesos por especie y la matriz de afinidad"
+    }
+  },
+  "catalogos": {
+    "biomas": [],
+    "alimentos": [],
+    "insumos_medicos": [],
+    "misiones": [],
+    "rasgos_personalidad": [],
+    "habilidades_sociales": []
+  },
+  "tablas": {
+    "edad_media_especie": [],
+    "grado_especie": [],
+    "costes_espacios": [],
+    "costes_alimentos": [],
+    "costes_animales": [],
+    "costes_insumos": [],
+    "alimentos_por_especie": [],
+    "tipos_mision": [],
+    "parametros_mision": [],
+    "recompensas_mision": [],
+    "probabilidades_especie_recompensa": []
+  }
+}
