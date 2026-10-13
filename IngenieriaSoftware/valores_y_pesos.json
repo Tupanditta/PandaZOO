@@ -6,12 +6,12 @@
     {
       "id_especie": "",
       "nombre": "",
+      "id_rango": null,
       "pesos_satisfaccion": {
         "peso_bio": null,
         "peso_soc": null,
-        "peso_esp": null,
         "suma_total": null,
-        "nota": "La suma de peso_bio + peso_soc + peso_esp debe ser 1.00"
+        "nota": "La suma de peso_bio + peso_soc debe ser 1.00"
       },
       "satisfaccion_social": {
         "pesos": {
@@ -24,18 +24,18 @@
         },
         "suma_total": null,
         "tope_hermanos": null,
-        "nota": "Los pesos de la satisfacción social deben sumar 1.00"
+        "nota": "Los pesos de la satisfacción social deben sumar 1.00; la interpretación de las relaciones familiares es común a todas las especies y la afinidad debe tener mayor peso que la suma de la familia"
       }
     }
   ],
   "matriz_afinidad": {
-    "descripcion": "Matriz de afinidad entre especies. Se especifica por pares y todos los animales de una especie comparten la afinidad con la segunda especie.",
+    "descripcion": "Matriz de afinidad entre especies. Se especifica por pares normalizados y todos los animales de una especie comparten la afinidad con la segunda especie.",
     "pares": [
       {
         "id_especie_a": "",
         "id_especie_b": "",
         "valor": null,
-        "nota": "Ejemplo: 0.75, 0.5, 1.0, -0.2, etc."
+        "nota": "El par se normaliza con id_especie_a < id_especie_b; el valor será simétrico al consultarlo"
       }
     ]
   },
@@ -75,6 +75,15 @@
         "C_afinidad": "media de afinidad entre las especies de los animales del mismo espacio que no son familiares"
       },
       "nota": "Se deben rellenar los valores concretos de los pesos por especie y la matriz de afinidad"
+    },
+    "mcrit": {
+      "escala": "0-1",
+      "formula": "M_alimentacion * M_enfermedad",
+      "niveles_alimentacion": [0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
+      "valor_alimentacion_100": 1,
+      "valor_enfermedad_sano": 1,
+      "factores_por_rango": [],
+      "nota": "M_crit no se redondea; los valores concretos por especie se rellenarán más adelante"
     }
   },
   "catalogos": {
@@ -87,15 +96,40 @@
   },
   "tablas": {
     "edad_media_especie": [],
-    "grado_especie": [],
+    "formula_longevidad": {
+      "operacion": "edad_media_especie * factor_aleatorio",
+      "factor_minimo": 0.90,
+      "factor_maximo": 1.10,
+      "momento_calculo": "alta o compra",
+      "incremento_por_ciclo_dias": 6
+    },
+    "simulacion_offline": {
+      "duracion_ciclo_segundos": 600,
+      "remanente_unidad": "segundos",
+      "formula_ciclos_si_tiempo_menor_que_remanente": 0,
+      "formula_ciclos_si_tiempo_mayor_o_igual": "1 + floor((E - R) / 600)",
+      "formula_remanente_si_tiempo_menor": "R - E",
+      "formula_remanente_si_tiempo_mayor_o_igual": "600 - ((E - R) mod 600)",
+      "resto_cero": 600
+    },
+    "niveles_prestigio": [],
+    "desbloqueos_prestigio": [],
+    "rangos_especie": [],
+    "consumo_medico_rango": [],
+    "factores_rango": [],
+    "probabilidad_reproduccion_rango": [],
+    "penalizacion_hijo_reproduccion_rango": [],
     "costes_espacios": [],
     "costes_alimentos": [],
-    "costes_animales": [],
+    "costes_rangos": [],
     "costes_insumos": [],
+    "ponderacion_beneficio_rango": [],
+    "compatibilidad_especie_bioma": [],
     "alimentos_por_especie": [],
     "tipos_mision": [],
     "parametros_mision": [],
     "recompensas_mision": [],
-    "probabilidades_especie_recompensa": []
+    "probabilidades_especie_recompensa": [],
+    "factores_mcrit_especie": []
   }
 }

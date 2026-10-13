@@ -9,7 +9,7 @@ Se distinguen dos niveles:
 - **Catálogo global:** `Bioma`, `Especie`, `CompatibilidadBioma`, `AfinidadEspecies`, `Alimento`, `InsumoMedico` y `Mision`.
 - **Estado de una partida:** hábitats, espacios, animales, recursos, economía, ciclos, avisos, métricas, desbloqueos, misiones y auditoría.
 
-Los identificadores son claves técnicas y nunca se muestran en la interfaz (RES-06). Los hábitats se cargan como catálogo físico de solo lectura por partida (RES-05); los espacios no pueden cambiar su capacidad después de crearse (RES-04).
+Los identificadores son claves técnicas y nunca se muestran en la interfaz (RES-06). Los hábitats se cargan como catálogo físico de solo lectura por partida (RES-05), incluidos los que comienzan bloqueados por prestigio; el desbloqueo solo habilita su uso y no crea, edita ni elimina el hábitat. Los espacios no pueden cambiar su capacidad después de crearse (RES-04).
 
 ### 1.1. Modelo relacional
 
@@ -50,27 +50,25 @@ CREATE TABLE Bioma (
 CREATE TABLE Especie (
     id_especie TEXT PRIMARY KEY,
     nombre_comun TEXT NOT NULL UNIQUE,
+    id_rango INTEGER NOT NULL,
     tope_hermanos INTEGER NOT NULL DEFAULT 2 CHECK (tope_hermanos > 0),
-    peso_bio REAL NOT NULL DEFAULT 0.35 CHECK (peso_bio BETWEEN 0.00 AND 1.00),
-    peso_soc REAL NOT NULL DEFAULT 0.30 CHECK (peso_soc BETWEEN 0.00 AND 1.00),
-    peso_esp REAL NOT NULL DEFAULT 0.35 CHECK (peso_esp BETWEEN 0.00 AND 1.00),
-    coste REAL CHECK (coste IS NULL OR coste >= 0),
+    peso_bio REAL NOT NULL CHECK (peso_bio BETWEEN 0.00 AND 1.00),
+    peso_soc REAL NOT NULL CHECK (peso_soc BETWEEN 0.00 AND 1.00),
     estado_catalogo TEXT NOT NULL DEFAULT 'BLOQUEADA'
         CHECK (estado_catalogo IN ('BLOQUEADA', 'COMERCIAL', 'EXCLUSIVA')),
     umbral_desbloqueo REAL CHECK (umbral_desbloqueo IS NULL OR umbral_desbloqueo BETWEEN 0.00 AND 1.00),
-    CONSTRAINT chk_suma_pesos CHECK (ROUND(peso_bio + peso_soc + peso_esp, 2) = 1.00),
-    CONSTRAINT chk_exclusiva_sin_coste CHECK (
-        estado_catalogo <> 'EXCLUSIVA' OR coste IS NULL
-    )
+    FOREIGN KEY (id_rango) REFERENCES RangoEspecie(id_rango)
+        ON UPDATE RESTRICT ON DELETE RESTRICT,
+    CONSTRAINT chk_suma_pesos CHECK (ROUND(peso_bio + peso_soc, 2) = 1.00)
 );
 
--- Nota funcional: los pesos `peso_bio`, `peso_soc` y `peso_esp` son específicos de cada especie.
+-- Nota funcional: los pesos `peso_bio` y `peso_soc` son específicos de cada especie.
 -- El valor definitivo para cada especie se define en `valores_y_pesos.json`, y la suma por especie
 -- debe seguir siendo 1.00. La afinidad social no familiar se calcula a partir de la matriz de afinidad
 -- del mismo JSON, con una afinidad común para cada par de especies, mientras que las relaciones
 -- familiares se evalúan por separado.
 
--- Los valores por defecto del DDL, incluidos los pesos, `tope_hermanos`, fondos iniciales, alimentación,
+-- Los valores por defecto del DDL, incluidos `tope_hermanos`, fondos iniciales, alimentación,
 -- satisfacción inicial y factores de compatibilidad, son valores de esquema pendientes de confirmación.
 -- No representan decisiones funcionales mientras no estén ratificados por el proyecto.
 
@@ -85,19 +83,29 @@ CREATE TABLE CompatibilidadBioma (
         ON UPDATE CASCADE ON DELETE RESTRICT
 );
 
+CREATE TABLE RangoEspecie (
+    id_rango INTEGER PRIMARY KEY CHECK (id_rango > 0),
+    nombre TEXT NOT NULL UNIQUE,
+    umbral_reproduccion REAL NOT NULL CHECK (umbral_reproduccion BETWEEN 0.00 AND 1.00),
+    probabilidad_reproduccion REAL NOT NULL CHECK (probabilidad_reproduccion BETWEEN 0.00 AND 1.00),
+    penalizacion_hijo_reproduccion REAL NOT NULL CHECK (penalizacion_hijo_reproduccion BETWEEN 0.00 AND 1.00)
+);
+
 CREATE TABLE AfinidadEspecies (
     id_especie_a TEXT NOT NULL,
     id_especie_b TEXT NOT NULL,
     coeficiente REAL NOT NULL CHECK (coeficiente BETWEEN -1.00 AND 1.00),
     PRIMARY KEY (id_especie_a, id_especie_b),
     CHECK (id_especie_a <> id_especie_b),
+    CHECK (id_especie_a < id_especie_b),
     FOREIGN KEY (id_especie_a) REFERENCES Especie(id_especie)
         ON UPDATE CASCADE ON DELETE RESTRICT,
     FOREIGN KEY (id_especie_b) REFERENCES Especie(id_especie)
         ON UPDATE CASCADE ON DELETE RESTRICT
 );
 
--- La afinidad entre especies se usa como matriz simétrica de pares para la afinidad social no familiar.
+-- La afinidad entre especies se almacena como una única fila por par normalizado (`id_especie_a < id_especie_b`)
+-- y se consulta con ese orden canónico para evitar duplicidades y permitir la búsqueda por la clave primaria.
 -- Las relaciones familiares (pareja, mejor amigo, padre, madre y hermanos) no forman parte de esta tabla
 -- y se calculan independientemente.
 
@@ -106,9 +114,34 @@ CREATE TABLE Alimento (
     nombre TEXT NOT NULL UNIQUE
 );
 
+CREATE TABLE CosteAlimento (
+    id_alimento TEXT PRIMARY KEY,
+    importe_por_kilogramo REAL NOT NULL CHECK (importe_por_kilogramo >= 0),
+    FOREIGN KEY (id_alimento) REFERENCES Alimento(id_alimento)
+        ON UPDATE CASCADE ON DELETE RESTRICT
+);
+
 CREATE TABLE InsumoMedico (
     id_insumo TEXT PRIMARY KEY,
     nombre TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE CosteInsumo (
+    id_insumo TEXT PRIMARY KEY,
+    importe_por_unidad REAL NOT NULL CHECK (importe_por_unidad >= 0),
+    FOREIGN KEY (id_insumo) REFERENCES InsumoMedico(id_insumo)
+        ON UPDATE CASCADE ON DELETE RESTRICT
+);
+
+CREATE TABLE ConsumoMedicoRango (
+    id_rango INTEGER NOT NULL,
+    id_insumo TEXT NOT NULL,
+    cantidad_unidades REAL NOT NULL CHECK (cantidad_unidades > 0),
+    PRIMARY KEY (id_rango, id_insumo),
+    FOREIGN KEY (id_rango) REFERENCES RangoEspecie(id_rango)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+    FOREIGN KEY (id_insumo) REFERENCES InsumoMedico(id_insumo)
+        ON UPDATE CASCADE ON DELETE RESTRICT
 );
 
 CREATE TABLE Mision (
@@ -155,6 +188,18 @@ CREATE TABLE Espacio (
         ON UPDATE CASCADE ON DELETE RESTRICT
 );
 
+CREATE TABLE CosteEspacio (
+    capacidad_max INTEGER PRIMARY KEY CHECK (capacidad_max > 0),
+    importe REAL NOT NULL CHECK (importe >= 0)
+);
+
+CREATE TABLE CosteRango (
+    id_rango INTEGER PRIMARY KEY,
+    importe REAL NOT NULL CHECK (importe >= 0),
+    FOREIGN KEY (id_rango) REFERENCES RangoEspecie(id_rango)
+        ON UPDATE CASCADE ON DELETE RESTRICT
+);
+
 -- Animal y relaciones historicas/sociales
 CREATE TABLE Animal (
     id_animal TEXT PRIMARY KEY,
@@ -162,7 +207,12 @@ CREATE TABLE Animal (
     id_especie TEXT NOT NULL,
     id_espacio TEXT NULL,
     nombre TEXT NOT NULL,
-    edad_ciclos INTEGER NOT NULL DEFAULT 0 CHECK (edad_ciclos >= 0),
+    edad_anios INTEGER NOT NULL DEFAULT 0 CHECK (edad_anios >= 0),
+    edad_meses INTEGER NOT NULL DEFAULT 0 CHECK (edad_meses BETWEEN 0 AND 12),
+    edad_dias INTEGER NOT NULL DEFAULT 0 CHECK (edad_dias BETWEEN 0 AND 31),
+    edad_maxima_anios INTEGER NOT NULL CHECK (edad_maxima_anios >= 0),
+    edad_maxima_meses INTEGER NOT NULL CHECK (edad_maxima_meses BETWEEN 0 AND 12),
+    edad_maxima_dias INTEGER NOT NULL CHECK (edad_maxima_dias BETWEEN 0 AND 31),
     nivel_alimentacion INTEGER NOT NULL DEFAULT 100 CHECK (nivel_alimentacion BETWEEN 0 AND 100),
     estado_salud TEXT NOT NULL DEFAULT 'SANO' CHECK (estado_salud IN ('SANO', 'ENFERMO')),
     estado_vital TEXT NOT NULL DEFAULT 'VIVO' CHECK (estado_vital IN ('VIVO', 'MUERTO', 'VENDIDO')),
@@ -265,6 +315,14 @@ CREATE TABLE BeneficioPendiente (
     CHECK ((estado = 'RECLAMADO') = (fecha_reclamacion IS NOT NULL))
 );
 
+CREATE TABLE PonderacionBeneficioRango (
+    id_rango INTEGER PRIMARY KEY,
+    satisfaccion_minima REAL NOT NULL CHECK (satisfaccion_minima BETWEEN 0.00 AND 1.00),
+    multiplicador REAL NOT NULL CHECK (multiplicador BETWEEN 1.00 AND 5.00),
+    FOREIGN KEY (id_rango) REFERENCES RangoEspecie(id_rango)
+        ON UPDATE CASCADE ON DELETE RESTRICT
+);
+
 CREATE TABLE AuditoriaEvento (
     id_evento TEXT PRIMARY KEY,
     id_partida TEXT NOT NULL,
@@ -291,6 +349,17 @@ CREATE TABLE DesbloqueoEspecie (
     FOREIGN KEY (id_partida) REFERENCES Partida(id_partida)
         ON UPDATE CASCADE ON DELETE RESTRICT,
     FOREIGN KEY (id_especie) REFERENCES Especie(id_especie)
+        ON UPDATE CASCADE ON DELETE RESTRICT
+);
+
+CREATE TABLE DesbloqueoHabitat (
+    id_partida TEXT NOT NULL,
+    id_habitat TEXT NOT NULL,
+    fecha TEXT NOT NULL,
+    PRIMARY KEY (id_partida, id_habitat),
+    FOREIGN KEY (id_partida) REFERENCES Partida(id_partida)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+    FOREIGN KEY (id_partida, id_habitat) REFERENCES Habitat(id_partida, id_habitat)
         ON UPDATE CASCADE ON DELETE RESTRICT
 );
 
@@ -346,12 +415,16 @@ CREATE TABLE EstadoSimulacion (
         ON UPDATE CASCADE ON DELETE RESTRICT
 );
 
+La simulación offline utiliza `R` como los segundos restantes del temporizador al cerrar la aplicación y `E` como los segundos transcurridos hasta reabrirla. Si `E < R`, no se ejecuta ningún ciclo y el nuevo remanente es `R - E`. Si `E >= R`, se ejecutan `1 + floor((E - R) / 600)` ciclos y el nuevo remanente es `600 - ((E - R) mod 600)`; un resto igual a cero se representa como `600`. Cada ciclo se identifica y se procesa de forma idempotente respetando RF-22 y RF-23.
+
 CREATE TABLE ReproduccionCiclo (
     id_partida TEXT NOT NULL,
     id_ciclo TEXT NOT NULL,
     id_animal_a TEXT NOT NULL,
     id_animal_b TEXT NOT NULL,
-    estado TEXT NOT NULL CHECK (estado IN ('CONCEBIDA', 'CONFIRMADA', 'RECHAZADA')),
+    estado TEXT NOT NULL CHECK (estado IN ('CONCEBIDA', 'CONFIRMADA', 'RECHAZADA', 'EXPIRADA')),
+    ciclo_disponible INTEGER NOT NULL CHECK (ciclo_disponible >= 0),
+    ciclo_expiracion INTEGER NOT NULL CHECK (ciclo_expiracion = ciclo_disponible + 2),
     clave_idempotencia TEXT NOT NULL UNIQUE,
     PRIMARY KEY (id_partida, id_ciclo, id_animal_a, id_animal_b),
     CHECK (id_animal_a < id_animal_b),
@@ -422,8 +495,10 @@ CREATE INDEX idx_beneficio_estado ON BeneficioPendiente(id_partida, estado, fech
 CREATE INDEX idx_auditoria_partida_fecha ON AuditoriaEvento(id_partida, fecha, entidad);
 CREATE INDEX idx_ciclo_partida_estado ON CicloSimulacion(id_partida, estado, numero);
 CREATE INDEX idx_reproduccion_ciclo ON ReproduccionCiclo(id_partida, id_ciclo, estado);
+CREATE INDEX idx_reproduccion_vigencia ON ReproduccionCiclo(id_partida, estado, ciclo_expiracion);
 CREATE INDEX idx_notificacion_estado ON Notificacion(id_partida, tipo, estado, fecha);
 CREATE INDEX idx_desbloqueo_partida ON DesbloqueoEspecie(id_partida, id_especie);
+CREATE INDEX idx_desbloqueo_habitat_partida ON DesbloqueoHabitat(id_partida, id_habitat);
 CREATE INDEX idx_mision_estado ON ProgresoMision(id_partida, estado);
 CREATE INDEX idx_metrica_partida_nivel ON MetricaSatisfaccion(id_partida, id_ciclo, id_habitat, id_espacio, id_animal);
 ```
@@ -433,13 +508,17 @@ CREATE INDEX idx_metrica_partida_nivel ON MetricaSatisfaccion(id_partida, id_cic
 SQLite no puede expresar completamente estas reglas mediante restricciones de fila. La capa de dominio debe comprobarlas dentro de la misma transacción que modifica los datos:
 
 1. El espacio destino pertenece a la partida, tiene estado activo, es compatible con la especie y no supera `capacidad_max` contando solo animales `VIVO`.
-2. Un hábitat no se edita ni elimina durante la partida; solo se crea mediante la carga inicial autorizada.
-3. Los progenitores y la pareja deben ser de la misma especie, estar en la misma partida y cumplir el estado vital exigido. `id_pareja` debe ser recíproco; `id_mejor_amigo` puede ser interespecie, pero nunca autorreferente. La afinidad no familiar se consulta por el par de especies de los animales.
-4. Una ficha solo se confirma con exactamente dos filas en `RasgoPersonalidad` y dos en `HabilidadSocial`.
-5. Una pareja de `ReproduccionCiclo` debe ser válida y única por ciclo; la aplicación normaliza el orden de sus identificadores antes de insertar.
-6. Una compra, venta, traslado, nacimiento, alimentación, tratamiento, baja o reclamación valida saldo, inventario, estado y capacidad antes de escribir.
-7. Una especie exclusiva nunca se inserta como compra comercial. Un registro de `DesbloqueoEspecie` no se elimina ni se revoca.
-8. Las relaciones sociales se limpian al morir o vender un animal, pero nunca se limpian `id_padre` ni `id_madre`.
+2. La capacidad solicitada para crear un espacio debe existir en `CosteEspacio`; no se permite crear espacios con capacidades fuera de esa tabla.
+3. Un hábitat no se edita ni elimina durante la partida; solo se crea mediante la carga inicial autorizada.
+4. Los progenitores y la pareja deben ser de la misma especie, estar en la misma partida y cumplir el estado vital exigido. `id_pareja` debe ser recíproco y ambos animales deben tener al menos 16 años; `id_mejor_amigo` puede ser interespecie, pero nunca autorreferente. La afinidad no familiar se consulta por el par de especies de los animales.
+5. Una ficha solo se confirma con exactamente dos filas en `RasgoPersonalidad` y dos en `HabilidadSocial`; la satisfacción se calcula después de completar los datos del usuario y del sistema, antes de incorporar el animal al zoológico.
+6. Una pareja de `ReproduccionCiclo` debe ser válida y única por ciclo; la aplicación normaliza el orden de sus identificadores antes de insertar.
+7. Una concepción se hace disponible en el ciclo inmediatamente posterior al ciclo de concepción y expira tras tres ciclos disponibles; durante esa ventana no se vuelve a exigir el umbral de satisfacción de los progenitores.
+8. La probabilidad total de reproducción se calcula como `max(0, probabilidad_reproduccion - penalizacion_hijo_reproduccion * hijos_vivos)`, usando los valores del rango de la especie. El sorteo del ciclo compara un valor aleatorio en `0..1` con esa probabilidad total; los hijos muertos no se cuentan.
+9. El beneficio se calcula al finalizar cada ciclo y se vuelve a calcular tras cualquier mutación confirmada que altere la cantidad de animales vivos o la satisfacción global. Cada rango puede tener una fila de `PonderacionBeneficioRango`; si el individuo exclusivo cumple `satisfaccion_minima`, su `multiplicador` se aplica directamente al beneficio.
+10. Una compra, venta, traslado, nacimiento, alimentación, tratamiento, baja o reclamación valida saldo, inventario, estado y capacidad antes de escribir.
+11. Una especie exclusiva nunca se inserta como compra comercial. Un registro de `DesbloqueoEspecie` o `DesbloqueoHabitat` no se elimina ni se revoca; la ausencia del registro indica que la entidad sigue bloqueada.
+12. Las relaciones sociales se limpian al morir o vender un animal, pero nunca se limpian `id_padre` ni `id_madre`.
 
 ## 3. Integridad transaccional e idempotencia
 
@@ -466,28 +545,41 @@ El recálculo se invoca exclusivamente al finalizar un ciclo periódico u offlin
 
 La especificación del proyecto establece la siguiente estructura para la satisfacción de un animal vivo $i$:
 
-$$S_i = \Big(w_{bio}S_{bio} + w_{soc}S_{soc} + w_{esp}S_{esp}\Big) \times P_{hab} \times M_{crit}$$
+$$S_i = \Big(w_{bio}S_{bio} + w_{soc}S_{soc}\Big) \times P_{hab} \times M_{crit}$$
 
-Los pesos `w_bio`, `w_soc` y `w_esp` se almacenan en `Especie` y la restricción existente exige que sumen `1.00`. Esta sección no asigna ni modifica sus valores concretos.
+Los pesos `w_bio` y `w_soc` se almacenan en `Especie` y la restricción existente exige que sumen `1.00`. Esta sección no asigna ni modifica sus valores concretos.
 
 La escala confirmada para `S_soc` y para las métricas de satisfacción es `0..1`. La fórmula social debe ser compatible con esta escala y no debe introducir una conversión adicional a `0..100`.
 
 La afinidad social se define entre especies: todos los animales de una especie comparten la afinidad con una segunda especie. `AfinidadEspecies` y la matriz del JSON deben utilizar pares de especies; los valores concretos siguen pendientes.
 
+Cuando no existe una relación social, su componente aporta `0` a `S_soc` y no se aplica ninguna penalización adicional.
+
+En cada especie, `w_afinidad` debe ser mayor que la suma de los pesos de pareja, mejor amigo, padre, madre y hermanos.
+
+`S_soc` se conserva sin redondear durante el cálculo. Solo se redondea la satisfacción final al transformarla en el porcentaje entero mostrado al usuario.
+
 $$S_{bio} = \frac{nivel\_alimentacion}{100}$$
 
 `nivel_alimentacion` está definido en el DDL en el rango `0..100`, por lo que esta operación produce un valor entre `0` y `1`; en particular, `0%` produce `0` y `100%` produce `1`. La alimentación y la salud no son editables directamente por el usuario (RES-03).
+
+El factor crítico se calcula sin sumas mediante la combinación multiplicativa:
+
+$$M_{crit} = M_{alimentacion} \times M_{enfermedad}$$
+
+`M_alimentacion` utiliza una tabla específica por especie para los niveles `[0, 10, 20, ..., 90]`; con alimentación al `100%` su valor es `1`. `M_enfermedad` también es específico por especie y toma el valor `1` cuando el animal está sano. Los factores permanecen en `0..1` y `M_crit` no se redondea.
+
+El cálculo interno de `S_i` permanece en `0..1`. Para mostrar la satisfacción individual se transforma a porcentaje `0..100` sin decimales; el criterio exacto de redondeo y la escala de persistencia se mantienen pendientes.
 
 La documentación existente identifica las entradas de los demás componentes, pero no proporciona todavía sus fórmulas, ponderaciones ni todos sus valores:
 
 | Componente | Información definida por el proyecto | Información pendiente de definir |
 |---|---|---|
-| `S_soc` | Debe considerar las referencias sociales contempladas por el modelo y respetar las relaciones válidas de RF-34, RF-48 y RES-13. Se expresa en `0..1` y la afinidad no familiar se consulta por el par de especies. | Contribución de cada relación, tratamiento de ausencia de relación, rango, penalizaciones y redondeo. |
-| `S_esp` | Debe relacionarse con los animales del espacio y con los conceptos de afinidad por especie, aislamiento y estructura familiar mencionados en esta especificación. | Fórmula, conjunto exacto de animales considerado, efecto del aislamiento, bono, rango y redondeo. |
-| `P_hab` | Procede de la compatibilidad entre especie, bioma y hábitat mediante `CompatibilidadBioma`. | Valor o tabla completa de compatibilidades, tratamiento de ausencia de fila y forma exacta de aplicación. |
-| `M_crit` | Combina las variables de alimentación y salud; el estado crítico incluye alimentación `0%` o enfermedad (RF-19, RF-20, RF-41). | Fórmula, factores por estado, combinación de hambre y enfermedad, rango y redondeo. |
+| `S_soc` | Debe considerar las referencias sociales contempladas por el modelo y respetar las relaciones válidas de RF-34, RF-48 y RES-13. Se expresa en `0..1`, la afinidad no familiar se consulta por el par de especies y no se redondea. | Contribución de cada relación, rango y valores concretos. |
+| `P_hab` | Procede de la tabla de compatibilidad entre especie y bioma del JSON. Existe una fila para cada combinación especie-bioma, el valor es específico de cada especie y bioma, y se multiplica directamente en la ecuación. El JSON conserva los valores de configuración; no representa el esquema real de BBDD. | Completar las especies, biomas y valores concretos de la tabla. |
+| `M_crit` | Se calcula como `M_alimentacion * M_enfermedad`, con factores específicos por especie en `0..1`; alimentación al `100%` y estado sano tienen factor `1`. | Valores concretos por especie y nivel de alimentación/enfermedad. `M_crit` no se redondea. |
 
-Mientras estos datos no se definan en los documentos funcionales del proyecto, no se puede obtener un resultado numérico completo de `S_i` sin inventar reglas. Por tanto, `S_soc`, `S_esp`, `P_hab`, `M_crit`, sus parámetros desconocidos y cualquier resultado dependiente quedan identificados como `PENDIENTE_DE_DEFINIR` en `BBDD/ValoresYFormulasPendientes.md`.
+Mientras estos datos no se definan en los documentos funcionales del proyecto, no se puede obtener un resultado numérico completo de `S_i` sin inventar reglas. Por tanto, `S_soc`, `P_hab`, `M_crit`, sus parámetros desconocidos y cualquier resultado dependiente quedan identificados como `PENDIENTE_DE_DEFINIR` en `BBDD/ValoresYFormulasPendientes.md`.
 
 El cálculo solo puede tomar como entrada el estado confirmado de un animal vivo alojado en un espacio (`estado_vital = 'VIVO'` e `id_espacio` no nulo). Los animales muertos o vendidos se conservan para el histórico, la genealogía y la auditoría, pero no forman parte de una satisfacción activa.
 
@@ -495,7 +587,7 @@ No se fija en esta especificación ningún redondeo, saturación adicional, valo
 
 ### 4.3. Persistencia y propagación
 
-Una vez definidos todos los parámetros necesarios, el resultado individual se persiste en `Animal.satisfaccion_actual` y en `MetricaSatisfaccion` en la escala `0..1` cuando el evento o ciclo queda confirmado. Las métricas agregadas se consultan en los niveles de espécimen, espacio, hábitat y global indicados por RF-15 y RF-27; la especificación vigente describe la agregación de espacio, hábitat y partida mediante medias, pero cualquier valor para un conjunto vacío, redondeo o detalle adicional que no esté definido queda pendiente.
+Una vez definidos todos los parámetros necesarios, el resultado individual se persiste en `Animal.satisfaccion_actual` y en `MetricaSatisfaccion` en la escala `0..1` cuando el evento o ciclo queda confirmado. Las métricas de espacio, hábitat y partida se calculan como la media directa de los animales vivos pertenecientes a cada nivel. Un nivel sin animales vivos queda sin métrica y no participa en las medias de niveles superiores.
 
 Las métricas se escriben con el mismo `id_ciclo` del evento que las produjo. No se mantienen contadores derivados sin una fila de origen que permita reconstruirlos. El recálculo debe producirse solo tras una mutación confirmada o la finalización de un ciclo; no se ejecuta durante navegación, renderizado ni consultas de lectura (RF-15, RF-44, RES-10).
 

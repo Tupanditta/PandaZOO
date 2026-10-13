@@ -6,8 +6,8 @@
 
 ### CU-02:
 * **Actor Principal:** Gestor del Zoo
-* **Nombre:** Reubicar Espacios
-* **Objetivo:** tomar un espacio de un hábitat, y moverlo a otro hábitat diferente
+* **Nombre:** Configurar Espacio
+* **Objetivo:** cambiar la denominación y/o el hábitat asignado de un espacio existente, sin alterar su capacidad máxima y validando que el hábitat de destino disponga de capacidad suficiente.
 
 ### CU-03:
 * **Actor Principal:** Gestor del Zoo
@@ -93,3 +93,13 @@
 * **Actor Principal:** Gestor del Zoo
 * **Nombre:** Consultar Prestigio
 * **Objetivo:** Consultar prestigio actual, máximo histórico y los datos que influyen en el estado del prestigio actual (satisfacción global y animales totales)
+
+### CU-20:
+* **Actor Principal:** Gestor del Zoo
+* **Nombre:** Consultar Misiones y Progreso
+* **Objetivo:** consultar las misiones activas, sus objetivos, progreso y recompensas disponibles.
+
+### CU-21:
+* **Actor Principal:** Gestor del Zoo
+* **Nombre:** Consultar Historial de Avisos
+* **Objetivo:** consultar la bitácora cronológica de avisos, diferenciando sucesos informativos, notificaciones operativas interactivas y alertas críticas de salud.

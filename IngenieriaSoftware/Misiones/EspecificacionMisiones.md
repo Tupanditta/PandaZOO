@@ -55,7 +55,7 @@ Parámetro:
 
 - Número de animales requeridos.
 
-El progreso cuenta los animales que viven en el zoológico conforme al criterio de animales albergados definido por el proyecto.
+El progreso cuenta únicamente animales con estado vital `VIVO` y espacio asignado.
 
 ### 3.4. Conseguir animales en un hábitat
 
@@ -156,8 +156,15 @@ El progreso se completa cuando un animal de la especie indicada alcanza el umbra
 ## 4. Progreso y cumplimiento
 
 - Cada misión muestra su progreso en el apartado de misiones.
+- Las misiones de compra cuentan compras confirmadas y su progreso no disminuye.
+- Las misiones de crecimiento cuentan animales que alcanzan la edad requerida y su progreso no disminuye aunque el animal muera o se venda posteriormente.
+- Las misiones de animales en un hábitat cuentan animales vivos que cumplen la condición y su progreso disminuye si mueren, se venden o se reubican fuera del hábitat.
+- En las misiones de cantidad total y por hábitat solo cuentan animales vivos con espacio asignado; un animal trasladado deja de contar en el hábitat anterior y pasa a contar en el nuevo.
+- Las misiones de venta cuentan ventas confirmadas y su progreso no disminuye.
+- Las misiones de satisfacción comprueban la satisfacción actual; su progreso disminuye si la satisfacción baja.
+- Las misiones de prestigio comprueban el nivel de prestigio actual; su progreso disminuye si el prestigio actual baja.
 - El progreso se actualiza al producirse los eventos que puedan afectar a su objetivo o al finalizar un ciclo de simulación.
-- Cuando se alcanza la condición del objetivo, la misión pasa a estado cumplido.
+- Cuando se alcanza la condición del objetivo, la misión pasa inmediatamente a estado cumplido.
 - Una misión cumplida muestra una acción explícita para reclamar la recompensa.
 - La opción de reclamar no caduca.
 - La misión desaparece del apartado de misiones después de reclamarla.
@@ -165,7 +172,7 @@ El progreso se completa cuando un animal de la especie indicada alcanza el umbra
 - Una misión reclamada no puede repetirse ni realizarse una segunda vez.
 - La actualización del progreso, el cumplimiento y la reclamación deben ser idempotentes.
 
-La fórmula exacta del progreso, los eventos que incrementan cada contador y los valores necesarios para completar cada misión quedan pendientes de parametrización.
+Los valores concretos de los objetivos quedan pendientes de parametrización en el JSON.
 
 ## 5. Estructura de una recompensa
 
@@ -235,7 +242,7 @@ Una recompensa reclamada no puede acreditarse de nuevo.
 El documento define la estructura y las reglas confirmadas, pero quedan pendientes:
 
 - Valores concretos de los parámetros de cada misión.
-- Fórmulas de progreso y condiciones exactas de cumplimiento.
+- Valores concretos de los objetivos y representación final de los contadores acumulativos.
 - Cantidades de alimentos, insumos y fondos.
 - Especies posibles y probabilidades de las recompensas aleatorias.
 - Representación final de los parámetros y recompensas en BBDD.
