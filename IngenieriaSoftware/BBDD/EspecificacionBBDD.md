@@ -36,6 +36,16 @@ Partida 1---1 EstadoSimulacion
 
 Las claves compuestas que contienen `id_partida` impiden que una fila de una partida apunte accidentalmente a una entidad de otra partida.
 
+### 1.2. Alimentación con bambú
+
+`Alimento` contendrá únicamente bambú, requerido por todas las especies. `CosteAlimento` conservará su precio fijo común por kilogramo; no se permite confirmar una compra si dicho precio no está configurado. El inventario de cada partida se mantiene en `InventarioAlimento` y su unidad es el kilogramo.
+
+La cantidad de bambú necesaria para que un animal de una especie aumente 10 puntos porcentuales su nivel de alimentación se configura por especie en `valores_y_pesos.json`, en `tablas.alimentos_por_especie`. No se añade una tabla relacional para este dato. Si falta la cantidad configurada para una especie, se rechaza la operación de alimentación sin cambios.
+
+La alimentación individual de un animal vivo por debajo del 100% consume la cantidad configurada para su especie y aumenta el nivel en 10 puntos porcentuales, con un máximo del 100%. La alimentación desde la ficha de un espacio incluye a todos sus animales vivos por debajo del 100% y los lleva al 100%. Para cada animal, el consumo es la cantidad configurada por especie multiplicada por el número de incrementos de 10 puntos necesarios para alcanzar el 100%; el total mostrado es la suma del consumo de todos los animales incluidos. Los animales que ya están al 100%, muertos o vendidos no forman parte del lote.
+
+La operación grupal vuelve a validar el espacio, los animales, la configuración y el inventario antes de confirmar. El descuento total del inventario, la actualización de alimentación y avisos, el recálculo de métricas y el registro de auditoría se consolidan en una sola transacción. Si no hay existencias suficientes o falla cualquier escritura, se revierte toda la operación, sin consumo parcial ni cambios parciales en animales.
+
 ## 2. Diccionario de datos DDL (SQLite / Room)
 
 ```sql
@@ -507,7 +517,7 @@ CREATE INDEX idx_metrica_partida_nivel ON MetricaSatisfaccion(id_partida, id_cic
 
 SQLite no puede expresar completamente estas reglas mediante restricciones de fila. La capa de dominio debe comprobarlas dentro de la misma transacción que modifica los datos:
 
-1. El espacio destino pertenece a la partida, tiene estado activo, es compatible con la especie y no supera `capacidad_max` contando solo animales `VIVO`.
+1. El espacio destino pertenece a la partida, tiene estado activo y no supera `capacidad_max` contando solo animales `VIVO`. La compatibilidad entre especie y bioma no bloquea la ubicación; su factor solo afecta al cálculo de satisfacción.
 2. La capacidad solicitada para crear un espacio debe existir en `CosteEspacio`; no se permite crear espacios con capacidades fuera de esa tabla.
 3. Un hábitat no se edita ni elimina durante la partida; solo se crea mediante la carga inicial autorizada.
 4. Los progenitores y la pareja deben ser de la misma especie, estar en la misma partida y cumplir el estado vital exigido. `id_pareja` debe ser recíproco y ambos animales deben tener al menos 16 años; `id_mejor_amigo` puede ser interespecie, pero nunca autorreferente. La afinidad no familiar se consulta por el par de especies de los animales.
@@ -528,7 +538,7 @@ Cada operación comienza con `BEGIN IMMEDIATE`, valida sus precondiciones, aplic
 |---|---|---|
 | Compra o alta | `Animal`, rasgos, habilidades, `MovimientoEconomico`, `AuditoriaEvento` | solicitud de compra |
 | Traslado o cambio de espacio | `Animal`, métricas, `AuditoriaEvento` | solicitud de traslado |
-| Alimentación o tratamiento | inventario, `Animal`, avisos, métricas, auditoría | acción y ciclo |
+| Alimentación individual o grupal / tratamiento | inventario, `Animal`, avisos, métricas, auditoría | acción y ciclo; la acción grupal identifica el espacio y la solicitud |
 | Ciclo periódico u offline | `CicloSimulacion`, animales, economía, reproducción, avisos, métricas, estado de simulación | `id_partida + numero` |
 | Confirmación de reproducción | `ReproduccionCiclo`, `Animal`, rasgos, habilidades, auditoría | `id_partida + id_ciclo + pareja` |
 | Beneficio o recompensa | saldo/inventario, fila de beneficio o recompensa, movimiento, auditoría | `clave_idempotencia` |
@@ -576,7 +586,7 @@ La documentación existente identifica las entradas de los demás componentes, p
 | Componente | Información definida por el proyecto | Información pendiente de definir |
 |---|---|---|
 | `S_soc` | Debe considerar las referencias sociales contempladas por el modelo y respetar las relaciones válidas de RF-34, RF-48 y RES-13. Se expresa en `0..1`, la afinidad no familiar se consulta por el par de especies y no se redondea. | Contribución de cada relación, rango y valores concretos. |
-| `P_hab` | Procede de la tabla de compatibilidad entre especie y bioma del JSON. Existe una fila para cada combinación especie-bioma, el valor es específico de cada especie y bioma, y se multiplica directamente en la ecuación. El JSON conserva los valores de configuración; no representa el esquema real de BBDD. | Completar las especies, biomas y valores concretos de la tabla. |
+| `P_hab` | Procede de la tabla de compatibilidad entre especie y bioma del JSON. Existe una fila para cada combinación especie-bioma, el valor es específico de cada especie y bioma, y se multiplica directamente en la ecuación de satisfacción. Este factor no es una condición para comprar, ubicar, trasladar o permitir el nacimiento de un animal. El JSON conserva los valores de configuración; no representa el esquema real de BBDD. | Completar las especies, biomas y valores concretos de la tabla. |
 | `M_crit` | Se calcula como `M_alimentacion * M_enfermedad`, con factores específicos por especie en `0..1`; alimentación al `100%` y estado sano tienen factor `1`. | Valores concretos por especie y nivel de alimentación/enfermedad. `M_crit` no se redondea. |
 
 Mientras estos datos no se definan en los documentos funcionales del proyecto, no se puede obtener un resultado numérico completo de `S_i` sin inventar reglas. Por tanto, `S_soc`, `P_hab`, `M_crit`, sus parámetros desconocidos y cualquier resultado dependiente quedan identificados como `PENDIENTE_DE_DEFINIR` en `BBDD/ValoresYFormulasPendientes.md`.
@@ -602,14 +612,12 @@ Un espacio vacío puede pasar a `INACTIVO` tras confirmación del usuario, pero 
 El modelo actual no representa de forma suficiente algunos datos que ya exigen los requisitos. Quedan identificados como insuficiencias, sin añadir estructuras ni valores:
 
 - coste de adquisición de espacios;
-- alimentos demandados por cada especie;
 - fórmula estadística de longevidad máxima y su conversión temporal;
-- costes de mantenimiento;
 - cantidad y objeto concreto de las recompensas de misión;
 - ciclos acumulados y restantes, contenido y origen de los avisos;
 - clasificación y origen detallados de todos los eventos auditables.
 
-La capa de dominio debe seguir aplicando las validaciones ya descritas para capacidad, compatibilidad, estados, reciprocidad, misma especie, fichas con exactamente dos rasgos y dos habilidades, solvencia, inventario e idempotencia. Los contadores de desnutrición y enfermedad son independientes; cada uno se reinicia al recuperarse su estado correspondiente y, si ambos alcanzan valores distintos, se utiliza el mayor para decidir la defunción. Esta lista no introduce reglas nuevas.
+La capa de dominio debe seguir aplicando las validaciones ya descritas para capacidad, estados, reciprocidad, misma especie, fichas con exactamente dos rasgos y dos habilidades, solvencia, inventario e idempotencia. Los factores de compatibilidad especie-bioma se aplican al cálculo de satisfacción, no como validación de ubicación. Los contadores de desnutrición y enfermedad son independientes; cada uno se reinicia al recuperarse su estado correspondiente y, si ambos alcanzan valores distintos, se utiliza el mayor para decidir la defunción. Esta lista no introduce reglas nuevas.
 
 ## 6. Matriz de cobertura
 

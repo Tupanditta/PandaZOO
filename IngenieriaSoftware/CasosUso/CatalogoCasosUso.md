@@ -2,7 +2,7 @@
 ### CU-01:
 * **Actor Principal:** Gestor del Zoo
 * **Nombre:** Adquirir Espécimen
-* **Objetivo:** Validar y confirmar atómicamente la adquisición de un espécimen desbloqueado, completar su ficha y ubicarlo en un espacio compatible con capacidad disponible.
+* **Objetivo:** Validar y confirmar atómicamente la adquisición de un espécimen desbloqueado, completar su ficha y ubicarlo en un espacio con capacidad disponible. La compatibilidad entre especie y hábitat afecta a la satisfacción, pero no impide la ubicación.
 
 ### CU-02:
 * **Actor Principal:** Gestor del Zoo
@@ -62,7 +62,7 @@
 ### CU-13:
 * **Actor Principal:** Gestor del Zoo
 * **Nombre:** Alimentar Espécimen
-* **Objetivo:** Proporcionar una ración de alimento a un animal con hambre activa, deduciendo el insumo del inventario.
+* **Objetivo:** Alimentar con bambú a un animal desde su ficha o a todos los animales vivos por debajo del 100% de un espacio desde la ficha de este, deduciendo del inventario la cantidad necesaria.
 
 ### CU-14:
 * **Actor Principal:** Gestor del Zoo
@@ -77,7 +77,7 @@
 ### CU-16:
 * **Actor Principal:** Gestor del Zoo
 * **Nombre:** Consultar Inventario y Finanzas
-* **Objetivo:** Visualizar el stock de raciones, insumos médicos universales, costes fijos proyectados y balance monetario disponible.
+* **Objetivo:** Visualizar el stock de raciones, insumos médicos universales, los beneficios pendientes de reclamar y el balance monetario disponible.
 
 ### CU-17:
 * **Actor Principal:** Gestor del Zoo

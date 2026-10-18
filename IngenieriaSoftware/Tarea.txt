@@ -1,0 +1,5 @@
+Una vez leídos todos los casos de uso, sus especificaciones, he encontrado algo que quiero cambiar en mi proyecto:
+
+En la especificación del CU-16 se mensiona el concepto "costes de mantenimiento". 
+Esto yo no lo he incluído, o por lo menos no era mi intención. Elimina cualquier 
+cosa que tenga que ver con costes de mantenimiento, este concepto no debe de existir en el proyecto

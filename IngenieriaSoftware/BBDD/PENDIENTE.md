@@ -2,7 +2,7 @@
 
 ## 1. Motivo
 
-El cálculo del beneficio es una decisión económica central del proyecto. No se fija todavía una fórmula definitiva ni valores económicos provisionales, porque una elección incorrecta afectaría al balance, los ingresos acumulados, los costes de mantenimiento, las recompensas y la progresión del zoológico.
+El cálculo del beneficio es una decisión económica central del proyecto. No se fija todavía una fórmula definitiva ni valores económicos provisionales, porque una elección incorrecta afectaría al balance, los ingresos acumulados, las recompensas y la progresión del zoológico.
 
 Este documento concentra lo que ya está definido y lo que debe especificarse antes de completar el modelo económico.
 
@@ -44,8 +44,7 @@ Todavía debe definirse:
 - Cómo se combinan varios individuos o especies exclusivas que cumplen su satisfacción mínima.
 - Si los multiplicadores se aplican de forma acumulada, individual o mediante otro criterio.
 - Qué ocurre cuando una especie exclusiva deja de cumplir la satisfacción mínima tras una actualización.
-- La fórmula, periodicidad e importe de los costes de mantenimiento.
-- La diferencia entre beneficio bruto, costes y beneficio neto acumulado.
+- La relación entre los beneficios generados y el importe acumulado y reclamable.
 - Qué importe se registra en `BeneficioPendiente` al finalizar cada ciclo.
 - Cómo se calcula el importe que puede reclamar el usuario mediante RF-11.
 - Qué ocurre con los beneficios pendientes cuando un animal muere, se vende o deja de estar alojado.

@@ -217,7 +217,7 @@ Parámetros:
 - Cantidad de animales.
 - Probabilidad asociada a cada especie.
 
-Esta recompensa puede ser una vía para obtener un animal exclusivo. Cuando se selecciona el animal, aparece en la tienda con coste cero y solo puede comprarse una unidad. La compra sigue el flujo normal de adquisición de especímenes, incluyendo la validación, cumplimentación de la ficha y ubicación en un espacio compatible con capacidad disponible.
+Esta recompensa puede ser una vía para obtener un animal exclusivo. Cuando se selecciona el animal, aparece en la tienda con coste cero y solo puede comprarse una unidad. La compra sigue el flujo normal de adquisición de especímenes, incluyendo la validación, cumplimentación de la ficha y ubicación en un espacio con capacidad disponible. La compatibilidad entre especie y hábitat afecta a la satisfacción, pero no impide la ubicación.
 
 Las probabilidades concretas por especie se definirán posteriormente en el JSON.
 

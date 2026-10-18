@@ -47,7 +47,7 @@ La fórmula es compatible con la escala `0..1` de `S_i`, `Animal.satisfaccion_ac
 | `w_bio`, `w_soc` | DEFINIDO POR ESPECIE | Se almacenan en `Especie` y deben sumar `1.00`; cada especie define su conjunto de pesos y estos se registran en `valores_y_pesos.json`. | Completar la tabla por especie y validar la suma final. |
 | `S_bio` | DEFINIDO | `nivel_alimentacion / 100`; el DDL restringe la alimentación a `0..100`. | No se define una conversión adicional. |
 | `S_soc` | PARCIALMENTE_DEFINIDO | Se expresa en `0..1`, no se redondea, usa pesos propios de cada especie y considera pareja, mejor amigo, padre, madre, hermanos y afinidad no familiar entre especies dentro del mismo espacio. Las relaciones familiares se interpretan igual en todas las especies; una relación inexistente aporta `0` y no aplica penalización adicional. `w_afinidad` debe ser mayor que la suma de los pesos familiares. | Valores concretos de pesos y matriz de afinidad, contribución de cada relación y rango. |
-| `P_hab` | PARCIALMENTE_DEFINIDO | Existe una fila para cada combinación especie-bioma; el valor es específico de cada especie y bioma y se multiplica directamente en la ecuación. El JSON contiene los valores de configuración, no el esquema real de BBDD. | Completar las especies, biomas y valores concretos de la tabla. |
+| `P_hab` | PARCIALMENTE_DEFINIDO | Existe una fila para cada combinación especie-bioma; el factor es específico de cada especie y bioma y se multiplica directamente en la ecuación de satisfacción. No restringe la ubicación del animal. El JSON contiene los valores de configuración, no el esquema real de BBDD. | Completar las especies, biomas y valores concretos de la tabla y definir el efecto numérico cuando falte una entrada. |
 | `M_crit` | PARCIALMENTE_DEFINIDO | Se calcula como `M_alimentacion * M_enfermedad`, con factores específicos por especie en `0..1`; alimentación al `100%` y estado sano tienen factor `1`. No se redondea. | Valores concretos por especie y nivel de alimentación/enfermedad. |
 
 ### 2.2. Alcance de los datos
@@ -86,12 +86,11 @@ RF-35 exige que el prestigio actual dependa del número total de animales alberg
 |---|---|---|
 | Coste total de compra | PARCIALMENTE_DEFINIDO | El coste de un espacio se consulta por `capacidad_max` en `CosteEspacio`; el coste de compra es fijo por rango mediante `CosteRango`; el alimento tiene un precio fijo por kilogramo mediante `CosteAlimento`; el insumo tiene un precio fijo por unidad mediante `CosteInsumo`. | Costes concretos y fórmula de cantidades cuando corresponda. |
 | Importe de venta | PENDIENTE_DE_DEFINIR | Regla e importe acreditado por la venta de un animal (RF-06). |
-| Consumo de alimento | PENDIENTE_DE_DEFINIR | Ración requerida por especie, unidad, cantidad consumida y momento de descuento. |
+| Consumo de alimento | PARCIALMENTE_DEFINIDO | El único alimento es bambú, en kilogramos. Cada alimentación incrementa el nivel 10 puntos porcentuales, con tope del 100%; la alimentación grupal lleva al 100% a todos los animales vivos del espacio que estén por debajo de ese nivel y descuenta el total en una operación atómica. | Precio común por kilogramo y cantidad de bambú por especie para cada incremento de 10 puntos porcentuales. |
 | Consumo médico | PARCIALMENTE_DEFINIDO | Los insumos son comunes a todas las especies; la cantidad necesaria para curarse se consulta por `id_rango` e `id_insumo` en `ConsumoMedicoRango`, y las especies comparten rango. | Valores concretos por rango e insumo y regla de reposición de salud. |
-| Beneficio o ingreso generado | PARCIALMENTE_DEFINIDO | Se calcula al finalizar cada ciclo y se actualiza tras mutaciones confirmadas que alteren animales vivos o satisfacción global. Depende de cantidad de animales vivos y satisfacción media global; una ponderación exclusiva elegible se multiplica directamente. | Operación base exacta, costes de mantenimiento y valores concretos de las ponderaciones exclusivas. |
-| Ingreso neto acumulado | PENDIENTE_DE_DEFINIR | Fórmula de ingresos menos costes y reglas de acumulación. |
-| Reclamación de beneficio | DEFINIDO | Transfiere ingresos netos acumulados al balance disponible (RF-11). Momento, importe exacto y fórmula de cálculo del saldo pendiente. |
-| Costes periódicos de mantenimiento | PENDIENTE_DE_DEFINIR | Importe, periodicidad, entidades afectadas y aplicación durante ciclos. |
+| Beneficio o ingreso generado | PARCIALMENTE_DEFINIDO | Se calcula al finalizar cada ciclo y se actualiza tras mutaciones confirmadas que alteren animales vivos o satisfacción global. Depende de cantidad de animales vivos y satisfacción media global; una ponderación exclusiva elegible se multiplica directamente. | Operación base exacta y valores concretos de las ponderaciones exclusivas. |
+| Beneficio acumulado | PENDIENTE_DE_DEFINIR | Reglas para acumular los beneficios generados y determinar el saldo reclamable. |
+| Reclamación de beneficio | DEFINIDO | Transfiere los beneficios acumulados al balance disponible (RF-11). Momento, importe exacto y fórmula de cálculo del saldo pendiente. |
 | Saldos e inventarios | DEFINIDO | No pueden ser negativos y no se permiten consumos superiores al inventario (RF-30, RF-31, RF-50, RES-12). | Unidades, conversiones y valores iniciales. |
 
 ## 5. Reproducción
@@ -125,8 +124,8 @@ RF-35 exige que el prestigio actual dependa del número total de animales alberg
 |---|---|---|
 | Capacidad positiva | DEFINIDO | `capacidad_max > 0` y no puede modificarse (RF-02, RF-04, RES-04). |
 | Aforo usado | DEFINIDO | La validación de la especificación cuenta animales vivos con espacio asignado dentro de la misma transacción del flujo correspondiente. | Ninguna. |
-| Compatibilidad especie-bioma | PENDIENTE_DE_DEFINIR | El esquema contiene `CompatibilidadBioma` y factores permitidos `1.00`, `0.75`, `0.30`. | Confirmar que esos factores son valores funcionales, completar la tabla y definir ausencia de fila. |
-| Compatibilidad del espacio | DEFINIDO | Debe validarse antes de compra, traslado y nacimiento. | Regla exacta que relaciona espacio, hábitat, bioma y especie. |
+| Compatibilidad especie-bioma | PARCIALMENTE_DEFINIDO | El factor por especie y bioma afecta a la satisfacción y no impide comprar, ubicar, trasladar o permitir el nacimiento de un animal. | Confirmar los valores permitidos, completar la tabla y definir el efecto numérico cuando falte una entrada. |
+| Compatibilidad del espacio | DEFINIDO | La compatibilidad se obtiene del bioma del hábitat asociado al espacio y la especie; funciona como factor de satisfacción, no como condición para ubicar al animal. | Valores concretos por especie y bioma y tratamiento numérico de entradas ausentes. |
 
 ## 8. Misiones y recompensas
 
@@ -155,7 +154,7 @@ Deben completarse sin inventar datos:
 - Filas de `Especie`, incluyendo pesos, coste, estado de catálogo, umbral de desbloqueo y longevidad si aplica.
 - Filas de `CompatibilidadBioma` y sus factores.
 - Filas de `AfinidadEspecies` y significado de cada coeficiente.
-- Catálogo de alimentos, insumos médicos y cantidades por operación.
+- Precio común del bambú por kilogramo, cantidades de bambú por especie e insumos médicos y sus cantidades por operación.
 - Misiones, objetivos, progreso requerido y recompensas.
 - Rasgos de personalidad y habilidades sociales permitidos.
 - Tabla de estados, transiciones y valores iniciales de animales, ciclos, beneficios y avisos.

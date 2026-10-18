@@ -1,7 +1,7 @@
 {
   "version": "0.1",
   "estado": "PENDIENTE_DE_RELLENAR",
-  "descripcion": "Estructura base para definir datos por especie, fórmulas de satisfacción, afinidades, costes, alimentos, misiones y recompensas. Los valores se rellenarán más adelante.",
+  "descripcion": "Estructura base para definir datos por especie, fórmulas de satisfacción, afinidades, costes, alimentos, misiones y recompensas. El bambú es el único alimento y las cantidades y costes pendientes se rellenarán más adelante.",
   "especies": [
     {
       "id_especie": "",
@@ -88,7 +88,13 @@
   },
   "catalogos": {
     "biomas": [],
-    "alimentos": [],
+    "alimentos": [
+      {
+        "id_alimento": "bambu",
+        "nombre": "Bambú",
+        "nota": "Único alimento; requerido por todas las especies"
+      }
+    ],
     "insumos_medicos": [],
     "misiones": [],
     "rasgos_personalidad": [],
@@ -120,12 +126,23 @@
     "probabilidad_reproduccion_rango": [],
     "penalizacion_hijo_reproduccion_rango": [],
     "costes_espacios": [],
-    "costes_alimentos": [],
+    "costes_alimentos": [
+      {
+        "id_alimento": "bambu",
+        "precio_por_kilogramo": null
+      }
+    ],
     "costes_rangos": [],
     "costes_insumos": [],
     "ponderacion_beneficio_rango": [],
     "compatibilidad_especie_bioma": [],
-    "alimentos_por_especie": [],
+    "alimentos_por_especie": [
+      {
+        "id_especie": "",
+        "id_alimento": "bambu",
+        "cantidad_kilogramos_por_incremento_10_puntos": null
+      }
+    ],
     "tipos_mision": [],
     "parametros_mision": [],
     "recompensas_mision": [],
