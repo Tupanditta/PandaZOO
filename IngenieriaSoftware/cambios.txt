@@ -1,0 +1,14 @@
+BBDD
+- El hueco para el rango por especie ya existe en `valores_y_pesos.json` como `id_rango: null` para cada especie, y en `EspecificacionBBDD.md` como `Especie.id_rango` relacionado con `RangoEspecie`. No asignar valores ni modificar estos campos; los rangos siguen pendientes de definición.
+- Propuesta de biomas para el catálogo de `valores_y_pesos.json` (`catalogos.biomas`): campos de áfrica (sabana), campos de esmeril (pradera), bosque húmedo (selva tropical), bosque templado, ártico, humedal de agua dulce, mar de poniente, desierto de aram, sierra nevada (montaña) y bosque australiano de eucaliptos
+- Una vez aprobados los biomas, incorporarlos a `catalogos.biomas` y preparar en `tablas.compatibilidad_especie_bioma` una entrada pendiente por cada combinación especie-bioma, sin asignar factores hasta que se definan.
+- Sin cambios estructurales en `EspecificacionBBDD.md`: ya existen `Bioma` y `CompatibilidadBioma`. Sin cambios en el resto de espacios.
+
+CasosUso
+- Sin cambios propuestos.
+
+Requisitos
+- Sin cambios propuestos.
+
+Restricciones
+- Sin cambios propuestos.

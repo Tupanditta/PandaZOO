@@ -1,5 +1,4 @@
-Una vez leídos todos los casos de uso, sus especificaciones, he encontrado algo que quiero cambiar en mi proyecto:
+he añadido las especies y quiero añadir más cosas. 
+Primero, cada especie tiene un rango (todavía no detallado), quiero añadir un hueco para cada especie para poder especificar su rango
 
-En la especificación del CU-16 se mensiona el concepto "costes de mantenimiento". 
-Esto yo no lo he incluído, o por lo menos no era mi intención. Elimina cualquier 
-cosa que tenga que ver con costes de mantenimiento, este concepto no debe de existir en el proyecto
+Biomas, viendo los animales que tengo, proponme varios biomas.
