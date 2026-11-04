@@ -1,20 +1,18 @@
-# Valores y fórmulas pendientes de definir
+# Valores y fórmulas del modelo (inventario de decisiones)
 
 ## 1. Propósito y criterio
 
-Este documento inventaría los datos necesarios para completar la construcción de la base de datos y del motor de cálculo. No añade requisitos ni decide valores de negocio.
+Este documento inventaría los datos necesarios para construir la base de datos y el motor de cálculo y dónde está definido cada uno. Todas las decisiones que estaban pendientes están ya resueltas; los valores numéricos son valores de diseño y viven en `Otros/valores_y_pesos.json` (fuente única), por lo que reajustarlos no cambia ninguna regla.
 
-Se usan estas etiquetas:
+Estado de cada elemento:
 
-- `DEFINIDO`: aparece expresamente en requisitos, restricciones, casos de uso, contexto o en la especificación actual.
-- `PENDIENTE_DE_DEFINIR`: el proyecto exige el dato o lo menciona, pero no proporciona una fórmula, tabla o valor suficiente para calcularlo.
-- `DEBE_CONFIRMARSE`: existe un valor en el DDL o en la especificación, pero todavía debe confirmarse que sea una decisión funcional y no un valor provisional del esquema.
+- `DEFINIDO`: fórmula, regla y valores completos; no queda nada por decidir.
 
-No se debe sustituir `PENDIENTE_DE_DEFINIR` por un valor supuesto.
+No existen elementos `PENDIENTE_DE_DEFINIR` ni `DEBE_CONFIRMARSE`. Los valores por defecto del DDL que antes debían confirmarse se han ratificado, sustituido o eliminado (sección 10).
 
 ## 2. Satisfacción individual
 
-### 2.1. Estructura documentada y puntos no resueltos
+### 2.1. Estructura documentada
 
 La especificación actual establece:
 
@@ -39,16 +37,16 @@ con:
 
 La afinidad familiar se considera `0` por diseño y no se suma a la afinidad no familiar. Si un animal no tiene animales no familiares en el espacio, entonces $C_{afinidad} = 0$ y ese valor resta en la satisfacción social.
 
-La fórmula es compatible con la escala `0..1` de `S_i`, `Animal.satisfaccion_actual` y `MetricaSatisfaccion.valor`. La presencia o ausencia de pareja, mejor amigo, padre, madre y hermanos se interpreta de la misma forma en todas las especies; la diferencia entre especies se obtiene mediante sus pesos y la afinidad. La afinidad no familiar se define entre especies: todos los animales de una especie comparten la afinidad con una segunda especie.
+La fórmula es compatible con la escala `0..1` de `S_i`, `Animal.satisfaccion_actual` y `MetricaSatisfaccion.valor`. La presencia o ausencia de pareja, mejor amigo, padre, madre y hermanos se interpreta de la misma forma en todas las especies; la diferencia entre especies se obtiene mediante sus pesos y la afinidad. La afinidad no familiar se define para pares de especies, incluidos los pares de una especie consigo misma; los animales de la misma especie comparten el coeficiente diagonal configurado para ella.
 
-| Elemento | Estado | Datos conocidos | Pendiente |
+| Elemento | Estado | Datos conocidos | Valores |
 |---|---|---|---|
-| `S_i` | DEFINIDO | Resultado de la ecuación individual para un animal vivo alojado en un espacio. | Redondeo, saturación adicional y tratamiento de datos ausentes. |
-| `w_bio`, `w_soc` | DEFINIDO POR ESPECIE | Se almacenan en `Especie` y deben sumar `1.00`; cada especie define su conjunto de pesos y estos se registran en `valores_y_pesos.json`. | Completar la tabla por especie y validar la suma final. |
+| `S_i` | DEFINIDO | `S_i = (w_bio * S_bio + w_soc * S_soc) * P_hab * M_crit`, para animales vivos alojados. El resultado y sus componentes `S_bio` y `S_soc` se conservan en `0..1` sin redondeo ni saturación adicional. La presentación como porcentaje entero redondea los medios hacia arriba. | Ninguno. |
+| `w_bio`, `w_soc` | DEFINIDO POR ESPECIE | Se almacenan en `Especie` y deben sumar `1.00`; cada especie define su conjunto de pesos y estos se registran en `valores_y_pesos.json`. | Ninguno. Valores en `especies[].pesos_satisfaccion`: `0.40/0.60` (gregarias), `0.50/0.50` (intermedias), `0.60/0.40` (solitarias). |
 | `S_bio` | DEFINIDO | `nivel_alimentacion / 100`; el DDL restringe la alimentación a `0..100`. | No se define una conversión adicional. |
-| `S_soc` | PARCIALMENTE_DEFINIDO | Se expresa en `0..1`, no se redondea, usa pesos propios de cada especie y considera pareja, mejor amigo, padre, madre, hermanos y afinidad no familiar entre especies dentro del mismo espacio. Las relaciones familiares se interpretan igual en todas las especies; una relación inexistente aporta `0` y no aplica penalización adicional. `w_afinidad` debe ser mayor que la suma de los pesos familiares. | Valores concretos de pesos y matriz de afinidad, contribución de cada relación y rango. |
-| `P_hab` | PARCIALMENTE_DEFINIDO | Existe una fila para cada combinación especie-bioma; el factor es específico de cada especie y bioma y se multiplica directamente en la ecuación de satisfacción. No restringe la ubicación del animal. El JSON contiene los valores de configuración, no el esquema real de BBDD. | Completar las especies, biomas y valores concretos de la tabla y definir el efecto numérico cuando falte una entrada. |
-| `M_crit` | PARCIALMENTE_DEFINIDO | Se calcula como `M_alimentacion * M_enfermedad`, con factores específicos por especie en `0..1`; alimentación al `100%` y estado sano tienen factor `1`. No se redondea. | Valores concretos por especie y nivel de alimentación/enfermedad. |
+| `S_soc` | DEFINIDO | Fórmula ponderada de pareja, mejor amigo, padre, madre, hermanos vivos y afinidad no familiar del mismo espacio (familiares: pareja, padre, madre, hermanos e hijos vivos; el mejor amigo no es familiar). Los pesos sociales por especie son no negativos, suman `1.00` y `w_afinidad` supera la suma de los pesos familiares. Las afinidades se expresan en `0..1`; se incluyen pares diagonales para animales de la misma especie. Sin animales no familiares, `C_afinidad = 0`. No se redondea. | Ninguno. Pesos sociales por especie, `tope_hermanos` (4 gregarias, 3 intermedias, 2 solitarias) y 1128 afinidades (diagonal `0.90`, `0.70` o `0.40` según la sociabilidad) en el JSON. |
+| `P_hab` | DEFINIDO | Debe existir una entrada para cada combinación especie-bioma; el factor es específico de cada especie y bioma y se multiplica directamente en la ecuación. No restringe la ubicación del animal. El JSON contiene los valores de configuración, no el esquema real de BBDD. | Ninguno. 470 valores en `tablas.compatibilidad_especie_bioma`. |
+| `M_crit` | DEFINIDO | Se calcula como `M_alimentacion * M_enfermedad`, con factores específicos por especie en `0..1`; alimentación al `100%` y estado sano tienen factor `1`. No se redondea y ningún factor requerido puede faltar en la configuración. | Ninguno. Curva por especie en `tablas.factores_mcrit_especie`. |
 
 ### 2.2. Alcance de los datos
 
@@ -63,116 +61,109 @@ La especificación actual describe estas agregaciones:
 
 - Espacio: media directa de las satisfacciones de sus animales vivos.
 - Hábitat: media directa de las satisfacciones de todos sus animales vivos.
-- Partida: media directa de las satisfacciones de todos los animales vivos.
+- Partida: media directa de las satisfacciones de todos los animales vivos; si no hay animales vivos, la satisfacción global es `0`.
 
-Los espacios, hábitats o partidas sin animales vivos quedan sin métrica y no participan en las medias de niveles superiores. El valor persistido se mantiene en `0..1`; la conversión a porcentaje entero solo se aplica en la presentación individual.
+Los espacios y hábitats sin animales vivos quedan sin métrica. La partida sin animales vivos conserva una métrica global de `0`. El valor persistido se mantiene en `0..1`; la conversión a porcentaje entero solo se aplica en la presentación individual.
 
 ## 3. Prestigio
 
-RF-35 exige que el prestigio actual dependa del número total de animales albergados y del porcentaje de satisfacción global. RF-36 exige conservar el máximo histórico.
-
-| Elemento | Estado | Pendiente |
+| Elemento | Estado | Definición |
 |---|---|---|
-| Prestigio actual | PARCIALMENTE_DEFINIDO | Es el nivel más alto cuyos dos umbrales se cumplen: cantidad de animales vivos en el zoológico y satisfacción global requerida. Los niveles se numeran de `1` a `n`. | Valores concretos de cada nivel, comportamiento cuando disminuyen los indicadores y comportamiento inicial o con cero animales. |
-| Número total de animales albergados | DEFINIDO | Cuenta únicamente animales con `estado_vital = 'VIVO'` e `id_espacio` no nulo. |
-| Satisfacción global | DEFINIDO | Debe existir y consultarse en el monitor global; se calcula como la media directa de todos los animales vivos. Un parque sin animales vivos queda sin métrica. |
-| Prestigio máximo | DEFINIDO | Debe conservar el mayor valor histórico aunque descienda el actual (RF-36). | Fórmula de actualización y valor inicial. |
-| Umbrales de nivel de prestigio | PARCIALMENTE_DEFINIDO | Cada nivel contiene cantidad de animales vivos requerida y satisfacción global requerida; los valores se configurarán en el JSON. | Valores concretos y reglas de notificación de ascensos (RF-43). |
-| Desbloqueo por prestigio | PENDIENTE_DE_DEFINIR | Umbral de cada especie y relación exacta con el prestigio; el desbloqueo debe ser irreversible (RES-07). |
+| Prestigio actual | DEFINIDO | Es el mayor nivel cuyos dos requisitos se cumplen (animales vivos alojados y satisfacción global mínima); si ninguno, `0`. Una partida nueva comienza en `0`. Reglas de redondeo de RF-35. |
+| Umbrales y multiplicadores | DEFINIDO | Nivel 1: `2` animales y satisfacción `0.30`. Multiplicadores: `1.40` (animales) y `1.10` (satisfacción). `nivel_maximo = 10`; umbral del nivel 10: `41.32` (comparación `41`) animales y satisfacción `0.7074`. |
+| Límites de configuración | DEFINIDO | Umbral base de animales: entero `>= 1`. Satisfacción base: `(0, 1]`. Multiplicadores: `1 < m <= 3.00`. El umbral de satisfacción de cada nivel hasta `nivel_maximo` debe ser `<= 1.00`; si no, la configuración es inválida. |
+| Número total de animales albergados | DEFINIDO | Animales con `estado_vital = 'VIVO'` e `id_espacio` no nulo. |
+| Satisfacción global | DEFINIDO | Media directa de los animales vivos alojados; `0` si no hay ninguno. |
+| Prestigio máximo | DEFINIDO | Tres máximos independientes (nivel, animales, satisfacción), inicializados al alcanzarse el primero. |
+| Desbloqueo por prestigio | DEFINIDO | `tablas.desbloqueos_prestigio`: nivel 0 (inicial) con 6 especies y 2 hábitats; niveles 1 a 10 con el resto (38 especies comerciales y 10 hábitats en total). Se desbloquea todo lo de los niveles `<=` prestigio actual; es permanente (RES-07) y emite un aviso informativo por entidad. Las exclusivas solo se desbloquean por recompensa. |
 
 ## 4. Economía y beneficios
 
-| Cálculo o valor | Estado | Pendiente |
+| Cálculo o valor | Estado | Definición |
 |---|---|---|
-| Coste total de compra | PARCIALMENTE_DEFINIDO | El coste de un espacio se consulta por `capacidad_max` en `CosteEspacio`; el coste de compra es fijo por rango mediante `CosteRango`; el alimento tiene un precio fijo por kilogramo mediante `CosteAlimento`; el insumo tiene un precio fijo por unidad mediante `CosteInsumo`. | Costes concretos y fórmula de cantidades cuando corresponda. |
-| Importe de venta | PENDIENTE_DE_DEFINIR | Regla e importe acreditado por la venta de un animal (RF-06). |
-| Consumo de alimento | PARCIALMENTE_DEFINIDO | El único alimento es bambú, en kilogramos. Cada alimentación incrementa el nivel 10 puntos porcentuales, con tope del 100%; la alimentación grupal lleva al 100% a todos los animales vivos del espacio que estén por debajo de ese nivel y descuenta el total en una operación atómica. | Precio común por kilogramo y cantidad de bambú por especie para cada incremento de 10 puntos porcentuales. |
-| Consumo médico | PARCIALMENTE_DEFINIDO | Los insumos son comunes a todas las especies; la cantidad necesaria para curarse se consulta por `id_rango` e `id_insumo` en `ConsumoMedicoRango`, y las especies comparten rango. | Valores concretos por rango e insumo y regla de reposición de salud. |
-| Beneficio o ingreso generado | PARCIALMENTE_DEFINIDO | Se calcula al finalizar cada ciclo y se actualiza tras mutaciones confirmadas que alteren animales vivos o satisfacción global. Depende de cantidad de animales vivos y satisfacción media global; una ponderación exclusiva elegible se multiplica directamente. | Operación base exacta y valores concretos de las ponderaciones exclusivas. |
-| Beneficio acumulado | PENDIENTE_DE_DEFINIR | Reglas para acumular los beneficios generados y determinar el saldo reclamable. |
-| Reclamación de beneficio | DEFINIDO | Transfiere los beneficios acumulados al balance disponible (RF-11). Momento, importe exacto y fórmula de cálculo del saldo pendiente. |
-| Saldos e inventarios | DEFINIDO | No pueden ser negativos y no se permiten consumos superiores al inventario (RF-30, RF-31, RF-50, RES-12). | Unidades, conversiones y valores iniciales. |
+| Coste total de compra | DEFINIDO | Espacio por `capacidad_max`: `2`→100, `4`→180, `6`→250, `8`→320, `10`→400, `15`→550, `20`→700. Animal por rango: 200, 450, 900 y 1800 (rangos 1 a 4); el rango 5 vale `0.00` (solo la unidad concedida por recompensa). Bambú `0.50` por kilogramo; insumo médico `10.00` por unidad. Importes con dos decimales, medios hacia arriba. |
+| Importe de venta | DEFINIDO | `0` (RF-06). |
+| Consumo de alimento | DEFINIDO | Único alimento: bambú, en kilogramos enteros: `1` a `5` kg por cada incremento de 10 puntos, según el tamaño de la especie (`tablas.alimentos_por_especie`). Descenso por ciclo ordinario: 20 puntos. La alimentación grupal consume el total en una operación atómica. |
+| Consumo médico | DEFINIDO | Un único insumo médico universal; cantidad por tratamiento según el rango: `1`, `2`, `3`, `4` y `5` unidades (rangos 1 a 5). |
+| Beneficio o ingreso generado | DEFINIDO | `B_ciclo = redondear(S_global * suma de beneficio_por_animal_ciclo del rango de cada animal vivo alojado)`; importes por rango `4.00`, `8.00`, `14.00`, `22.00` y `35.00`; `0` sin animales. Sin multiplicadores. Se genera una vez por ciclo confirmado. |
+| Beneficio acumulado | DEFINIDO | Cada ciclo añade el beneficio generado al pendiente; las mutaciones entre ciclos no lo cambian; las salidas solo afectan al futuro. |
+| Reclamación de beneficio | DEFINIDO | Acredita una sola vez el pendiente, marca los registros reclamados y deja el pendiente en `0` (RF-11). |
+| Saldos e inventarios | DEFINIDO | No negativos. Partida nueva: `1000.00` de fondos, `30` kg de bambú y `3` insumos médicos (`partida_inicial`). |
 
 ## 5. Reproducción
 
-| Cálculo o valor | Estado | Pendiente |
+| Cálculo o valor | Estado | Definición |
 |---|---|---|
-| Pareja válida | DEFINIDO | Misma especie, misma partida, referencias válidas, pareja recíproca, sin autorreferencia y estado permitido. |
-| Umbral de satisfacción reproductiva | PARCIALMENTE_DEFINIDO | Cada rango tendrá su propio umbral y ambos progenitores deberán alcanzarlo para que la pareja pueda ser evaluada. | Valores concretos por rango. |
-| Probabilidad de reproducción | PARCIALMENTE_DEFINIDO | Cada rango tiene una probabilidad inicial y una penalización por hijo; la probabilidad total es `max(0, probabilidad inicial - penalización por hijo * hijos vivos)`, y se decide mediante un sorteo aleatorio en cada ciclo. Los hijos muertos no aplican penalización. | Valores concretos por rango y tratamiento exacto del límite superior, aunque la configuración inicial está restringida a `0..1`. |
-| Concepción | DEFINIDO | Como máximo una por pareja y ciclo; la opción aparece al inicio del ciclo posterior y puede aceptarse durante tres ciclos, aunque baje la satisfacción de los progenitores. Debe ser idempotente. | Regla de inicialización de la cría. |
-| Aforo para nacimiento | DEFINIDO | No se permite el nacimiento si el espacio ha alcanzado su capacidad (RF-17, RF-18, RF-29). | Consulta exacta y comportamiento cuando no hay espacio. |
-| Datos iniciales de la cría | DEFINIDO | Misma especie que sus progenitores, edad inicial de 0 años, alimentación inicial del 100%, salud sana, satisfacción calculada tras completar la ficha, personalidad y habilidades introducidas por el usuario, mejor amigo opcional y relaciones de parentesco completadas por el sistema. | Representación final de los datos de edad y de los campos de ficha en BBDD. |
-| Límite de hermanos | DEBE_CONFIRMARSE | El DDL contiene `tope_hermanos` con un valor por defecto. | Confirmar el valor funcional y su uso en el cálculo o validación. |
+| Pareja válida | DEFINIDO | Misma especie, misma partida, referencias válidas, pareja recíproca, sin autorreferencia, ambos de al menos 16 años y estado permitido. |
+| Umbral de satisfacción reproductiva | DEFINIDO | Por rango: `0.60`, `0.65`, `0.70`, `0.75` y `0.80`; comparación `>=` con la satisfacción sin redondear. |
+| Probabilidad de reproducción | DEFINIDO | `max(0, probabilidad inicial - penalización * hijos vivos comunes)`. Probabilidad inicial por rango: `0.04`, `0.03`, `0.02`, `0.015`, `0.01`; penalización por hijo: `0.010`, `0.008`, `0.006`, `0.005`, `0.004`. Concepción si `aleatorio < probabilidad`. |
+| Concepción | DEFINIDO | Una por pareja y ciclo; disponible desde el ciclo siguiente durante tres ciclos; idempotente. |
+| Aforo para nacimiento | DEFINIDO | Hay aforo si `COUNT(animales VIVO del espacio) < capacidad_max`; sin aforo la aceptación se rechaza sin cambiar el estado ni consumir la notificación. |
+| Datos iniciales de la cría | DEFINIDO | Misma especie, 0 años, alimentación 100%, sana, edad máxima calculada como en cualquier alta, alojada en el espacio de los progenitores; `id_padre` es el progenitor de identificador menor e `id_madre` el de mayor; hermanos derivados; satisfacción calculada tras completar la ficha. |
+| Límite de hermanos | DEFINIDO | `C_hermanos = min(1, hermanos_vivos / tope_hermanos)` con `tope_hermanos` por especie (2, 3 o 4). |
 
 ## 6. Ciclos y simulación offline
 
-| Cálculo o valor | Estado | Pendiente |
+| Cálculo o valor | Estado | Definición |
 |---|---|---|
-| Periodicidad del ciclo | DEFINIDO | Un ciclo periódico cada 10 minutos (RF-14). |
-| Número de ciclos offline | DEFINIDO | Si `E < R`, se ejecutan 0 ciclos; si `E >= R`, se ejecutan `1 + floor((E - R) / 600)`, donde `R` es el remanente en segundos y `E` el tiempo transcurrido. | Aplicación de las restricciones biológicas ya definidas en cada ciclo. |
-| Remanente del temporizador | DEFINIDO | Si `E < R`, el nuevo remanente es `R - E`; si `E >= R`, es `600 - ((E - R) mod 600)`, representando un resto cero como `600`. | Ninguna. |
-| Descenso de alimentación offline | DEFINIDO | No más de dos tramos: `[100, 80, 60]% -> 40%` o `[40, 20]% -> 0%` (RF-22). | Aplicación detallada cuando hay varios ciclos y valores intermedios. |
-| Enfermedad offline | DEFINIDO | Un animal que enferma computa un ciclo; uno previamente enfermo acumula como máximo dos adicionales (RF-23). | Estado y fórmula de transición para cada ciclo. |
-| Ciclos críticos | DEFINIDO | Se mantienen contadores independientes de desnutrición y enfermedad; cada contador se reinicia al recuperarse su estado y se usa el mayor si ambos coinciden. La defunción se produce al alcanzar 3 ciclos en el contador determinante (RF-19). | Aplicación detallada durante ciclos simultáneos y offline. |
-| Longevidad máxima | PARCIALMENTE_DEFINIDO | Se calcula una sola vez mediante `edad_media_especie * factor_aleatorio`, con `factor_aleatorio` entre `0.90` y `1.10`; se fija al nacer o comprar y no se puede editar. La edad se expresa en años, meses y días, y cada ciclo incrementa 6 días. | Tabla de edades medias por especie y regla exacta de conversión/normalización de fracciones a años, meses y días. |
-| Orden del ciclo | DEFINIDO | Edad, alimentación, salud, ciclos críticos, defunciones, reproducción, beneficios, misiones, métricas y persistencia (RF-14). | Fórmula o tabla de cada transición no definida por RF. |
+| Periodicidad del ciclo | DEFINIDO | 10 minutos (RF-14). |
+| Número de ciclos offline y remanente | DEFINIDO | Fórmulas de RF-21 y RF-24 con tope `retencion.max_ciclos_offline = 1008`. |
+| Descenso de alimentación | DEFINIDO | 20 puntos por ciclo ordinario; en offline, con los límites de RF-22. |
+| Enfermedad | DEFINIDO | Un animal vivo, alojado y sano enferma si `aleatorio < probabilidad_enfermedad(rango) * (1 - satisfaccion_actual)`. Probabilidad por rango: `0.010`, `0.010`, `0.015`, `0.015`, `0.020`. En offline el sorteo se detiene al enfermar y rigen los límites de RF-23. |
+| Ciclos críticos | DEFINIDO | El ciclo que deja al animal con alimentación `0%` o enfermo cuenta como el primero; contadores independientes; defunción al llegar a `3`. |
+| Longevidad máxima | DEFINIDO | `redondear(edad_media_anios * 360 * factor)` días con factor uniforme en `[0.90, 1.10]`; calendario de 30 días por mes y 12 meses por año; edad media por especie de `40` a `90` años (`tablas.edad_media_especie`). Edad inicial de un animal comprado: 20 años. |
+| Orden del ciclo | DEFINIDO | Edad, alimentación, salud, ciclos críticos, defunciones, reproducción, beneficios, misiones, métricas y persistencia (RF-14). |
 
 ## 7. Capacidad y compatibilidad
 
-| Elemento | Estado | Pendiente |
+| Elemento | Estado | Definición |
 |---|---|---|
-| Capacidad positiva | DEFINIDO | `capacidad_max > 0` y no puede modificarse (RF-02, RF-04, RES-04). |
-| Aforo usado | DEFINIDO | La validación de la especificación cuenta animales vivos con espacio asignado dentro de la misma transacción del flujo correspondiente. | Ninguna. |
-| Compatibilidad especie-bioma | PARCIALMENTE_DEFINIDO | El factor por especie y bioma afecta a la satisfacción y no impide comprar, ubicar, trasladar o permitir el nacimiento de un animal. | Confirmar los valores permitidos, completar la tabla y definir el efecto numérico cuando falte una entrada. |
-| Compatibilidad del espacio | DEFINIDO | La compatibilidad se obtiene del bioma del hábitat asociado al espacio y la especie; funciona como factor de satisfacción, no como condición para ubicar al animal. | Valores concretos por especie y bioma y tratamiento numérico de entradas ausentes. |
+| Capacidad positiva | DEFINIDO | `capacidad_max > 0`, inmutable y presente en `CosteEspacio` (2, 4, 6, 8, 10, 15 o 20). |
+| Aforo usado | DEFINIDO | Animales `VIVO` con espacio asignado, contados dentro de la transacción. |
+| Compatibilidad especie-bioma | DEFINIDO | 470 factores: `1.00` primario, `0.75` secundario, `0.40` neutro y `0.20` incompatible por clima. |
+| Compatibilidad del espacio | DEFINIDO | Bioma del hábitat del espacio y especie; factor de satisfacción, no condición de ubicación. |
 
 ## 8. Misiones y recompensas
 
-| Elemento | Estado | Pendiente |
+| Elemento | Estado | Definición |
 |---|---|---|
-| Progreso de misión | PARCIALMENTE_DEFINIDO | Compras y ventas confirmadas, y edades alcanzadas, son acumulativas; presencia en hábitat, satisfacción y prestigio son condiciones dinámicas y pueden disminuir. | Representación final de contadores acumulativos y valores concretos de los objetivos. |
-| Cumplimiento de misión | DEFINIDO | La misión pasa inmediatamente a `CUMPLIDA` cuando alcanza su objetivo. | Valores concretos de cada objetivo. |
-| Recompensa | DEFINIDO | Puede ser fondos, alimento, insumo o animal aleatorio según el DDL y debe acreditarse una sola vez (RF-40, RNF-12). Las recompensas de alimentos e insumos usan cantidad; el animal aleatorio puede desbloquear una especie exclusiva y aparecer una vez en tienda con coste cero. | Valores concretos, probabilidades por especie, representación estructural definitiva y momento exacto de disponibilidad. |
-| Desbloqueo de especie exclusiva | DEFINIDO | Las especies exclusivas no se compran en tienda y se obtienen por misiones o eventos (RF-38, RF-49, RES-09). | Reglas de evento, recompensa y valores de desbloqueo. |
+| Progreso de misión | DEFINIDO | `Misiones/EspecificacionMisiones.md` (secciones 3, 4 y 4.1): contadores acumulativos y valores dinámicos en `ProgresoMision.progreso`; progresión con aritmética exacta, redondeo medio hacia arriba y límites mínimo y máximo; agotamiento al superar el máximo. |
+| Cumplimiento de misión | DEFINIDO | Pasa a `CUMPLIDA` inmediatamente al alcanzar su objetivo. Valores de objetivo en el JSON (sección 8 del documento de misiones). |
+| Recompensa | DEFINIDO | Fondos, alimento, insumo o animal aleatorio, una sola vez. Cantidades por misión en el JSON. |
+| Animal aleatorio | DEFINIDO | Lista de las nueve exclusivas con probabilidades `10, 12, 14, 12, 14, 12, 6, 12, 8` (suma 100). Disponible en tienda desde la reclamación, con coste cero y una sola compra (`unidad_pendiente`). |
+| Desbloqueo de especie exclusiva | DEFINIDO | Solo por recompensa (RF-38, RF-49, RES-09). |
 
 ## 9. Avisos, estados y auditoría
 
-Los estados enumerados en el DDL deben conservarse como estados técnicos hasta que los requisitos definan su semántica completa. Quedan por detallar:
+| Elemento | Estado | Definición |
+|---|---|---|
+| Transiciones de estado | DEFINIDO | `EspecificacionBBDD.md`, sección 2.3.2. |
+| Severidad de avisos | DEFINIDO | Informativa = `BAJA`, operativa de reproducción = `MEDIA`, crítica de salud = `ALTA`; fija por clase. |
+| Datos del panel crítico | DEFINIDO | Contadores separados cuando concurren; ciclos restantes `3 - max(contadores)`; el animal se identifica por nombre. |
+| Eventos auditables | DEFINIDO | `EspecificacionBBDD.md`, sección 3.1; resultados `CONFIRMADO`, `RECHAZADO` y `REVERTIDO`. |
+| Claves de idempotencia | DEFINIDO | `EspecificacionBBDD.md`, sección 3 (tabla de claves por operación). |
 
-- Transiciones válidas entre estados de notificación, recompensa, ciclo, beneficio y animal.
-- Severidad y condiciones de cada aviso crítico.
-- Texto o datos calculados para ciclos acumulados y ciclos restantes de RF-20 y RF-41.
-- Tipos y origen de todos los eventos auditables de RF-47.
-- Reglas de idempotencia por operación cuando la clave solo se menciona pero no se define su composición.
+## 10. Tablas y catálogos
 
-## 10. Tablas y catálogos incompletos
+Todos están completos en `valores_y_pesos.json`:
 
-Deben completarse sin inventar datos:
+- 10 biomas y 10 hábitats (uno por bioma).
+- 47 especies (38 comerciales y 9 exclusivas), cinco rangos, pesos de satisfacción y sociales, `tope_hermanos`, edad media y kilogramos de bambú por incremento.
+- 470 compatibilidades especie-bioma, 1128 afinidades entre pares de especies (incluidas las diagonales) y 47 curvas de `M_crit`.
+- Un alimento (bambú) y un insumo médico, con sus precios y cantidades.
+- 12 misiones con parámetros, progresión y recompensas, y la lista de recompensas de animal aleatorio.
+- Catálogos cerrados de 10 rasgos de personalidad y 10 habilidades sociales (descriptivos; no intervienen en ninguna fórmula).
+- Estados y transiciones: `EspecificacionBBDD.md`, sección 2.3.2. Valores iniciales de la partida: sección 2.4 y `partida_inicial`.
 
-- Filas de `Bioma` y sus nombres.
-- Filas de `Especie`, incluyendo pesos, coste, estado de catálogo, umbral de desbloqueo y longevidad si aplica.
-- Filas de `CompatibilidadBioma` y sus factores.
-- Filas de `AfinidadEspecies` y significado de cada coeficiente.
-- Precio común del bambú por kilogramo, cantidades de bambú por especie e insumos médicos y sus cantidades por operación.
-- Misiones, objetivos, progreso requerido y recompensas.
-- Rasgos de personalidad y habilidades sociales permitidos.
-- Tabla de estados, transiciones y valores iniciales de animales, ciclos, beneficios y avisos.
+Valores por defecto del DDL: se eliminan los valores por defecto de `tope_hermanos`, fondos y satisfacción (se cargan de la configuración o se calculan); se ratifica la alimentación inicial del 100% y la salud inicial `SANO`.
 
-La decisión funcional confirmada es que los pesos `peso_bio` y `peso_soc` no son globales para todas las especies: cada especie define su propio conjunto de pesos en `valores_y_pesos.json`, y la suma debe ser `1.00`.
+## 11. Dependencias y contradicciones resueltas
 
-La afinidad social no familiar se gestiona mediante pares de especies. Las relaciones familiares no forman parte de la matriz descrita y se tratan por separado mediante pareja, mejor amigo, padre, madre y hermanos.
-
-Los valores por defecto presentes actualmente en el DDL, como `tope_hermanos`, fondos iniciales, alimentación inicial, satisfacción inicial o factores de compatibilidad, se consideran `DEBE_CONFIRMARSE` hasta que el proyecto los ratifique como valores funcionales. En la práctica, la decisión funcional real queda registrada en la tabla por especie del JSON y no se inventará un valor fuera de ese conjunto.
-
-## 11. Dependencias y contradicciones a resolver
-
-1. La ecuación de satisfacción usa componentes que el proyecto nombra, pero no define con suficiente detalle para obtener un resultado numérico reproducible.
-2. RF-35 se resolverá mediante niveles con umbrales conjuntos de animales vivos y satisfacción global, pero no define todavía los valores concretos ni el comportamiento cuando los indicadores disminuyen.
-3. RF-15 exige tasa de beneficios y costes, pero no define su cálculo económico.
-4. RF-16 exige una probabilidad y un umbral de reproducción, pero no define cómo se calculan.
-5. RF-14 y RF-19 definen la variación estadística de la longevidad y el límite de 3 ciclos críticos, pero queda pendiente completar las edades medias y la conversión/normalización de fracciones a años, meses y días.
-6. RF-21 y RF-24 quedan resueltos mediante el remanente en segundos y el cálculo de ciclos offline documentado en la especificación BBDD.
-7. El DDL contiene valores por defecto y factores que deben distinguirse de decisiones funcionales ratificadas.
-
-Hasta que estas decisiones se incorporen a los requisitos o sean aprobadas explícitamente como reglas del proyecto, la especificación de BBDD no debe asignarles valores.
+1. Satisfacción: fórmulas, rangos y valores completos, incluidas las afinidades diagonales.
+2. Prestigio: base, multiplicadores, límites y nivel máximo definidos.
+3. RF-15: beneficio definido por la fórmula de la sección 4.
+4. RF-16: umbral y probabilidad por rango definidos.
+5. RF-14 y RF-19: longevidad, calendario y conversión definidos.
+6. RF-21 y RF-24: remanente y ciclos offline definidos.
+7. Los valores por defecto del DDL están ratificados, sustituidos o eliminados (sección 10).
+8. Duplicados del JSON eliminados: las probabilidades de reproducción y penalización por hijo viven solo en `rangos_especie`; `desbloqueos_prestigio` es la única fuente de desbloqueos.

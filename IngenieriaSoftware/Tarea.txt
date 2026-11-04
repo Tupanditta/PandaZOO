@@ -1,4 +1,0 @@
-he añadido las especies y quiero añadir más cosas. 
-Primero, cada especie tiene un rango (todavía no detallado), quiero añadir un hueco para cada especie para poder especificar su rango
-
-Biomas, viendo los animales que tengo, proponme varios biomas.

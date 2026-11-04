@@ -2,7 +2,7 @@
 
 ## 1. Alcance
 
-Este documento especifica la estructura funcional de las misiones, sus parámetros, el seguimiento del progreso y las recompensas. No fija valores concretos de costes, cantidades, probabilidades, especies ni requisitos numéricos que todavía estén pendientes de definir en el proyecto.
+Este documento especifica la estructura funcional de las misiones, sus parámetros, el seguimiento del progreso y las recompensas. Los valores concretos (parámetros base, progresión, recompensas y probabilidades) están en `catalogos.misiones` y `recompensas_animales_aleatorios` de `valores_y_pesos.json` y se resumen en la sección 8.
 
 Las misiones se muestran en el apartado de misiones y se evalúan cuando se produce un evento relevante o finaliza un ciclo de simulación, respetando el modelo reactivo definido por RF-44 y RES-10.
 
@@ -10,17 +10,20 @@ Las misiones se muestran en el apartado de misiones y se evalúan cuando se prod
 
 Cada misión debe contener, como mínimo:
 
-- Identificador de misión.
+- Identificador de tipo de misión.
+- Identificador de la instancia vigente.
 - Estado de la misión.
 - Tipo de objetivo.
-- Parámetros del objetivo.
+- Parámetros base definidos para el tipo.
+- Parámetros actuales de la instancia.
+- Para cada parámetro numérico progresable, operación y constante de progresión.
 - Progreso actual.
 - Condición de cumplimiento.
 - Recompensa asociada.
 - Estado de la recompensa.
 - Indicador de si ya ha sido reclamada.
 
-Los valores concretos de cada misión se definirán posteriormente en las tablas correspondientes del JSON.
+Los valores concretos de cada misión están en `catalogos.misiones` del JSON. Los parámetros categóricos, como especie y hábitat, permanecen fijos; los parámetros numéricos usan una operación, una constante, un valor mínimo y un valor máximo configurados por parámetro. En base de datos, la misión se guarda en `Mision` y `ParametroMision`; la instancia vigente, en `ProgresoMision` y `ParametroProgresoMision`; y la recompensa de cada instancia cumplida, en `RecompensaMision`.
 
 ## 3. Tipos de misión
 
@@ -33,7 +36,7 @@ Parámetros:
 - Especie.
 - Cantidad requerida.
 
-El progreso cuenta las compras válidas de la especie indicada.
+El progreso cuenta las compras confirmadas de la especie indicada realizadas después de crearse la instancia, incluida la compra de una unidad exclusiva concedida. Es acumulativo.
 
 ### 3.2. Hacer crecer animales de una especie
 
@@ -45,7 +48,7 @@ Parámetros:
 - Cantidad de animales.
 - Edad requerida.
 
-El progreso cuenta los animales de la especie que alcanzan la edad indicada.
+El progreso cuenta los animales de la especie que, durante un ciclo posterior a la creación de la instancia, pasan de tener menos años completos que la edad indicada a tener esa edad o más. Un animal que ya la superaba al comprarlo o al crearse la instancia no cuenta. Es acumulativo.
 
 ### 3.3. Conseguir una cantidad total de animales
 
@@ -88,7 +91,7 @@ Parámetro:
 
 - Nivel de prestigio requerido.
 
-El progreso se completa cuando el prestigio alcanza el umbral indicado.
+El progreso es el nivel de prestigio actual y la misión se cumple cuando es mayor o igual que el nivel requerido.
 
 ### 3.7. Vender un animal de una especie y edad concretas
 
@@ -99,7 +102,7 @@ Parámetros:
 - Especie.
 - Edad.
 
-El progreso se incrementa cuando se confirma una venta que cumple ambos parámetros.
+El objetivo es una única venta: el progreso pasa de `0` a `1` cuando, después de crearse la instancia, se confirma la venta de un animal de la especie cuya edad en años completos es mayor o igual que la edad indicada. Es acumulativo.
 
 ### 3.8. Vender un animal de una edad concreta
 
@@ -109,28 +112,28 @@ Parámetro:
 
 - Edad.
 
-El progreso se incrementa cuando se confirma una venta que cumple la edad indicada.
+El objetivo es una única venta: el progreso pasa de `0` a `1` cuando, después de crearse la instancia, se confirma la venta de un animal cuya edad en años completos es mayor o igual que la edad indicada. Es acumulativo.
 
 ### 3.9. Tener una familia
 
-Objetivo: tener una familia con padre, madre y un número mínimo de hermanos.
+Objetivo: tener una familia con padre, madre y un número mínimo de hermanos vivos.
 
 Parámetro:
 
 - Número mínimo de hermanos.
 
-La familia debe cumplir las reglas de parentesco y especie definidas en RF-34 y RES-13.
+La familia debe cumplir las reglas de parentesco y especie definidas en RF-34 y RES-13. Se cumple cuando existe un animal `VIVO` alojado cuyo padre y madre están `VIVO` y alojados y que tiene como mínimo ese número de hermanos `VIVO` (animales con el mismo padre o madre). El progreso es el mayor número de hermanos vivos entre los animales que cumplen lo anterior.
 
 ### 3.10. Tener una familia de una especie concreta
 
-Objetivo: tener una familia de una especie determinada con padre, madre y un número mínimo de hermanos.
+Objetivo: tener una familia de una especie determinada con padre, madre y un número mínimo de hermanos vivos.
 
 Parámetros:
 
 - Especie.
 - Número mínimo de hermanos.
 
-La familia debe cumplir las reglas de parentesco y especie definidas en RF-34 y RES-13.
+La familia debe cumplir las reglas de parentesco y especie definidas en RF-34 y RES-13. Se evalúa igual que en 3.9, limitada a animales de la especie indicada.
 
 ### 3.11. Conseguir una satisfacción mínima
 
@@ -140,7 +143,7 @@ Parámetro:
 
 - Satisfacción mínima requerida.
 
-El progreso se completa cuando un animal alcanza el umbral indicado.
+El progreso es la mayor satisfacción individual actual (`0..1`, sin redondear) entre los animales `VIVO` alojados; la misión se cumple cuando es mayor o igual que el umbral.
 
 ### 3.12. Conseguir una satisfacción mínima por especie
 
@@ -151,7 +154,7 @@ Parámetros:
 - Especie.
 - Satisfacción mínima requerida.
 
-El progreso se completa cuando un animal de la especie indicada alcanza el umbral.
+El progreso es la mayor satisfacción individual actual (`0..1`, sin redondear) entre los animales `VIVO` alojados de la especie indicada; la misión se cumple cuando es mayor o igual que el umbral.
 
 ## 4. Progreso y cumplimiento
 
@@ -167,22 +170,31 @@ El progreso se completa cuando un animal de la especie indicada alcanza el umbra
 - Cuando se alcanza la condición del objetivo, la misión pasa inmediatamente a estado cumplido.
 - Una misión cumplida muestra una acción explícita para reclamar la recompensa.
 - La opción de reclamar no caduca.
-- La misión desaparece del apartado de misiones después de reclamarla.
-- El sistema conserva el estado de misión realizada.
-- Una misión reclamada no puede repetirse ni realizarse una segunda vez.
+- Se muestra como máximo una instancia vigente de cada tipo de misión configurado por partida, sin tipos duplicados.
+- Una misión cumplida permanece visible y reclamable; no se crea su siguiente instancia antes de reclamar la recompensa.
+- Al reclamar, el sistema acredita la recompensa una sola vez, aplica a cada parámetro numérico su operación y constante, retira la instancia cumplida y crea la siguiente instancia del mismo tipo con los parámetros resultantes. La sustitución y el crédito son atómicos.
+- La instancia reclamada deja de mostrarse y no se conserva un historial funcional de instancias completadas. Se conservan los registros de recompensa y auditoría necesarios para idempotencia y trazabilidad transaccional.
+- Cada tipo puede volver a cumplirse después de que se cree su instancia progresada.
 - La actualización del progreso, el cumplimiento y la reclamación deben ser idempotentes.
 
-Los valores concretos de los objetivos quedan pendientes de parametrización en el JSON.
+### 4.1. Reglas de representación, progresión y cierre
+
+- **Edad.** Toda condición de edad se compara con los años completos del animal (`edad_anios`) y se cumple con una edad mayor o igual que la requerida.
+- **Evaluación.** `ProgresoMision.progreso` guarda el valor actual (contador acumulativo o valor dinámico recalculado). Se evalúa en la transacción de cada evento que puede afectarlo y al cerrar cada ciclo, nunca por navegación. Una instancia `CUMPLIDA` no vuelve a `PENDIENTE` aunque un progreso dinámico baje después.
+- **Progresión de parámetros.** Al reclamar, cada parámetro numérico se recalcula con su operación (`SUMAR`, `RESTAR`, `MULTIPLICAR`, `DIVIDIR`) y su constante, en aritmética exacta; después se redondea al entero más cercano (medios hacia arriba) si el parámetro es entero, o al centésimo (medios hacia arriba) si es de satisfacción. `DIVIDIR` exige una constante mayor que `0`. El resultado debe estar en `[valor_minimo, valor_maximo]` del parámetro.
+- **Agotamiento.** Si el resultado de algún parámetro supera `valor_maximo` (o queda por debajo de `valor_minimo`), no se crea una nueva instancia: la instancia reclamada se sustituye por un marcador `AGOTADA`, el tipo deja de mostrarse como misión vigente y no vuelve a generarse en esa partida. La configuración distribuida solo usa `SUMAR` con constantes positivas.
+- **Nueva instancia.** Se crea con `progreso = 0`; si es de tipo dinámico se evalúa de inmediato en la misma transacción y puede quedar `CUMPLIDA` al instante si el estado del parque ya cumple los nuevos parámetros.
+- **Misiones imposibles.** Los máximos configurados garantizan que ningún objetivo supere lo alcanzable: edad máxima requerida `36` (la menor edad máxima de longevidad es `36` años), prestigio máximo `10` (`nivel_maximo`), satisfacción máxima `0.95`.
 
 ## 5. Estructura de una recompensa
 
-Cada misión tiene asociada una recompensa concreta. La recompensa debe indicar:
+Cada misión tiene asociada una recompensa concreta, fija para el tipo (no progresa). La recompensa debe indicar:
 
 - Tipo de recompensa.
 - Cantidad o elemento entregado.
 - Estado de la recompensa.
 - Misión que la origina.
-- Clave de idempotencia.
+- Clave de idempotencia (derivada de la instancia de misión, sin texto adicional).
 - Fecha de disponibilidad y reclamación cuando corresponda.
 
 ## 6. Tipos de recompensa
@@ -215,11 +227,11 @@ La recompensa puede proporcionar un animal seleccionado aleatoriamente entre las
 Parámetros:
 
 - Cantidad de animales.
-- Probabilidad asociada a cada especie.
+- Lista común de especies elegibles y probabilidad porcentual de cada especie.
 
-Esta recompensa puede ser una vía para obtener un animal exclusivo. Cuando se selecciona el animal, aparece en la tienda con coste cero y solo puede comprarse una unidad. La compra sigue el flujo normal de adquisición de especímenes, incluyendo la validación, cumplimentación de la ficha y ubicación en un espacio con capacidad disponible. La compatibilidad entre especie y hábitat afecta a la satisfacción, pero no impide la ubicación.
+La lista se configura en `recompensas_animales_aleatorios.especies` de `valores_y_pesos.json`, debe sumar exactamente 100% e incluir como mínimo todas las especies exclusivas. Al reclamar la recompensa, el sistema selecciona una especie mediante un sorteo ponderado y persiste el resultado en el registro de recompensa para que los reintentos idempotentes no vuelvan a sortear.
 
-Las probabilidades concretas por especie se definirán posteriormente en el JSON.
+Esta recompensa puede ser una vía para obtener un animal exclusivo. Cuando se selecciona el animal, aparece en la tienda con coste cero y solo puede comprarse una unidad. La unidad está disponible desde la propia transacción de reclamación, no caduca y se retira de la tienda al comprarla (`RecompensaMision.unidad_pendiente`). La cantidad de animales de esta recompensa es siempre `1`. La compra sigue el flujo normal de adquisición de especímenes, incluyendo la validación, cumplimentación de la ficha y ubicación en un espacio con capacidad disponible. La compatibilidad entre especie y hábitat afecta a la satisfacción, pero no impide la ubicación.
 
 ## 7. Reclamación
 
@@ -237,13 +249,29 @@ La operación de reclamación debe:
 
 Una recompensa reclamada no puede acreditarse de nuevo.
 
-## 8. Datos pendientes de parametrización
+## 8. Configuración definida
 
-El documento define la estructura y las reglas confirmadas, pero quedan pendientes:
+Todos los valores de esta sección están en `valores_y_pesos.json` y son valores de diseño; reajustarlos no cambia ninguna regla.
 
-- Valores concretos de los parámetros de cada misión.
-- Valores concretos de los objetivos y representación final de los contadores acumulativos.
-- Cantidades de alimentos, insumos y fondos.
-- Especies posibles y probabilidades de las recompensas aleatorias.
-- Representación final de los parámetros y recompensas en BBDD.
-- Momento exacto de disponibilidad del animal aleatorio y su retirada después de la compra.
+| Misión (`id_mision`) | Naturaleza | Parámetros base | Progresión (operación, constante, mín–máx) | Recompensa |
+|---|---|---|---|---|
+| `comprar_especie` | acumulativa | capibara, cantidad `2` | cantidad: sumar `1`, 1–50 | `200.00` fondos |
+| `crecer_especie` | acumulativa | nutria, cantidad `1`, edad `24` | cantidad: sumar `1`, 1–20; edad: sumar `4`, 1–36 | `30` kg de bambú |
+| `total_animales` | dinámica | `5` animales | sumar `5`, 1–500 | `300.00` fondos |
+| `animales_habitat` | dinámica | hábitat bosque templado, `3` animales | sumar `2`, 1–200 | `5` insumos médicos |
+| `espacios_ocupados_habitat` | dinámica | hábitat humedal de agua dulce, mínimo `2` animales por espacio, `1` espacio | mínimo: sumar `1`, 1–20; espacios: sumar `1`, 1–50 | `400.00` fondos |
+| `subir_prestigio` | dinámica | nivel `1` | sumar `1`, 1–10 | animal aleatorio (`1`) |
+| `vender_especie_edad` | acumulativa | erizo, edad `22` | edad: sumar `2`, 1–36 | `150.00` fondos |
+| `vender_edad` | acumulativa | edad `22` | sumar `2`, 1–36 | `20` kg de bambú |
+| `familia` | dinámica | `1` hermano | sumar `1`, 1–8 | `250.00` fondos |
+| `familia_especie` | dinámica | zarigüeya, `1` hermano | sumar `1`, 1–8 | `4` insumos médicos |
+| `satisfaccion_minima` | dinámica | `0.60` | sumar `0.05`, 0.05–0.95 | `500.00` fondos |
+| `satisfaccion_minima_especie` | dinámica | tortuga, `0.60` | sumar `0.05`, 0.05–0.95 | `50` kg de bambú |
+
+Las especies y hábitats de las misiones pertenecen al nivel 0 de desbloqueo, de modo que son alcanzables desde el inicio.
+
+**Recompensa de animal aleatorio.** Lista de especies elegibles (exactamente las nueve exclusivas): panda `10 %`, leopardo de las nieves `12 %`, tití león dorado `14 %`, tigre de Bengala `12 %`, alce leucístico `14 %`, jaguar `12 %`, ballena azul `6 %`, pangolín `12 %` y rinoceronte blanco `8 %` (suma `100 %`).
+
+**Disponibilidad.** El animal concedido queda disponible en la tienda, con coste cero y para una sola compra, desde la transacción de reclamación; se retira al comprarlo. Reclamar un animal no sustituye su compra ni su ubicación.
+
+**Representación en BBDD.** Cada tipo es una fila de `Mision` (con su naturaleza y recompensa) y tantas de `ParametroMision` como parámetros; la instancia vigente es una fila de `ProgresoMision` con sus `ParametroProgresoMision`. No quedan datos pendientes de parametrización.
