@@ -1,6 +1,6 @@
 # Diseño técnico de implementación
 
-Este documento fija el lenguaje, la arquitectura, las tecnologías y las herramientas que usa el agente de IA para implementar la aplicación para **Android e iOS con una sola base de código**, y las reglas con las que trabaja. La migración desde la primera versión solo Android está definida en `Migracion/TareaMigracionMultiplataforma.md`. Se complementa con `sprints.md` (qué se construye y cuándo) y con la especificación funcional (qué debe hacer).
+Este documento fija el lenguaje, la arquitectura, las tecnologías y las herramientas que usa el agente de IA para implementar la aplicación para **Android e iOS con una sola base de código** (iOS como PWA), y las reglas con las que trabaja. La migración desde la primera versión solo Android está definida en `Migracion/TareaMigracionMultiplataforma.md` y la de iOS nativo a PWA en `Migracion/MigracionPWAiOS.md`. Se complementa con `sprints.md` (qué se construye y cuándo) y con la especificación funcional (qué debe hacer).
 
 Si una decisión de este documento choca con un requisito, gana el requisito (RF, RNF, RES) y se corrige este documento.
 
@@ -12,15 +12,15 @@ Si una decisión de este documento choca con un requisito, gana el requisito (RF
 |---|---|---|
 | Plataformas | Android e iOS, solo teléfonos, orientación vertical | RES-02, RNF-06 |
 | Código compartido | Kotlin Multiplatform: dominio, aplicación, datos y UI se escriben una vez | RES-14, RNF-15 |
-| Lenguaje | Kotlin en todos los módulos y tests; Swift solo para el arranque de iOS | Una sola base de código |
-| Persistencia | SQLite mediante `androidx.sqlite` (`SQLiteDriver`) con el SQLite empaquetado (`sqlite-bundled`), el mismo en ambas plataformas | `EspecificacionBBDD.md`, sección 2; RNF-16 |
-| Interfaz | Compose Multiplatform con Material 3, solo componentes técnicos: tablas, listas, métricas y formularios | RES-01; sin renderizado 2D/3D ni animaciones espaciales |
+| Lenguaje | Kotlin en todos los módulos y tests; la PWA añade solo HTML, un manifiesto y un service worker de unas 30 líneas | Una sola base de código |
+| Persistencia | SQLite. Android y JVM: `androidx.sqlite` con el SQLite empaquetado (`sqlite-bundled`). Web (iOS): sql.js, el mismo SQLite compilado a WebAssembly, con la base entera copiada a IndexedDB tras cada confirmación. Ambos motores se ocultan tras la interfaz `ConexionSql` de `:data`, y `androidx.sqlite` no existe para JavaScript | `EspecificacionBBDD.md`, sección 2; RNF-16 |
+| Interfaz | Compose Multiplatform con Material 3, solo componentes técnicos: tablas, listas, métricas y formularios | RES-01; sin renderizado 2D/3D ni animaciones espaciales. Identidad visual (paleta natural, tema claro y oscuro, fichas) definida en `Interfaz/EspecificacionInterfaz.md` |
 | Configuración del juego | `valores_y_pesos.json`, empaquetado como recurso compartido de `:shared-ui` y leído con `kotlinx.serialization` | Es la fuente única de valores (`ValoresYFormulasPendientes.md`) |
 | Android | SDK mínimo API 26; SDK de compilación y objetivo: el último estable disponible, fijado en el catálogo de versiones | Cubre el rango de 4.7" a 6.7" |
-| iOS | iOS 15 o superior; targets `iosArm64` e `iosSimulatorArm64` | Cubre los iPhone de 4.7" a 6.7" en uso |
+| iOS | PWA: Safari de iOS 15 o superior, target Kotlin/JS (`js`), alojada como sitio estático (GitHub Pages) e instalada en la pantalla de inicio. Se eligió JS y no Wasm porque Kotlin/Wasm exige WasmGC (Safari 18.2) | Gratuita, sin App Store ni Mac, cubre los iPhone de 4.7" a 6.7" en uso |
 | Versiones de librerías | Estables vigentes, con antigüedad de al menos dos semanas, todas fijadas en `gradle/libs.versions.toml` | Reproducibilidad. Ninguna dependencia usa rangos ni `latest` |
 
-Fuera de alcance por decisión: tablet, web, escritorio, orientación horizontal, servidor, red, cuentas de usuario, publicidad y analítica. La aplicación no necesita permiso de Internet y no se declara en el manifiesto de Android.
+Fuera de alcance por decisión: tablet, web de escritorio, orientación horizontal, servidor, red, cuentas de usuario, publicidad y analítica. La aplicación no necesita permiso de Internet y no se declara en el manifiesto de Android.
 
 ---
 
@@ -61,7 +61,7 @@ Proyecto Gradle multi-módulo en Kotlin Multiplatform. La dirección de las depe
 | `:data` | `db` (conexión, DDL, `expect/actual`), `repositorio`, `config` (JSON), `tiempo`, `purga` |
 | `:shared-ui` | `ui/<pantalla>`, `navegacion`, `di`, `temporizador` |
 | `:androidApp` | `Application`, `Activity`, manifiesto |
-| `iosApp` | Arranque en Swift que aloja la UI compartida |
+| `:webApp` | Contenedor web (PWA) de iOS: `index.html`, manifiesto, service worker, iconos y arranque que aloja la UI compartida |
 
 ### 2.3. Reglas de diseño obligatorias
 
@@ -107,7 +107,7 @@ Todas con versión fija en `libs.versions.toml`. Se usa una librería solo si re
 | Necesidad | Tecnología |
 |---|---|
 | Construcción | Gradle con Kotlin DSL, Gradle Wrapper versionado, catálogo de versiones |
-| Multiplataforma | Plugin Kotlin Multiplatform; plugin de biblioteca KMP de Android; targets `android`, `iosArm64`, `iosSimulatorArm64` y `jvm` (este último solo para tests y herramientas) |
+| Multiplataforma | Plugin Kotlin Multiplatform; plugin de biblioteca KMP de Android; targets `android`, `js` (web/PWA de iOS) y `jvm` (este último solo para tests y herramientas) |
 | Android Gradle Plugin | La versión estable compatible con el SDK objetivo |
 | JDK de compilación | El JDK incluido con Android Studio (ver sección 5); el bytecode se genera para Java 17 |
 | Asincronía | Kotlin Coroutines y `Flow` |
@@ -186,7 +186,7 @@ Cualquier comparación con `>=` o `<` estricto de RF-16 y RF-14 se prueba en su 
 |---|---|
 | Sistema | Windows 11 con shell bash (Git Bash) |
 | Android Studio | Instalado en `C:\Program Files\Android\Android Studio` |
-| macOS y Xcode | **No disponibles.** Kotlin/Native para iOS solo compila en macOS: en esta máquina los targets de iOS se declaran pero no se compilan (`kotlin.native.ignoreDisabledTargets=true`) |
+| macOS y Xcode | **No disponibles, y ya no hacen falta:** iOS se entrega como PWA, que se compila y prueba en Windows. El contenedor nativo `iosApp/` se borró (ver `Migracion/MigracionPWAiOS.md`) |
 | Android SDK | Presente en `%LOCALAPPDATA%\Android\Sdk` (build-tools, platforms, platform-tools, emulator) |
 | Java por defecto en `PATH` | **Java 1.8, insuficiente.** El agente usa el JDK de Android Studio (`jbr`) |
 | `ANDROID_HOME` | No definido |
@@ -209,9 +209,9 @@ Si alguno de estos pasos requiere permisos o instalación manual, el agente se d
 | Tarea | Herramienta |
 |---|---|
 | Compilar Android | `./gradlew :androidApp:assembleDebug` |
-| Compilar iOS (solo en macOS) | `./gradlew :shared-ui:linkDebugFrameworkIosSimulatorArm64` y compilación del proyecto Xcode de `iosApp/` |
+| Compilar la PWA de iOS | `./gradlew :webApp:jsBrowserDistribution` (salida en `webApp/build/dist/js/productionExecutable`) |
 | Tests de dominio, aplicación y datos | `./gradlew :domain:jvmTest :application:jvmTest :data:jvmTest` |
-| Tests en iOS (solo en macOS) | `./gradlew :domain:iosSimulatorArm64Test :application:iosSimulatorArm64Test :data:iosSimulatorArm64Test` |
+| Tests de la web (Node + sql.js) | `./gradlew :domain:jsNodeTest :application:jsNodeTest :data:jsNodeTest` |
 | Tests instrumentados | `./gradlew :androidApp:connectedDebugAndroidTest` (emulador o dispositivo) |
 | Lint y formato | `./gradlew ktlintCheck detekt lintDebug` |
 | Verificación completa antes de cerrar un sprint | `./gradlew check` |
@@ -259,7 +259,7 @@ PandaZOO/
 ├── shared-ui/                 KMP + Compose Multiplatform: pantallas y ViewModels
 │   └── src/commonMain/composeResources/files/   valores_y_pesos.json
 ├── androidApp/                Android application: arranque y manifiesto
-├── iosApp/                    Proyecto Xcode: arranque en Swift
+├── webApp/                    Kotlin/JS: contenedor PWA (index.html, manifiesto, service worker, iconos)
 ├── testing/                   KMP: fixtures y dobles compartidos
 ├── config/detekt/             Reglas de análisis estático
 └── .gitignore                 Excluye local.properties, build/, .gradle/, *.iml

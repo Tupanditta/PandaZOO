@@ -76,15 +76,15 @@ class Sprint1Test {
     @Test
     fun `T1_1 compra de bambu actualiza saldo e inventario en una transaccion`() {
         val r = exito(comprar(bambu, 10))
-        r shouldBe CompraRealizada(d("5.00"), d("995.00"), 40)
-        e.fondos() shouldBe d("995.00")
+        r shouldBe CompraRealizada(d("5.00"), d("1995.00"), 40)
+        e.fondos() shouldBe d("1995.00")
         cantidad(bambu) shouldBe 40
         e.contar("MovimientoEconomico", "tipo = 'COMPRA' AND importe = 5.0 AND origen = 'CU-07'") shouldBe 1
     }
 
     @Test
     fun `T1_1 compra de insumos medicos usa el precio por unidad`() {
-        exito(comprar(insumo, 7)) shouldBe CompraRealizada(d("70.00"), d("930.00"), 10)
+        exito(comprar(insumo, 7)) shouldBe CompraRealizada(d("70.00"), d("1930.00"), 10)
     }
 
     @Test
@@ -110,14 +110,14 @@ class Sprint1Test {
     @Test
     fun `T1_2 saldo insuficiente no cambia nada e informa el motivo exacto`() {
         val antes = instantanea()
-        val motivo = rechazo(comprar(insumo, 101))
-        motivo shouldBe MotivoRechazo.SaldoInsuficiente(d("1010.00"), d("1000.00"))
+        val motivo = rechazo(comprar(insumo, 201))
+        motivo shouldBe MotivoRechazo.SaldoInsuficiente(d("2010.00"), d("2000.00"))
         instantanea() shouldBe antes
     }
 
     @Test
     fun `T1_2 limite exacto saldo igual al coste se acepta`() {
-        exito(comprar(insumo, 100)).saldo shouldBe d("0.00")
+        exito(comprar(insumo, 200)).saldo shouldBe d("0.00")
         e.fondos() shouldBe d("0.00")
         rechazo(comprar(bambu, 1)).shouldBeInstanceOf<MotivoRechazo.SaldoInsuficiente>()
     }
@@ -159,7 +159,7 @@ class Sprint1Test {
                         it.decimal(0)
                     }!!
                     // Conservación del dinero: fondos + total gastado = fondos iniciales.
-                    (Dinero.desdeBd(gastado) + e2.fondos()) shouldBe d("1000.00")
+                    (Dinero.desdeBd(gastado) + e2.fondos()) shouldBe d("2000.00")
                 }
             } finally {
                 e2.cerrar()
@@ -315,7 +315,7 @@ class Sprint1Test {
     fun `T1_7 reintentar la misma compra de recursos no cobra dos veces`() {
         val primera = comprar(bambu, 10, "fija")
         val segunda = comprar(bambu, 10, "fija")
-        e.fondos() shouldBe d("995.00")
+        e.fondos() shouldBe d("1995.00")
         cantidad(bambu) shouldBe 40
         e.contar("MovimientoEconomico") shouldBe 1
         (segunda as Resultado.Exito).repetido shouldBe true
@@ -327,7 +327,7 @@ class Sprint1Test {
         val primera = comprarEspacio("bosque_templado", "Pradera", 4, "fija")
         val segunda = comprarEspacio("bosque_templado", "Pradera", 4, "fija")
         e.contar("Espacio") shouldBe 1
-        e.fondos() shouldBe d("820.00")
+        e.fondos() shouldBe d("1820.00")
         exito(segunda) shouldBe exito(primera)
         (segunda as Resultado.Exito).repetido shouldBe true
     }
@@ -336,7 +336,7 @@ class Sprint1Test {
     fun `T1_7 la misma solicitud con otro contenido es un conflicto`() {
         comprar(bambu, 10, "fija")
         rechazo(comprar(bambu, 99, "fija")) shouldBe MotivoRechazo.ConflictoIdempotencia
-        e.fondos() shouldBe d("995.00")
+        e.fondos() shouldBe d("1995.00")
     }
 
     @Test
@@ -350,9 +350,9 @@ class Sprint1Test {
 
     @Test
     fun `T1_7 un rechazo no consume la clave y se puede reintentar tras corregir la causa`() {
-        rechazo(comprar(insumo, 150, "reintento")).shouldBeInstanceOf<MotivoRechazo.SaldoInsuficiente>()
-        darFondos("2000.00")
-        exito(comprar(insumo, 150, "reintento")).saldo shouldBe d("500.00")
+        rechazo(comprar(insumo, 250, "reintento")).shouldBeInstanceOf<MotivoRechazo.SaldoInsuficiente>()
+        darFondos("3000.00")
+        exito(comprar(insumo, 250, "reintento")).saldo shouldBe d("500.00")
     }
 
     // ---- T1.8 ----
@@ -397,7 +397,7 @@ class Sprint1Test {
     @Test
     fun `CU-16 muestra fondos existencias y beneficios pendientes persistidos`() {
         val v = e.consultarInventario.ejecutar(e.idPartida)
-        (v.fondos as Seccion.Disponible).valor shouldBe d("1000.00")
+        (v.fondos as Seccion.Disponible).valor shouldBe d("2000.00")
         (v.beneficiosPendientes as Seccion.Disponible).valor shouldBe d("0.00")
         (v.existencias as Seccion.Disponible).valor.map { it.nombre to it.cantidad }
             .shouldContainExactly("Bambú" to 30, "Insumo médico" to 3)
@@ -436,7 +436,7 @@ class Sprint1Test {
     @Test
     fun `navegacion de habitats indica cuales estan desbloqueados`() {
         val h = e.consultarZoo.habitats(e.idPartida)
-        h.size shouldBe 10
+        h.size shouldBe 5
         h.filter { it.desbloqueado }.map { it.codigo }.toSet() shouldBe setOf("bosque_templado", "humedal_agua_dulce")
         h.all { it.nombre.startsWith("Hábitat") } shouldBe true
     }

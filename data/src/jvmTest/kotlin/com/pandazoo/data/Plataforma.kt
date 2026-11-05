@@ -12,3 +12,5 @@ actual fun borrarArchivoDeBd(ruta: String) {
     listOf("", "-wal", "-shm", "-journal").forEach { File(ruta + it).delete() }
     File(ruta).parentFile?.delete()
 }
+
+actual val modoDiarioEsperado: String = "wal"

@@ -1,5 +1,6 @@
 package com.pandazoo.android
 
+import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,11 +12,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            PandaZooRaiz(abrirBaseDatos = {
-                val archivo = getDatabasePath("pandazoo.db")
-                archivo.parentFile?.mkdirs()
-                BaseDatos.enArchivo(archivo.path)
-            })
+            val depuracion = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+            PandaZooRaiz(
+                abrirBaseDatos = {
+                    val archivo = getDatabasePath("pandazoo.db")
+                    archivo.parentFile?.mkdirs()
+                    BaseDatos.enArchivo(archivo.path)
+                },
+                depuracion = depuracion,
+            )
         }
     }
 }

@@ -45,7 +45,7 @@ La fórmula es compatible con la escala `0..1` de `S_i`, `Animal.satisfaccion_ac
 | `w_bio`, `w_soc` | DEFINIDO POR ESPECIE | Se almacenan en `Especie` y deben sumar `1.00`; cada especie define su conjunto de pesos y estos se registran en `valores_y_pesos.json`. | Ninguno. Valores en `especies[].pesos_satisfaccion`: `0.40/0.60` (gregarias), `0.50/0.50` (intermedias), `0.60/0.40` (solitarias). |
 | `S_bio` | DEFINIDO | `nivel_alimentacion / 100`; el DDL restringe la alimentación a `0..100`. | No se define una conversión adicional. |
 | `S_soc` | DEFINIDO | Fórmula ponderada de pareja, mejor amigo, padre, madre, hermanos vivos y afinidad no familiar del mismo espacio (familiares: pareja, padre, madre, hermanos e hijos vivos; el mejor amigo no es familiar). Los pesos sociales por especie son no negativos, suman `1.00` y `w_afinidad` supera la suma de los pesos familiares. Las afinidades se expresan en `0..1`; se incluyen pares diagonales para animales de la misma especie. Sin animales no familiares, `C_afinidad = 0`. No se redondea. | Ninguno. Pesos sociales por especie, `tope_hermanos` (4 gregarias, 3 intermedias, 2 solitarias) y 1128 afinidades (diagonal `0.90`, `0.70` o `0.40` según la sociabilidad) en el JSON. |
-| `P_hab` | DEFINIDO | Debe existir una entrada para cada combinación especie-bioma; el factor es específico de cada especie y bioma y se multiplica directamente en la ecuación. No restringe la ubicación del animal. El JSON contiene los valores de configuración, no el esquema real de BBDD. | Ninguno. 470 valores en `tablas.compatibilidad_especie_bioma`. |
+| `P_hab` | DEFINIDO | Debe existir una entrada para cada combinación especie-bioma; el factor es específico de cada especie y bioma y se multiplica directamente en la ecuación. No restringe la ubicación del animal. El JSON contiene los valores de configuración, no el esquema real de BBDD. | Ninguno. 235 valores en `tablas.compatibilidad_especie_bioma`. |
 | `M_crit` | DEFINIDO | Se calcula como `M_alimentacion * M_enfermedad`, con factores específicos por especie en `0..1`; alimentación al `100%` y estado sano tienen factor `1`. No se redondea y ningún factor requerido puede faltar en la configuración. | Ninguno. Curva por especie en `tablas.factores_mcrit_especie`. |
 
 ### 2.2. Alcance de los datos
@@ -88,7 +88,7 @@ Los espacios y hábitats sin animales vivos quedan sin métrica. La partida sin 
 | Beneficio o ingreso generado | DEFINIDO | `B_ciclo = redondear(S_global * suma de beneficio_por_animal_ciclo del rango de cada animal vivo alojado)`; importes por rango `4.00`, `8.00`, `14.00`, `22.00` y `35.00`; `0` sin animales. Sin multiplicadores. Se genera una vez por ciclo confirmado. |
 | Beneficio acumulado | DEFINIDO | Cada ciclo añade el beneficio generado al pendiente; las mutaciones entre ciclos no lo cambian; las salidas solo afectan al futuro. |
 | Reclamación de beneficio | DEFINIDO | Acredita una sola vez el pendiente, marca los registros reclamados y deja el pendiente en `0` (RF-11). |
-| Saldos e inventarios | DEFINIDO | No negativos. Partida nueva: `1000.00` de fondos, `30` kg de bambú y `3` insumos médicos (`partida_inicial`). |
+| Saldos e inventarios | DEFINIDO | No negativos. Partida nueva: `2000.00` de fondos, `30` kg de bambú y `3` insumos médicos (`partida_inicial`). |
 
 ## 5. Reproducción
 
@@ -120,7 +120,7 @@ Los espacios y hábitats sin animales vivos quedan sin métrica. La partida sin 
 |---|---|---|
 | Capacidad positiva | DEFINIDO | `capacidad_max > 0`, inmutable y presente en `CosteEspacio` (2, 4, 6, 8, 10, 15 o 20). |
 | Aforo usado | DEFINIDO | Animales `VIVO` con espacio asignado, contados dentro de la transacción. |
-| Compatibilidad especie-bioma | DEFINIDO | 470 factores: `1.00` primario, `0.75` secundario, `0.40` neutro y `0.20` incompatible por clima. |
+| Compatibilidad especie-bioma | DEFINIDO | 235 factores: `1.00` primario, `0.75` secundario, `0.40` neutro y `0.20` incompatible por clima. |
 | Compatibilidad del espacio | DEFINIDO | Bioma del hábitat del espacio y especie; factor de satisfacción, no condición de ubicación. |
 
 ## 8. Misiones y recompensas
@@ -147,9 +147,9 @@ Los espacios y hábitats sin animales vivos quedan sin métrica. La partida sin 
 
 Todos están completos en `valores_y_pesos.json`:
 
-- 10 biomas y 10 hábitats (uno por bioma).
+- 5 biomas y 5 hábitats (uno por bioma).
 - 47 especies (38 comerciales y 9 exclusivas), cinco rangos, pesos de satisfacción y sociales, `tope_hermanos`, edad media y kilogramos de bambú por incremento.
-- 470 compatibilidades especie-bioma, 1128 afinidades entre pares de especies (incluidas las diagonales) y 47 curvas de `M_crit`.
+- 235 compatibilidades especie-bioma, 1128 afinidades entre pares de especies (incluidas las diagonales) y 47 curvas de `M_crit`.
 - Un alimento (bambú) y un insumo médico, con sus precios y cantidades.
 - 12 misiones con parámetros, progresión y recompensas, y la lista de recompensas de animal aleatorio.
 - Catálogos cerrados de 10 rasgos de personalidad y 10 habilidades sociales (descriptivos; no intervienen en ninguna fórmula).

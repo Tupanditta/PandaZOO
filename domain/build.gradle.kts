@@ -17,8 +17,7 @@ kotlin {
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
         withHostTest { }
     }
-    iosArm64()
-    iosSimulatorArm64()
+    js { nodejs() }
 
     sourceSets {
         commonMain.dependencies {

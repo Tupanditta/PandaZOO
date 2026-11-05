@@ -221,7 +221,6 @@ CREATE TABLE Animal (
     id_madre TEXT NULL,
     satisfaccion_actual REAL NOT NULL CHECK (satisfaccion_actual BETWEEN 0.00 AND 1.00),
     UNIQUE (id_partida, id_animal),
-    UNIQUE (id_partida, id_especie, nombre),
     FOREIGN KEY (id_partida) REFERENCES Partida(id_partida)
         ON UPDATE CASCADE ON DELETE RESTRICT,
     FOREIGN KEY (id_especie) REFERENCES Especie(id_especie)

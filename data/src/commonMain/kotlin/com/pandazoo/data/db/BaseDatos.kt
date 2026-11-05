@@ -1,9 +1,5 @@
 package com.pandazoo.data.db
 
-import androidx.sqlite.SQLiteConnection
-import androidx.sqlite.SQLiteStatement
-import androidx.sqlite.driver.bundled.BundledSQLiteDriver
-import androidx.sqlite.execSQL
 import com.pandazoo.application.puerto.NotificadorCambios
 import com.pandazoo.application.puerto.Transaccion
 import kotlinx.coroutines.channels.BufferOverflow
@@ -11,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 
 /** Lectura de una fila de resultados; los índices de columna empiezan en 0. */
-class Fila internal constructor(private val s: SQLiteStatement) {
+class Fila internal constructor(private val s: SentenciaSql) {
     fun texto(i: Int): String = s.getText(i)
 
     fun textoONulo(i: Int): String? = if (s.isNull(i)) null else s.getText(i)
@@ -26,17 +22,18 @@ class Fila internal constructor(private val s: SQLiteStatement) {
 }
 
 /**
- * Base de datos SQLite de la aplicación, común a Android e iOS.
+ * Base de datos SQLite de la aplicación, común a Android y a la web (PWA para iOS).
  *
  * El DDL de `EspecificacionBBDD.md` (sección 2) es la fuente de verdad del esquema y se aplica tal cual
- * (`schema/esquema.sql`): no hay una segunda definición que pueda divergir. Ambas plataformas usan el mismo
- * SQLite empaquetado (RNF-16), así que `CHECK`, índices parciales y `WITHOUT ROWID` se comportan igual.
+ * (`schema/esquema.sql`): no hay una segunda definición que pueda divergir. Las plataformas usan el mismo
+ * SQLite (el empaquetado en Android y JVM, sql.js en la web; RNF-16), así que `CHECK`, índices parciales y
+ * `WITHOUT ROWID` se comportan igual.
  *
  * Una sola conexión protegida por un candado reentrante. Implementa [Transaccion] (una operación = una
  * transacción `BEGIN IMMEDIATE`, RF-45) y [NotificadorCambios] (emite tras cada confirmación para que la
  * interfaz se repinte sin sondeo, RES-10).
  */
-class BaseDatos private constructor(private val conexion: SQLiteConnection) : Transaccion, NotificadorCambios {
+class BaseDatos private constructor(private val conexion: ConexionSql) : Transaccion, NotificadorCambios {
     private val candado = Candado()
     private var profundidad = 0
 
@@ -49,7 +46,7 @@ class BaseDatos private constructor(private val conexion: SQLiteConnection) : Tr
 
     fun <T> leer(sql: String, vararg args: Any?, mapa: (Fila) -> T): List<T> =
         candado.conCandado {
-            conexion.prepare(sql).use { s ->
+            conexion.preparar(sql).usar { s ->
                 enlazar(s, args)
                 val filas = ArrayList<T>()
                 val fila = Fila(s)
@@ -60,21 +57,24 @@ class BaseDatos private constructor(private val conexion: SQLiteConnection) : Tr
 
     fun <T> uno(sql: String, vararg args: Any?, mapa: (Fila) -> T): T? =
         candado.conCandado {
-            conexion.prepare(sql).use { s ->
+            conexion.preparar(sql).usar { s ->
                 enlazar(s, args)
                 if (s.step()) mapa(Fila(s)) else null
             }
         }
 
     fun escribir(sql: String, vararg args: Any?) {
-        candado.conCandado {
-            conexion.prepare(sql).use { s ->
+        val autoconfirmada = candado.conCandado {
+            conexion.preparar(sql).usar { s ->
                 enlazar(s, args)
                 while (s.step()) {
                     // Las sentencias de escritura no devuelven filas.
                 }
             }
+            profundidad == 0
         }
+        // Fuera de una transacción la sentencia se confirma sola; el motor de la web debe guardar esa escritura también.
+        if (autoconfirmada) conexion.alConfirmar()
     }
 
     override fun <T> ejecutar(bloque: () -> T): T {
@@ -82,31 +82,34 @@ class BaseDatos private constructor(private val conexion: SQLiteConnection) : Tr
         val resultado = candado.conCandado {
             if (profundidad > 0) return@conCandado bloque()
             externa = true
-            conexion.execSQL("BEGIN IMMEDIATE")
+            conexion.ejecutar("BEGIN IMMEDIATE")
             profundidad++
             try {
                 val r = bloque()
-                conexion.execSQL("COMMIT")
+                conexion.ejecutar("COMMIT")
                 r
             } catch (e: Throwable) {
-                runCatching { conexion.execSQL("ROLLBACK") }
+                runCatching { conexion.ejecutar("ROLLBACK") }
                 throw e
             } finally {
                 profundidad--
             }
         }
         // Solo la transacción más externa notifica; una anidada se confirma con ella.
-        if (externa) emisor.tryEmit(Unit)
+        if (externa) {
+            conexion.alConfirmar()
+            emisor.tryEmit(Unit)
+        }
         return resultado
     }
 
-    fun cerrar() = conexion.close()
+    fun cerrar() = conexion.cerrar()
 
     /** Identificador de la partida activa, si existe alguna. Es un dato técnico, nunca para la interfaz. */
     fun partidaActiva(): String? =
         uno("SELECT id_partida FROM Partida WHERE estado = 'ACTIVA' ORDER BY id_partida LIMIT 1") { it.texto(0) }
 
-    private fun enlazar(s: SQLiteStatement, args: Array<out Any?>) {
+    private fun enlazar(s: SentenciaSql, args: Array<out Any?>) {
         args.forEachIndexed { i, a ->
             val p = i + 1
             when (a) {
@@ -122,7 +125,14 @@ class BaseDatos private constructor(private val conexion: SQLiteConnection) : Tr
     }
 
     companion object {
-        const val VERSION = 1
+        /**
+         * Versión 2: la partida nueva empieza con 2000 monedas. Las partidas creadas con la versión 1 reciben
+         * 1000 monedas de compensación una sola vez, al migrar (`migrarDe1a2`).
+         */
+        const val VERSION = 2
+
+        /** Compensación única a las partidas creadas con la versión 1 (que empezaban con 1000 monedas). */
+        const val COMPENSACION_V2 = 1000.0
 
         /** Base de datos en memoria; desaparece al cerrarla (tests). */
         fun enMemoria(): BaseDatos = abrir(":memory:", archivo = false)
@@ -130,8 +140,10 @@ class BaseDatos private constructor(private val conexion: SQLiteConnection) : Tr
         /** Base de datos en el fichero indicado por el contenedor de plataforma. */
         fun enArchivo(ruta: String): BaseDatos = abrir(ruta, archivo = true)
 
-        private fun abrir(nombre: String, archivo: Boolean): BaseDatos {
-            val conexion = BundledSQLiteDriver().open(nombre)
+        private fun abrir(nombre: String, archivo: Boolean): BaseDatos = sobre(abrirConexion(nombre), archivo)
+
+        /** Base de datos sobre una conexión ya abierta (la web la abre tras cargar el motor y los datos guardados). */
+        internal fun sobre(conexion: ConexionSql, archivo: Boolean): BaseDatos {
             val bd = BaseDatos(conexion)
             bd.configurar(archivo)
             return bd
@@ -142,17 +154,32 @@ class BaseDatos private constructor(private val conexion: SQLiteConnection) : Tr
         val nuevo = (uno("PRAGMA user_version") { it.entero(0) } ?: 0) == 0
         if (nuevo) {
             // Debe fijarse antes de crear la primera tabla y antes de activar el modo WAL.
-            conexion.execSQL("PRAGMA auto_vacuum = INCREMENTAL")
+            conexion.ejecutar("PRAGMA auto_vacuum = INCREMENTAL")
         }
-        if (archivo) uno("PRAGMA journal_mode = WAL") { it.texto(0) }
-        conexion.execSQL("PRAGMA foreign_keys = ON")
+        if (archivo && conexion.admiteWal) uno("PRAGMA journal_mode = WAL") { it.texto(0) }
+        conexion.ejecutar("PRAGMA foreign_keys = ON")
         if (nuevo) {
             ejecutar {
-                EsquemaGenerado.sentencias.forEach { conexion.execSQL(it) }
-                conexion.execSQL("PRAGMA user_version = $VERSION")
+                EsquemaGenerado.sentencias.forEach { conexion.ejecutar(it) }
+                conexion.ejecutar("PRAGMA user_version = $VERSION")
             }
         } else {
+            val actual = uno("PRAGMA user_version") { it.entero(0) }
+            if (actual == 1) migrarDe1a2()
             check((uno("PRAGMA user_version") { it.entero(0) }) == VERSION) { "Versión de base de datos no soportada" }
+        }
+    }
+
+    /** Suma 1000 monedas a cada partida existente y lo registra como ingreso; atómico y de una sola vez. */
+    internal fun migrarDe1a2() {
+        ejecutar {
+            escribir(
+                "INSERT INTO MovimientoEconomico (id_partida, tipo, importe, origen, numero_ciclo, fecha) " +
+                    "SELECT id_partida, 'INGRESO', ?, 'COMPENSACION_INICIAL', 0, CAST(strftime('%s', 'now') AS INTEGER) FROM Partida",
+                COMPENSACION_V2,
+            )
+            escribir("UPDATE Partida SET fondos = ROUND(fondos + ?, 2)", COMPENSACION_V2)
+            conexion.ejecutar("PRAGMA user_version = 2")
         }
     }
 }

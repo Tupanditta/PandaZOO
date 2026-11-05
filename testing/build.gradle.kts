@@ -15,8 +15,7 @@ kotlin {
         minSdk = 26
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
     }
-    iosArm64()
-    iosSimulatorArm64()
+    js { nodejs() }
 
     sourceSets {
         commonMain {

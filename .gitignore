@@ -4,5 +4,3 @@ build/
 .gradle/
 *.iml
 .kotlin/
-iosApp/*.xcodeproj/
-iosApp/build/

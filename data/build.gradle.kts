@@ -1,4 +1,6 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
+import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -16,17 +18,33 @@ kotlin {
         minSdk = 26
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
     }
-    iosArm64()
-    iosSimulatorArm64()
+    js { nodejs() }
+
+    // `androidx.sqlite` no existe para JavaScript: Android y JVM comparten el SQLite empaquetado (`sqliteMain`) y la
+    // web usa sql.js (`jsMain`). Ambos implementan la misma interfaz `ConexionSql` de `commonMain`.
+    @OptIn(ExperimentalKotlinGradlePluginApi::class)
+    applyDefaultHierarchyTemplate {
+        common {
+            group("sqlite") {
+                withCompilations {
+                    it.target.platformType == KotlinPlatformType.jvm || it.target.platformType == KotlinPlatformType.androidJvm
+                }
+            }
+        }
+    }
 
     sourceSets {
         commonMain {
             kotlin.srcDir(layout.buildDirectory.dir("generated/esquema"))
             dependencies {
                 api(project(":application"))
-                api(libs.sqlite)
-                implementation(libs.sqlite.bundled)
                 implementation(libs.coroutines.core)
+            }
+        }
+        val sqliteMain by getting {
+            dependencies {
+                implementation(libs.sqlite)
+                implementation(libs.sqlite.bundled)
             }
         }
         commonTest.dependencies {
@@ -87,3 +105,9 @@ val generarEsquema by tasks.registering {
 }
 tasks.matching { it.name.contains("Kotlin", ignoreCase = true) && it.name != "generarEsquema" }
     .configureEach { dependsOn(generarEsquema) }
+
+// Los tests de Node cargan sql.js antes de empezar (el motor se inicializa de forma asíncrona y `BaseDatos` es síncrona).
+tasks.withType<org.jetbrains.kotlin.gradle.targets.js.testing.KotlinJsTest>().configureEach {
+    val preludio = layout.projectDirectory.file("vendor/sqljs/preparar-tests.mjs").asFile.toURI().toString().replace("file:/", "file:///")
+    environment("NODE_OPTIONS", "--import $preludio")
+}

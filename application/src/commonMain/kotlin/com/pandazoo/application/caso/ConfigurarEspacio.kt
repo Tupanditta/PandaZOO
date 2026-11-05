@@ -30,6 +30,7 @@ data class EspacioConfigurado(val idEspacio: String, val nombre: String, val idH
 class ConfigurarEspacio(
     private val ejecutor: EjecutorOperacion,
     private val zoo: ZooRepositorio,
+    private val recalculo: RecalcularSatisfaccion,
 ) {
     fun ejecutar(c: ComandoConfigurarEspacio): Resultado<EspacioConfigurado> {
         val op = Operacion(
@@ -70,6 +71,8 @@ class ConfigurarEspacio(
         if (choca) return rechazo(MotivoRechazo.DenominacionDuplicada)
 
         zoo.reconfigurarEspacio(c.idPartida, actual.id, nombreFinal, idHabitatFinal)
+        // Cambiar de hábitat cambia el bioma: la satisfacción de los animales alojados se recalcula (RF-15).
+        if (cambiaHabitat) recalculo.alConsolidar(c.idPartida, AlcanceRecalculo.Espacios(setOf(actual.id)))
         return Resultado.Exito(EspacioConfigurado(actual.id, nombreFinal, idHabitatFinal))
     }
 

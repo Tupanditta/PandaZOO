@@ -9,9 +9,11 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import com.pandazoo.data.db.BaseDatos
@@ -26,7 +28,7 @@ import kotlin.test.Test
 @OptIn(ExperimentalTestApi::class)
 class Sprint1UiTest {
     private val regexUuid = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
-    private val codigosTecnicos = listOf("bosque_templado", "humedal_agua_dulce", "campos_de_africa", "insumo_medico", "bambu", "id_", "Ref")
+    private val codigosTecnicos = listOf("bosque_templado", "humedal_agua_dulce", "campos_de_esmeril", "insumo_medico", "bambu", "id_", "Ref")
 
     private fun prueba(bloque: ComposeUiTest.(AppContainer) -> Unit) =
         runComposeUiTest {
@@ -73,13 +75,13 @@ class Sprint1UiTest {
     }
 
     @Test
-    fun `T1_9 inicio muestra saldo inventario y beneficios sin claves`() =
+    fun `T1_9 la cabecera muestra saldo inventario y los beneficios sin claves`() =
         prueba { c ->
-            esperar("Saldo")
-            esperar("🪙 1000.00")
-            esperar("Bambú")
+            esperar("2000.00")
             esperar("30 kg")
-            esperar("3 unidades")
+            onNodeWithContentDescription("Ver beneficios").performClick()
+            esperar("Beneficios pendientes")
+            esperar("Beneficios por ciclo")
             esperar("🪙 0.00")
             sinIdentificadoresTecnicos(c)
         }
@@ -87,8 +89,7 @@ class Sprint1UiTest {
     @Test
     fun `T1_9 flujo de compra de recursos de punta a punta`() =
         prueba { c ->
-            esperar("Tienda de recursos")
-            onNodeWithText("Tienda de recursos").performClick()
+            onNodeWithContentDescription("Abrir tienda").performClick()
             esperar("Bambú — 🪙 0.50 por kg")
             onNodeWithText("Confirmar compra").assertDoesNotExist()
             onNodeWithText("Bambú — 🪙 0.50 por kg").performClick()
@@ -96,33 +97,29 @@ class Sprint1UiTest {
             esperar("Coste total: 🪙 5.00")
             sinIdentificadoresTecnicos(c)
             onNodeWithText("Confirmar compra").assertIsEnabled().performClick()
-            esperar("Compra realizada: 🪙 5.00. Saldo: 🪙 995.00.")
+            esperar("Compra realizada: 🪙 5.00. Saldo: 🪙 1995.00.")
             sinIdentificadoresTecnicos(c)
         }
 
     @Test
     fun `T1_9 saldo insuficiente se informa con el motivo y no cambia el saldo`() =
         prueba {
-            esperar("Tienda de recursos")
-            onNodeWithText("Tienda de recursos").performClick()
+            onNodeWithContentDescription("Abrir tienda").performClick()
             esperar("Insumo médico — 🪙 10.00 por unidad")
             onNodeWithText("Insumo médico — 🪙 10.00 por unidad").performClick()
-            onNodeWithText("Cantidad (unidades)").performTextInput("101")
+            onNodeWithText("Cantidad (unidades)").performTextInput("201")
             onNodeWithText("Confirmar compra").performClick()
-            esperar("Saldo insuficiente: cuesta 🪙 1010.00 y dispones de 🪙 1000.00.")
-            esperar("🪙 1000.00", subcadena = true)
+            esperar("Saldo insuficiente: cuesta 🪙 2010.00 y dispones de 🪙 2000.00.")
+            esperar("🪙 2000.00", subcadena = true)
         }
 
     @Test
     fun `T1_9 navegar de habitats a espacios comprar y configurar un espacio`() =
         prueba { c ->
-            esperar("Hábitats y espacios")
-            onNodeWithText("Hábitats y espacios").performClick()
-            esperar("Hábitat Bosque templado")
-            esperar("Bloqueado")
+            esperar("Bosque templado")
             sinIdentificadoresTecnicos(c)
 
-            onNodeWithText("Hábitat Bosque templado").performClick()
+            onNodeWithText("Bosque templado").performClick()
             esperar("Este hábitat aún no tiene espacios.")
             onNodeWithText("Comprar espacio").performClick()
 
@@ -131,19 +128,23 @@ class Sprint1UiTest {
             onNodeWithText("Denominación del espacio").performTextInput("Pradera")
             onNodeWithText("2 animales — 🪙 100.00").performClick()
             sinIdentificadoresTecnicos(c)
-            onNodeWithText("Confirmar compra").assertIsEnabled().performClick()
+            onNodeWithText("Confirmar compra").assertIsEnabled().performScrollTo().performClick()
 
             esperar("Pradera")
-            esperar("Capacidad 2 · Ocupación 0/2")
+            esperar("Ocupación 0/2")
             sinIdentificadoresTecnicos(c)
 
             onNodeWithText("Pradera").performClick()
+            esperar("Este espacio no tiene animales.")
+            onNodeWithText("Configurar espacio").performClick()
             esperar("La capacidad no se puede modificar.")
-            esperar("Hábitat Humedal de agua dulce")
-            onNodeWithText("Hábitat Humedal de agua dulce").performClick()
+            esperar("Humedal de agua dulce")
+            onNodeWithText("Humedal de agua dulce").performClick()
             onNodeWithText("Guardar").performClick()
 
-            // El espacio ya no está en el bosque: se vuelve a su lista, que queda vacía.
+            // Se vuelve a la pantalla del espacio y, desde ella, a la lista del bosque: el espacio ya no está en él.
+            esperar("Este espacio no tiene animales.")
+            onNodeWithContentDescription("Volver").performClick()
             esperar("Este hábitat aún no tiene espacios.")
             sinIdentificadoresTecnicos(c)
             c.consultarZoo.espacios(c.idPartida, "${c.idPartida}/humedal_agua_dulce").map { it.nombre } shouldBe listOf("Pradera")

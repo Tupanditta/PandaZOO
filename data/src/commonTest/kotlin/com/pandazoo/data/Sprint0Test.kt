@@ -3,7 +3,7 @@ package com.pandazoo.data
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
-import androidx.sqlite.SQLiteException
+import com.pandazoo.data.db.ErrorSql
 import com.pandazoo.application.error.Resultado
 import com.pandazoo.application.operacion.Operacion
 import com.pandazoo.application.puerto.ZooRepositorio
@@ -29,7 +29,7 @@ class Sprint0Test {
     fun cerrar() = e.cerrar()
 
     private fun rechaza(sql: String, vararg args: Any?) {
-        shouldThrow<SQLiteException> { e.bd.escribir(sql, *args) }
+        shouldThrow<ErrorSql> { e.bd.escribir(sql, *args) }
     }
 
     private fun acepta(sql: String, vararg args: Any?) = e.bd.escribir(sql, *args)
@@ -38,7 +38,7 @@ class Sprint0Test {
     @Test
     fun `T0_4 partida nueva tiene fondos prestigio y habitats precargados`() {
         val db = e.bd
-        e.fondos() shouldBe d("1000.00")
+        e.fondos() shouldBe d("2000.00")
         db.uno("SELECT prestigio_actual, prestigio_maximo_nivel, animales_vivos_maximos, satisfaccion_global_maxima, estado FROM Partida") {
             it.entero(0) shouldBe 0
             it.esNulo(1) shouldBe true
@@ -46,7 +46,7 @@ class Sprint0Test {
             it.esNulo(3) shouldBe true
             it.texto(4) shouldBe "ACTIVA"
         }
-        e.contar("Habitat", "id_partida = '${e.idPartida}' AND estado = 'ACTIVO'") shouldBe 10
+        e.contar("Habitat", "id_partida = '${e.idPartida}' AND estado = 'ACTIVO'") shouldBe 5
         e.contar("DesbloqueoHabitat") shouldBe 2
         e.contar("DesbloqueoEspecie", "origen = 'INICIAL'") shouldBe 6
         e.contar("Espacio") shouldBe 0
@@ -68,8 +68,8 @@ class Sprint0Test {
     fun `T0_4 el catalogo se carga completo y una sola vez`() {
         e.contar("Especie") shouldBe 47
         e.contar("Especie", "estado_catalogo = 'EXCLUSIVA' AND nivel_desbloqueo IS NULL") shouldBe 9
-        e.contar("Bioma") shouldBe 10
-        e.contar("CompatibilidadBioma") shouldBe 470
+        e.contar("Bioma") shouldBe 5
+        e.contar("CompatibilidadBioma") shouldBe 235
         e.contar("AfinidadEspecies") shouldBe 1128
         e.contar("RangoEspecie") shouldBe 5
         e.contar("CosteEspacio") shouldBe 7
@@ -77,7 +77,7 @@ class Sprint0Test {
         // Una segunda partida reutiliza el catálogo global.
         val otra = InicializadorPartida(e.bd, e.reloj, GeneradorIdSecuencial("otra")).crearPartida(e.cfg)
         e.contar("Especie") shouldBe 47
-        e.contar("Habitat", "id_partida = '$otra'") shouldBe 10
+        e.contar("Habitat", "id_partida = '$otra'") shouldBe 5
     }
 
     @Test
@@ -108,17 +108,17 @@ class Sprint0Test {
     fun `T0_3 animal valido se acepta y los invalidos se rechazan`() {
         insertarAnimal()
         e.contar("Animal") shouldBe 1
-        shouldThrow<SQLiteException> { insertarAnimal("nivel_alimentacion", 55, "a2", "B") } // no múltiplo de 10
-        shouldThrow<SQLiteException> { insertarAnimal("nivel_alimentacion", 110, "a3", "C") }
-        shouldThrow<SQLiteException> { insertarAnimal("estado_salud", "ROTO", "a4", "D") }
-        shouldThrow<SQLiteException> { insertarAnimal("edad_meses", 12, "a5", "E") }
-        shouldThrow<SQLiteException> { insertarAnimal("edad_dias", 30, "a6", "F") }
-        shouldThrow<SQLiteException> { insertarAnimal("satisfaccion_actual", 1.5, "a7", "G") }
-        shouldThrow<SQLiteException> { insertarAnimal("ciclos_desnutricion", 4, "a8", "H") }
-        shouldThrow<SQLiteException> { insertarAnimal("id_pareja", "a9", "a9", "I") } // autorreferencia
-        shouldThrow<SQLiteException> { insertarAnimal("id_especie", "no_existe", "a10", "J") }
-        shouldThrow<SQLiteException> { insertarAnimal(null, null, "a11", "Rex") } // nombre repetido en la especie
-        e.contar("Animal") shouldBe 1
+        shouldThrow<ErrorSql> { insertarAnimal("nivel_alimentacion", 55, "a2", "B") } // no múltiplo de 10
+        shouldThrow<ErrorSql> { insertarAnimal("nivel_alimentacion", 110, "a3", "C") }
+        shouldThrow<ErrorSql> { insertarAnimal("estado_salud", "ROTO", "a4", "D") }
+        shouldThrow<ErrorSql> { insertarAnimal("edad_meses", 12, "a5", "E") }
+        shouldThrow<ErrorSql> { insertarAnimal("edad_dias", 30, "a6", "F") }
+        shouldThrow<ErrorSql> { insertarAnimal("satisfaccion_actual", 1.5, "a7", "G") }
+        shouldThrow<ErrorSql> { insertarAnimal("ciclos_desnutricion", 4, "a8", "H") }
+        shouldThrow<ErrorSql> { insertarAnimal("id_pareja", "a9", "a9", "I") } // autorreferencia
+        shouldThrow<ErrorSql> { insertarAnimal("id_especie", "no_existe", "a10", "J") }
+        insertarAnimal(null, null, "a11", "Rex") // el nombre no es único (RF-32)
+        e.contar("Animal") shouldBe 2
     }
 
     @Test
@@ -128,7 +128,7 @@ class Sprint0Test {
             e.idPartida, e.habitat("bosque_templado"),
         )
         insertarAnimal("id_espacio", "s1")
-        shouldThrow<SQLiteException> {
+        shouldThrow<ErrorSql> {
             e.bd.escribir("UPDATE Animal SET estado_vital = 'VENDIDO' WHERE id_animal = 'a1'")
         }
     }
@@ -159,7 +159,7 @@ class Sprint0Test {
             "INSERT INTO Espacio (id_espacio, id_partida, id_habitat, nombre, capacidad_max) VALUES ('s5', ?, ?, 'X', 4)",
             otra, "$otra/bosque_templado",
         )
-        shouldThrow<SQLiteException> { insertarAnimal("id_espacio", "s5") }
+        shouldThrow<ErrorSql> { insertarAnimal("id_espacio", "s5") }
     }
 
     @Test
@@ -178,7 +178,7 @@ class Sprint0Test {
             "INSERT INTO AuditoriaEvento (id_partida, tipo, entidad, origen, resultado, fecha, detalle) VALUES (?, 't', 'NADA', 'o', 'CONFIRMADO', 0, '')",
             e.idPartida,
         )
-        e.fondos() shouldBe d("1000.00")
+        e.fondos() shouldBe d("2000.00")
     }
 
     @Test
@@ -221,7 +221,7 @@ class Sprint0Test {
         val archivo = com.pandazoo.data.db.BaseDatos.enArchivo(ruta)
         try {
             archivo.uno("PRAGMA auto_vacuum") { it.entero(0) } shouldBe 2
-            archivo.uno("PRAGMA journal_mode") { it.texto(0) } shouldBe "wal"
+            archivo.uno("PRAGMA journal_mode") { it.texto(0) } shouldBe modoDiarioEsperado
             archivo.uno("PRAGMA foreign_keys") { it.entero(0) } shouldBe 1
             archivo.uno("PRAGMA user_version") { it.entero(0) } shouldBe com.pandazoo.data.db.BaseDatos.VERSION
         } finally {
@@ -255,7 +255,7 @@ class Sprint0Test {
                 error("fallo simulado")
             }
         }
-        e.fondos() shouldBe d("1000.00")
+        e.fondos() shouldBe d("2000.00")
         e.inventario.cantidad(e.idPartida, com.pandazoo.application.caso.AdquirirInsumos.bambu()) shouldBe 30
     }
 
@@ -268,7 +268,7 @@ class Sprint0Test {
                 error("boom")
             }
         }
-        e.fondos() shouldBe d("1000.00")
+        e.fondos() shouldBe d("2000.00")
         e.auditoriaDe("PRUEBA").map { it.first } shouldContainExactly listOf("REVERTIDO")
     }
 
@@ -285,7 +285,7 @@ class Sprint0Test {
         val primera = e.ejecutor.ejecutar(op, bloque)
         val segunda = e.ejecutor.ejecutar(op, bloque)
         ejecuciones shouldBe 1
-        e.fondos() shouldBe d("990.00")
+        e.fondos() shouldBe d("1990.00")
         (primera as Resultado.Exito).repetido shouldBe false
         (segunda as Resultado.Exito).repetido shouldBe true
         segunda.valor shouldBe primera.valor

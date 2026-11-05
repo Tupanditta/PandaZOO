@@ -137,7 +137,7 @@ CREATE TABLE CompatibilidadBioma (
         ON UPDATE CASCADE ON DELETE RESTRICT
 );
 
-Cada combinación de especie y bioma debe tener un único `factor_bioma` configurado en `tablas.compatibilidad_especie_bioma` de `valores_y_pesos.json` (470 combinaciones: 47 especies por 10 biomas). Se admite cualquier valor numérico entre `0.00` y `1.00`, incluidos ambos extremos; los valores configurados son `1.00` (bioma primario), `0.75` (secundario), `0.40` (neutro) y `0.20` (incompatible por clima). Una combinación ausente o con valor nulo invalida la configuración: no se asigna un factor por defecto ni se calcula la satisfacción afectada. Esta validación no impide alojar, trasladar o comprar animales; el factor solo afecta a la satisfacción.
+Cada combinación de especie y bioma debe tener un único `factor_bioma` configurado en `tablas.compatibilidad_especie_bioma` de `valores_y_pesos.json` (235 combinaciones: 47 especies por 5 biomas). Se admite cualquier valor numérico entre `0.00` y `1.00`, incluidos ambos extremos; los valores configurados son `1.00` (bioma primario), `0.75` (secundario), `0.40` (neutro) y `0.20` (incompatible por clima). Una combinación ausente o con valor nulo invalida la configuración: no se asigna un factor por defecto ni se calcula la satisfacción afectada. Esta validación no impide alojar, trasladar o comprar animales; el factor solo afecta a la satisfacción.
 
 CREATE TABLE RangoEspecie (
     id_rango INTEGER PRIMARY KEY CHECK (id_rango > 0),
@@ -286,7 +286,7 @@ CREATE TABLE Habitat (
 
 -- `id_habitat` es un identificador técnico único (no se repite entre partidas); `codigo` es el código estable del
 -- catálogo `catalogos.habitats` (por ejemplo `bosque_templado`) y es el que usan los parámetros de misión y los
--- desbloqueos. Los hábitats se cargan al crear la partida, uno por bioma (10 en total).
+-- desbloqueos. Los hábitats se cargan al crear la partida, uno por bioma (5 en total).
 
 CREATE TABLE Espacio (
     id_espacio TEXT PRIMARY KEY,
@@ -337,7 +337,6 @@ CREATE TABLE Animal (
     id_madre TEXT NULL,
     satisfaccion_actual REAL NOT NULL CHECK (satisfaccion_actual BETWEEN 0.00 AND 1.00),
     UNIQUE (id_partida, id_animal),
-    UNIQUE (id_partida, id_especie, nombre),
     FOREIGN KEY (id_partida) REFERENCES Partida(id_partida)
         ON UPDATE CASCADE ON DELETE RESTRICT,
     FOREIGN KEY (id_especie) REFERENCES Especie(id_especie)
@@ -726,9 +725,9 @@ Las transiciones no listadas están prohibidas. Una notificación `ACEPTADA`, `R
 
 Una partida nueva se crea con una única transacción (acción del sistema; no es un caso de uso del gestor) que inserta:
 
-1. `Partida` con `fondos`, `prestigio_actual = 0`, terna de máximos en `NULL` y `estado = 'ACTIVA'` según `partida_inicial` (1000.00 fondos).
+1. `Partida` con `fondos`, `prestigio_actual = 0`, terna de máximos en `NULL` y `estado = 'ACTIVA'` según `partida_inicial` (2000.00 fondos).
 2. `InventarioAlimento` con 30 kg de bambú e `InventarioMedico` con 3 unidades de insumo médico.
-3. Los diez `Habitat` de `catalogos.habitats`, `ACTIVO`, con su bioma; ningún `Espacio` ni `Animal`.
+3. Los cinco `Habitat` de `catalogos.habitats`, `ACTIVO`, con su bioma; ningún `Espacio` ni `Animal`.
 4. `DesbloqueoEspecie` (origen `INICIAL`) y `DesbloqueoHabitat` para las entidades del nivel 0 de `tablas.desbloqueos_prestigio`, sin avisos.
 5. `EstadoSimulacion` con `estado = 'ACTIVO'`, `numero_ciclo_ultimo = NULL` y `remanente_temporizador = 600`.
 6. Una instancia `PENDIENTE` de `ProgresoMision` por cada `Mision` `ACTIVA`, con `progreso = 0` y sus `ParametroProgresoMision` copiados de `parametros_base`.
@@ -775,6 +774,7 @@ La clave de idempotencia solo se almacena como texto en `AuditoriaEvento` (todas
 | `BENEFICIO_GENERADO`, `BENEFICIO_RECLAMADO` | `BENEFICIO` | `CICLO_PERIODICO` o `RECUPERACION_OFFLINE`, CU-08 |
 | `MISION_CUMPLIDA`, `RECOMPENSA_RECLAMADA` | `MISION`, `RECOMPENSA` | `SISTEMA`, CU-15 |
 | `ESPECIE_DESBLOQUEADA` | `ESPECIE` | `SISTEMA` o CU-15 |
+| `PRESTIGIO_ASCENSO`, `HABITAT_DESBLOQUEADO` | `PARTIDA`, `HABITAT` | `SISTEMA` |
 | `AVISO_CERRADO` | `NOTIFICACION` | `SISTEMA` o el caso de uso que lo cierra |
 
 - **Origen.** Código del caso de uso cuando procede (por ejemplo `CU-01`), o `CICLO_PERIODICO`, `RECUPERACION_OFFLINE` o `SISTEMA` para transiciones automáticas.
@@ -901,7 +901,7 @@ Un animal `MUERTO` o `VENDIDO` se borra físicamente en la purga posterior al ci
 1. Ningún animal lo referencia como `id_padre` o `id_madre`.
 2. Ninguna fila de `ReproduccionCiclo` lo referencia.
 
-La poda se repite hasta que no se borre ninguna fila, de forma que al desaparecer un descendiente puede liberarse su ascendiente. Un animal vivo conserva siempre a sus progenitores. Al borrar la fila, su `nombre` queda libre y puede reutilizarse en `UNIQUE (id_partida, id_especie, nombre)`; mientras la fila exista, el nombre sigue reservado.
+La poda se repite hasta que no se borre ninguna fila, de forma que al desaparecer un descendiente puede liberarse su ascendiente. Un animal vivo conserva siempre a sus progenitores. El nombre de un animal no es único (RF-32), por lo que borrar la fila no libera ni reserva ningún nombre.
 
 ## 6. Matriz de cobertura
 

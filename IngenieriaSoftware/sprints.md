@@ -4,7 +4,7 @@ Este documento divide la implementación de la aplicación en sprints incrementa
 
 Fuentes: `Requisitos/Funcionales.md` (RF), `Requisitos/NoFuncionales.md` (RNF), `Restricciones/EspecificacionRES.md` (RES), `CasosUso/` (CU), `BBDD/EspecificacionBBDD.md`, `Misiones/EspecificacionMisiones.md` y `Otros/valores_y_pesos.json`.
 
-**Decisiones técnicas:** lenguaje, arquitectura, tecnologías y herramientas están definidos en `design.md`. Resumen: Android e iOS con una sola base de código en Kotlin Multiplatform, SQLite (`androidx.sqlite`), Compose Multiplatform, arquitectura por capas con dominio puro (RES-01, RES-02, RES-14, RNF-06, RNF-15: solo interfaz de tablas, métricas y formularios, solo vertical). La migración del código de los sprints 0 y 1 está en el Sprint M. Las decisiones sobre reloj, reproducción, dispositivo de referencia y tamaño del Sprint 5 están en la sección 5.
+**Decisiones técnicas:** lenguaje, arquitectura, tecnologías y herramientas están definidos en `design.md`. Resumen: Android e iOS con una sola base de código en Kotlin Multiplatform, SQLite (`androidx.sqlite`), Compose Multiplatform, arquitectura por capas con dominio puro (RES-01, RES-02, RES-14, RNF-06, RNF-15: solo interfaz de tablas, métricas y formularios, solo vertical). La migración del código de los sprints 0 y 1 está en el Sprint M. iOS se entrega como PWA en lugar de aplicación nativa; los sprints 0 a 5 ya funcionan en la web (`Migracion/MigracionPWAiOS.md`), y todos los sprints posteriores deben pasar también los tests de la web (`jsNodeTest`). Las decisiones sobre reloj, reproducción, dispositivo de referencia y tamaño del Sprint 5 están en la sección 5.
 
 ---
 
@@ -87,7 +87,7 @@ Hitos de revisión sugeridos:
 - Esquema SQLite completo según `EspecificacionBBDD.md`, sección 2 (todas las tablas, `CHECK`, claves compuestas con `id_partida`, `PRAGMA foreign_keys = ON`). Se crea el esquema entero ahora para no migrar entre sprints; las tablas se usan según avancen.
 - Cargador y validador de `valores_y_pesos.json` (tablas de rangos, costes, alimentos por especie, afinidades, compatibilidad bioma, prestigio, misiones, recompensas aleatorias). La validación rechaza configuración incompleta (por ejemplo, pesos sociales que no suman 1.00, probabilidades que no suman 100).
 - Utilidades de dominio: redondeo al centésimo con medios hacia arriba (dinero, porcentajes, umbrales), abstracciones `Clock` y `Random`.
-- Inicialización de partida (sección 2.4 de la BBDD): catálogo, hábitats precargados de solo lectura (RES-05), fondos iniciales `1000.00`, inventarios vacíos, `EstadoSimulacion`, desbloqueos iniciales.
+- Inicialización de partida (sección 2.4 de la BBDD): catálogo, hábitats precargados de solo lectura (RES-05), fondos iniciales `2000.00`, inventarios vacíos, `EstadoSimulacion`, desbloqueos iniciales.
 - Mecanismo común de transacción + auditoría + idempotencia (sección 3 de la BBDD) como base reutilizable por todos los CU.
 
 **Tests**
@@ -95,7 +95,7 @@ Hitos de revisión sugeridos:
 - T0.1 Redondeo: `0.005 → 0.01`, `0.004 → 0.00`, medios hacia arriba en dinero, porcentaje y umbral de prestigio.
 - T0.2 El validador acepta el JSON actual y rechaza variantes rotas: pesos sociales ≠ 1.00, peso de afinidad no mayor que la suma familiar, probabilidades ≠ 100, falta de precio de bambú, falta `M_crit`.
 - T0.3 Esquema: cada `CHECK` y cada FK rechaza un dato inválido (alimentación no múltiplo de 10, capacidad fuera de tabla, referencia a otra partida, etc.).
-- T0.4 Una partida nueva tiene fondos `1000.00`, prestigio `0`, sin máximos históricos y hábitats precargados.
+- T0.4 Una partida nueva tiene fondos `2000.00`, prestigio `0`, sin máximos históricos y hábitats precargados.
 - T0.5 Rollback: si una escritura falla a mitad de una transacción de prueba, no quedan cambios parciales.
 - T0.6 Idempotencia base: repetir la misma clave de operación devuelve el resultado original sin duplicar efectos.
 - T0.7 Los hábitats no admiten inserción, edición ni borrado por la capa de aplicación (RES-05).
@@ -187,6 +187,14 @@ Hitos de revisión sugeridos:
 
 **Criterio de hecho:** el motor de satisfacción coincide con los casos calculados a mano y cumple el presupuesto de tiempo sobre la carga de referencia. Demo: monitor con datos generados.
 
+**Estado: implementado (verificado en Windows/JVM y compilación Android; iOS sin verificar).** `./gradlew check :androidApp:assembleDebug` correcto. T2.1 a T2.10 cubiertos: fórmula y medias en `domain` (`SatisfaccionTest`), persistencia, recálculo por alcance, monitor y rendimiento en `data` (`Sprint2Test`), pantalla y no recálculo al navegar en `shared-ui` (`Sprint2UiTest`). La carga de 500 animales y 50 espacios se recalcula y persiste muy por debajo de 1000 ms en JVM; la medición en dispositivo queda para el Sprint 10 (D6). Decisiones de interpretación:
+
+- Un vínculo (pareja, amigo, padre, madre) solo cuenta si el animal vinculado sigue vivo y alojado; no se exige que comparta espacio. `num_hermanos` cuenta animales vivos que comparten padre o madre, estén donde estén.
+- Familia a efectos de `C_afinidad`: pareja, padre, madre, hermanos e hijos vivos. El mejor amigo no es familiar y sí entra en la afinidad.
+- Las medias de espacio, hábitat y parque son medias directas sobre los animales vivos de cada nivel, no medias de medias (`EspecificacionBBDD.md`, 4.3).
+- El orquestador `RecalcularSatisfaccion` admite alcance `Parque` o `Espacios`. Los casos de uso de los sprints 3 a 8 deben incluir en el alcance todos los espacios afectados, incluidos los de familiares alojados en otros espacios cuando cambie el número de hermanos o una relación.
+- Generador de datos de prueba (`DatosDePrueba`): solo en tests y en modo de depuración (Android con `FLAG_DEBUGGABLE`; en iOS permanece desactivado hasta que haya contenedor de depuración).
+
 ---
 
 ### Sprint 3 — Gestión de especímenes y tienda de animales
@@ -207,7 +215,7 @@ Hitos de revisión sugeridos:
 
 - T3.1 Compra atómica: sin saldo, sin cupo, especie bloqueada o ficha incompleta no cambia nada. Con todo válido: saldo, aforo, animal, satisfacción y auditoría cambian juntos.
 - T3.2 Valores iniciales del animal: 20 años, 100%, sano, edad máxima en `[0.90, 1.10] × edad media` (con `Random` fijo en los extremos).
-- T3.3 Nombre repetido en la misma especie rechazado; mismo nombre en otra especie aceptado (RF-32).
+- T3.3 Nombre vacío o de más de 40 caracteres rechazado; nombre repetido, en la misma especie o en otra, aceptado (RF-32). Los listados desambiguan los homónimos sin mostrar identificadores.
 - T3.4 Ficha exige exactamente dos habilidades y dos rasgos (RF-33).
 - T3.5 Especie exclusiva no comprable en la tienda ordinaria (RES-09).
 - T3.6 Comprar un animal en un hábitat incompatible está permitido y baja la satisfacción de él y de sus compañeros de espacio.
@@ -221,6 +229,18 @@ Hitos de revisión sugeridos:
 - T3.14 UI: flujo de compra de punta a punta, la ficha no muestra claves (RES-06).
 
 **Criterio de hecho:** se pueden comprar, editar, mover y vender animales con todas las reglas. Demo en dispositivo.
+
+**Estado: implementado (verificado en Windows/JVM y compilación Android; iOS sin verificar; demo en dispositivo pendiente).** `./gradlew check :androidApp:assembleDebug` correcto. T3.1 a T3.14 cubiertos: reglas de edad y catálogo cerrado en `domain` (`AnimalTest`), casos de uso con base de datos real en `data` (`Sprint3Test`) y flujos de pantalla en `shared-ui` (`Sprint3UiTest`). Decisiones de interpretación:
+
+- La satisfacción del compañero de espacio cambia al llegar un animal nuevo, pero no siempre baja: un animal solo no tiene afinidad (`C_afinidad = 0`) y el compañero la aporta. T3.6 se verifica como «la satisfacción de él es menor en un hábitat incompatible y la de los compañeros se recalcula».
+- El nombre no es único (RF-32): se eliminaron la restricción `UNIQUE (id_partida, id_especie, nombre)` y el rechazo por duplicado. Si en un listado dos animales tienen la misma etiqueta, se añade la edad y, si aún coinciden, un número de orden de alta.
+- El mejor amigo no es recíproco (cada animal guarda el suyo); la pareja sí. Quitar la pareja libera a los dos. No se puede pasar directamente de una pareja a otra: hay que quitar la primera (CU-05, 3.c).
+- Un vínculo que no cambia en una edición no se vuelve a validar, porque una pareja trasladada a otro espacio sigue siéndolo (regla 5.3, Sprint 7).
+- Un traslado conserva pareja y mejor amigo. Al vender se anulan los vínculos mutables en ambos sentidos y se conservan `id_padre` e `id_madre`.
+- Los espacios afectados por una venta o edición se calculan con `espaciosRelacionados` (vínculos, padres, hijos y hermanos vivos alojados), de modo que la satisfacción de un familiar en otro espacio también se recalcula. CU-02 recalcula el espacio cuando cambia de hábitat.
+- Dependencias que impiden la baja lógica de un espacio (CU-14): un aviso abierto (`PENDIENTE` o `VISTA`) que lo referencia y una concepción `CONCEBIDA` de un progenitor alojado en él. El histórico de auditoría no bloquea la baja lógica, porque no se borra nada. Los sprints 5 y 7 añadirán sus propias referencias a esta comprobación si las crean.
+- La unidad a coste cero de una recompensa de misión (CU-01, paso 7) llega en el Sprint 9; por ahora todas las compras cobran el coste de `CosteRango`.
+- Navegación: Hábitats → Espacios → Animales → Ficha. La compra de animales parte de la tienda (botón «Comprar animales» de la tienda de recursos). La venta y el traslado ofrecen la baja del espacio que queda vacío.
 
 ---
 
@@ -247,6 +267,16 @@ Hitos de revisión sugeridos:
 - T4.8 Idempotencia de una operación repetida.
 
 **Criterio de hecho:** el usuario puede mantener sanos y alimentados a sus animales. Demo en dispositivo.
+
+**Estado: implementado (verificado en Windows/JVM y compilación Android; iOS sin verificar; demo en dispositivo pendiente).** `./gradlew allTests :androidApp:assembleDebug` correcto. T4.1 a T4.8 cubiertos: reglas puras en `domain` (`CuidadoTest`), casos de uso con base de datos real en `data` (`Sprint4Test`) y flujos de pantalla en `shared-ui` (`Sprint4UiTest`). Decisiones de interpretación:
+
+- Auditoría: `ALIMENTACION_INDIVIDUAL` (entidad `ANIMAL`), `ALIMENTACION_GRUPAL` (entidad `ESPACIO`) y `TRATAMIENTO` (entidad `ANIMAL`).
+- La acción grupal recibe el total de kilos que se mostró al usuario. Si al confirmar el conjunto requiere otro total, se rechaza todo con `ConjuntoCambiado` (CU-13, 4.a).
+- Un rechazo por bambú o insumos insuficientes informa de la cantidad necesaria, la disponible y el faltante; nunca consume parcialmente.
+- Alimentar con resultado mayor que 0 reinicia `ciclos_desnutricion`; tratar reinicia `ciclos_enfermedad`.
+- Hay un único aviso `ALERTA_SALUD` por animal. Se cierra como `RESUELTA` solo cuando, tras alimentar o tratar, ambos contadores están a 0; si el animal sigue enfermo y desnutrido, el aviso se conserva. Los avisos los crea el Sprint 5; este sprint solo los cierra.
+- Recálculo de satisfacción limitado al espacio del animal o del lote, tras confirmar la mutación (RF-15).
+- Interfaz: ficha con «Alimentar» y «Aplicar tratamiento» (solo si está enfermo), y «Alimentar a todos» en la pantalla del espacio; todas con diálogo de confirmación que muestra las cantidades.
 
 ---
 
@@ -293,6 +323,22 @@ Hitos de revisión sugeridos:
 
 **Criterio de hecho:** se puede dejar la app abierta y el zoo envejece, enferma, genera beneficios y mata animales descuidados; el usuario recibe avisos y reclama beneficios. Demo en dispositivo con un ciclo de 10 minutos y con un modo de depuración que adelanta ciclos.
 
+**Estado: implementado, 5A y 5B (verificado en Windows/JVM y compilación Android; iOS sin verificar; demo en dispositivo pendiente).** `./gradlew allTests :androidApp:assembleDebug` correcto. T5.1 a T5.16 cubiertos: reglas puras en `domain` (`CicloTest`), ciclo, beneficios, avisos y temporizador con base de datos real en `data` (`Sprint5Test`) y pantallas en `shared-ui` (`Sprint5UiTest`). Decisiones de interpretación:
+
+- Numeración: el primer ciclo es el `1`; el número es la clave de idempotencia (`ciclo-N`). Un número que no es el siguiente se rechaza como `CicloFueraDeOrden`; una partida o simulación en pausa, como `SimulacionNoActiva`.
+- Beneficio: se calcula tras las defunciones con la satisfacción persistida al inicio del ciclo de los animales que siguen vivos (la «vigente al inicio de la etapa»). La satisfacción nueva se calcula en la etapa de métricas y alimenta el beneficio del siguiente ciclo.
+- Salud: se hace un sorteo por animal vivo, alojado y sano, en orden de identificador; la frontera `aleatorio == umbral` no enferma.
+- Auditoría por ciclo: `CICLO_CONFIRMADO` (entidad `CICLO`, clave `id_partida:CICLO_CONFIRMADO:ciclo-N`), y por cada `DEFUNCION`, `CAMBIO_ESTADO_SALUD` (sano a enfermo) y `BENEFICIO_GENERADO`, con clave derivada del ciclo y el animal.
+- Avisos críticos: se abren al entrar un animal en estado crítico (un único aviso abierto por animal), se conservan mientras persista alguna causa y se resuelven cuando no queda ninguna o el animal muere. CU-13 y CU-09 los resuelven al alimentar o tratar.
+- Reproducción y misiones son puntos de extensión (`EtapaCiclo`) que no hacen nada hasta los sprints 7 y 9.
+- Temporizador (`MotorCiclos`): una sola espera hasta el fin del ciclo con el reloj monótono, sin sondeo. Se inicia en primer plano y al pasar a segundo plano guarda el remanente. Un ciclo revertido o rechazado no reinicia el temporizador en bucle: espera un ciclo completo antes de reintentar. No hay servicio en segundo plano (D7).
+- Retención: `PurgarRetencion` se ejecuta tras cada ciclo en su propia transacción y acota auditoría, movimientos, beneficios cerrados, ciclos y avisos cerrados (por ventana y por número máximo de filas); los avisos `PENDIENTE` no se purgan. La poda de animales inactivos (BBDD 5.3) queda para el Sprint 10.
+- CU-08: la reclamación recibe el importe mostrado; si al confirmar el pendiente es otro se rechaza (`BeneficiosCambiados`). Un reintento con la misma `id_solicitud` devuelve el resultado persistido.
+- CU-21: el historial se muestra con el aviso más reciente primero; listar no cambia ningún estado y abrir el detalle de uno `PENDIENTE` lo marca `VISTA`.
+- Modo de depuración: botón «Adelantar ciclo» en la pantalla de hábitats, junto a la generación de datos de prueba.
+
+**Cambio de fondos iniciales.** La partida nueva empieza con `2000.00` monedas (`partida_inicial.fondos`). Las partidas creadas antes (versión de base de datos 1) reciben `1000.00` monedas una sola vez al migrar a la versión 2, registradas como movimiento `INGRESO` con origen `COMPENSACION_INICIAL`.
+
 ---
 
 ### Sprint 6 — Prestigio, desbloqueos y avisos informativos
@@ -322,6 +368,16 @@ Hitos de revisión sugeridos:
 - T6.10 Navegar al panel de prestigio no dispara cálculos (RES-10).
 
 **Criterio de hecho:** el parque asciende de nivel, desbloquea contenido y lo comunica. Demo en dispositivo.
+
+**Estado: implementado (verificado en Windows/JVM, web y compilación Android; iOS sin verificar; demo en dispositivo pendiente).** `./gradlew check :androidApp:assembleDebug` correcto. T6.1 a T6.10 cubiertos: umbrales, redondeo y máximos en `domain` (`PrestigioTest`), evaluación, desbloqueos, avisos, CU-19 y rendimiento con base de datos real en `data` (`Sprint6Test`) y panel en `shared-ui` (`Sprint6UiTest`). Decisiones de interpretación:
+
+- El prestigio no tiene disparador propio: `RecalcularPrestigio` se invoca al final de `RecalcularSatisfaccion.alConsolidar`, dentro de la misma transacción. Así corre exactamente en los eventos de RF-35/RF-44 (mutaciones y fin de ciclo) y nivel, máximos, desbloqueos, avisos y auditoría se confirman o revierten con la mutación.
+- Censo: animales `VIVO` con espacio; satisfacción global = métrica `PARTIDA` recién persistida (`0` sin animales). Los umbrales se leen de `tablas.niveles_prestigio` (la tabla es la expansión de la fórmula; el test T6.1 la regenera y la compara).
+- Máximos: la terna se inicializa la primera vez que algún valor es positivo (una partida sin animales sigue sin máximos) y después sube componente a componente.
+- Aviso de ascenso solo si el nivel supera el máximo previo; un salto de varios niveles emite uno solo, el del más alto. Los desbloqueos de todos los niveles menores o iguales se insertan con origen `PRESTIGIO`. Los avisos informativos no se repiten (índice único `uq_notificacion_informativa` más comprobación previa).
+- Auditoría nueva: `PRESTIGIO_ASCENSO` (entidad `PARTIDA`), `ESPECIE_DESBLOQUEADA` (entidad `ESPECIE`) y `HABITAT_DESBLOQUEADO` (entidad `HABITAT`), origen `SISTEMA`, con clave `idPartida:tipo:idEntidad`. El `numero_ciclo` es el del ciclo en curso o, en una mutación, el último confirmado.
+- CU-19: `ConsultarPrestigio` lee solo valores persistidos y aísla cada dato (nivel, máximos, censo, satisfacción); uno no disponible se informa sin sustituirlo. Muestra además los requisitos del nivel siguiente.
+- Interfaz: indicador «Nivel N» en la cabecera global (pantalla inicial y resto de pantallas) que abre el panel «Prestigio».
 
 ---
 

@@ -3,13 +3,30 @@ package com.pandazoo.ui.pantalla
 import androidx.compose.runtime.compositionLocalOf
 import kotlin.jvm.JvmInline
 import com.pandazoo.ui.AppContainer
+import com.pandazoo.application.caso.AnimalMonitor
+import com.pandazoo.application.caso.EspacioMonitor
+import com.pandazoo.application.caso.HabitatMonitor
+import com.pandazoo.application.caso.MonitorSatisfaccion
+import com.pandazoo.application.caso.PanelPrestigio
 import com.pandazoo.application.error.MotivoRechazo
+import com.pandazoo.application.caso.ConsultarBeneficios
+import com.pandazoo.application.caso.RegistroCritico
+import com.pandazoo.application.puerto.Aviso
+import com.pandazoo.application.caso.OfertaAnimal
+import com.pandazoo.application.puerto.AnimalFicha
+import com.pandazoo.application.puerto.AnimalResumen
+import com.pandazoo.application.puerto.EspacioConHabitat
+import com.pandazoo.application.puerto.EstadoTienda
+import com.pandazoo.domain.animal.CatalogoFicha
+import com.pandazoo.domain.animal.ReglasCuidado
+import com.pandazoo.domain.economia.Redondeo
 import com.pandazoo.domain.modelo.Espacio
 import com.pandazoo.domain.modelo.Existencia
 import com.pandazoo.domain.modelo.Habitat
 import com.pandazoo.domain.modelo.InventarioFinanzas
 import com.pandazoo.domain.modelo.OfertaRecurso
 import com.pandazoo.domain.modelo.Seccion
+import com.pandazoo.domain.modelo.TipoRecurso
 import com.pandazoo.domain.economia.Dinero
 
 val LocalContenedor = compositionLocalOf<AppContainer> { error("Falta el contenedor de dependencias") }
@@ -30,18 +47,124 @@ data class InicioUi(
     val saldo: String?,
     val beneficiosPendientes: String?,
     val existencias: List<LineaUi>?,
+    val bambu: String?,
+    val insumosMedicos: String?,
     val avisos: List<String>,
 )
 
-data class HabitatUi(val ref: Ref, val nombre: String, val estado: String, val disponible: Boolean)
+/** Datos de la cabecera global: satisfacción del parque, saldo, bambú e insumos médicos. */
+data class CabeceraUi(val satisfaccion: String, val saldo: String, val bambu: String, val insumos: String, val prestigio: String)
 
-data class EspacioUi(val ref: Ref, val nombre: String, val detalle: String, val activo: Boolean)
+/** Panel de prestigio (CU-19). Un dato no disponible se muestra como tal, nunca como cero. */
+data class PrestigioUi(
+    val nivel: String,
+    val maximoNivel: String,
+    val maximoAnimales: String,
+    val maximoSatisfaccion: String,
+    val animales: String,
+    val satisfaccion: String,
+    /** Requisitos del nivel siguiente; `null` si ya se alcanzó el nivel máximo. */
+    val siguiente: String?,
+    val avisos: List<String>,
+)
 
-data class OfertaUi(val ref: Ref, val etiqueta: String, val unidad: String, val precio: Dinero?)
+/** Aviso del historial (CU-21). `tono` reutiliza color, icono y texto explícito de [TipoAviso]. */
+data class AvisoItemUi(
+    val id: Long,
+    val etiqueta: String,
+    val texto: String,
+    val estado: String,
+    val fecha: String,
+    val tono: TipoAviso,
+    val critico: Boolean,
+    val pendiente: Boolean,
+)
+
+/** Fila del seguimiento crítico (CU-18). */
+data class CriticoUi(val ref: Ref, val titulo: String, val causa: String, val detalle: String, val urgente: Boolean)
+
+data class BeneficiosUi(val pendiente: String, val importe: Dinero, val saldo: String, val porCiclo: List<LineaUi>, val puedeReclamar: Boolean)
+
+data class HabitatUi(val ref: Ref, val nombre: String, val disponible: Boolean)
+
+data class EspacioUi(val ref: Ref, val nombre: String, val detalle: String, val activo: Boolean, val ocupacion: Int = 0)
+
+data class OfertaUi(val ref: Ref, val etiqueta: String, val unidad: String, val precio: Dinero?, val insumo: Boolean = false)
 
 data class CapacidadUi(val capacidad: Int, val coste: Dinero, val etiqueta: String)
 
+/** Monitor de satisfacción (CU-17). `clave` solo identifica la fila abierta; se compone de nombres, no de claves internas. */
+data class MonitorUi(val parque: String, val aviso: String?, val habitats: List<HabitatMonitorUi>, val avisoHabitats: String?)
+
+data class HabitatMonitorUi(
+    val clave: String,
+    val nombre: String,
+    val valor: String,
+    val espacios: List<EspacioMonitorUi>,
+    val aviso: String?,
+)
+
+data class EspacioMonitorUi(
+    val clave: String,
+    val nombre: String,
+    val valor: String,
+    val animales: List<AnimalMonitorUi>,
+    val aviso: String?,
+)
+
+data class AnimalMonitorUi(val etiqueta: String, val valor: String)
+
+/** Especie en la tienda de animales. `seleccionable` es falso si está bloqueada, es exclusiva o el saldo no alcanza. */
+data class OfertaAnimalUi(
+    val ref: Ref,
+    val nombre: String,
+    val rango: String,
+    val coste: String,
+    val estado: String,
+    /** Línea bajo el nombre: «rango · estado», o solo el estado en las exclusivas, que ya nombran su rango. */
+    val detalle: String,
+    val seleccionable: Boolean,
+    val bloqueada: Boolean,
+)
+
+/** `nombre` incluye el sufijo de desambiguación (edad u orden); la especie se muestra aparte, más pequeña y en cursiva. */
+data class AnimalItemUi(
+    val ref: Ref,
+    val nombre: String,
+    val especie: String,
+    val rango: String,
+    val detalle: String,
+    /** Vivo y por debajo del 100 % de alimentación: entra en la acción grupal (CU-13). */
+    val necesitaAlimento: Boolean = false,
+)
+
+data class CandidatoUi(val ref: Ref, val etiqueta: String)
+
+data class DestinoUi(val ref: Ref, val etiqueta: String)
+
+/** Ficha técnica legible; las referencias `id*` solo sirven para precargar el formulario de edición. */
+data class FichaAnimalUi(
+    val ref: Ref,
+    val nombre: String,
+    val vivo: Boolean,
+    val lineas: List<LineaUi>,
+    val habilidades: List<String>,
+    val rasgos: List<String>,
+    val idHabilidades: List<String>,
+    val idRasgos: List<String>,
+    val idPareja: String?,
+    val idMejorAmigo: String?,
+    val nombrePareja: String?,
+    val nombreMejorAmigo: String?,
+    val alimentacion: Int,
+    val enfermo: Boolean,
+    val rango: String,
+)
+
 object Textos {
+    /** Los hábitats se muestran sin la palabra «Hábitat» (p. ej. «Bosque templado»). */
+    fun nombreHabitat(nombre: String) = nombre.removePrefix("Hábitat ").trim()
+
     const val MONEDA = "🪙"
 
     fun dinero(valor: Dinero) = "$MONEDA ${valor}"
@@ -56,10 +179,13 @@ object Textos {
                     null
                 }
             }
+        val existencias = (v.existencias as? Seccion.Disponible)?.valor
         return InicioUi(
             saldo = valor(v.fondos)?.let(::dinero),
             beneficiosPendientes = valor(v.beneficiosPendientes)?.let(::dinero),
             existencias = valor(v.existencias)?.map { LineaUi(it.nombre, "${it.cantidad} ${it.unidad}") },
+            bambu = existencias?.let { l -> "${l.filter { it.recurso.tipo == TipoRecurso.ALIMENTO }.sumOf { it.cantidad }} kg" },
+            insumosMedicos = existencias?.let { l -> "${l.filter { it.recurso.tipo == TipoRecurso.INSUMO }.sumOf { it.cantidad }}" },
             avisos = avisos,
         )
     }
@@ -67,8 +193,7 @@ object Textos {
     fun habitat(h: Habitat) =
         HabitatUi(
             ref = Ref(h.id),
-            nombre = h.nombre,
-            estado = if (h.utilizable) "Disponible" else "Bloqueado",
+            nombre = nombreHabitat(h.nombre),
             disponible = h.utilizable,
         )
 
@@ -76,9 +201,10 @@ object Textos {
         EspacioUi(
             ref = Ref(e.id),
             nombre = e.nombre,
-            detalle = "Capacidad ${e.capacidadMax} · Ocupación ${e.ocupacion}/${e.capacidadMax}" +
+            detalle = "Ocupación ${e.ocupacion}/${e.capacidadMax}" +
                 if (e.estado.name == "INACTIVO") " · De baja" else "",
             activo = e.estado.name == "ACTIVO",
+            ocupacion = e.ocupacion,
         )
 
     fun oferta(o: OfertaRecurso) =
@@ -87,7 +213,83 @@ object Textos {
             etiqueta = o.nombre + (o.precio?.let { " — ${dinero(it)} por ${if (o.unidad == "kg") "kg" else "unidad"}" } ?: " — sin precio"),
             unidad = o.unidad,
             precio = o.precio,
+            insumo = o.recurso.tipo == TipoRecurso.INSUMO,
         )
+
+    /** Porcentaje entero con los medios hacia arriba (RF-15). */
+    fun porcentaje(valor: Double) = "${Redondeo.porcentaje(valor)}%"
+
+    /** Texto breve del indicador de la cabecera. */
+    fun nivelPrestigio(p: PanelPrestigio): String =
+        when (val a = p.actual) {
+            is Seccion.Disponible -> "Nivel ${a.valor}"
+            is Seccion.NoDisponible -> "Nivel N/D"
+        }
+
+    fun prestigio(p: PanelPrestigio): PrestigioUi {
+        val sinMaximos = "Sin registrar"
+        val maximos = (p.maximos as? Seccion.Disponible)?.valor
+        val maximosDisponibles = p.maximos is Seccion.Disponible
+        fun <T> dato(s: Seccion<T>, formato: (T) -> String) = when (s) {
+            is Seccion.Disponible -> formato(s.valor)
+            is Seccion.NoDisponible -> NO_DISPONIBLE
+        }
+        return PrestigioUi(
+            nivel = nivelPrestigio(p),
+            maximoNivel = if (!maximosDisponibles) NO_DISPONIBLE else maximos?.let { "Nivel ${it.nivel}" } ?: sinMaximos,
+            maximoAnimales = if (!maximosDisponibles) NO_DISPONIBLE else maximos?.animalesVivos?.toString() ?: sinMaximos,
+            maximoSatisfaccion = if (!maximosDisponibles) NO_DISPONIBLE else maximos?.let { porcentaje(it.satisfaccionGlobal) } ?: sinMaximos,
+            animales = dato(p.animalesVivos) { it.toString() },
+            satisfaccion = dato(p.satisfaccionGlobal, ::porcentaje),
+            siguiente = p.siguiente?.let { "Nivel ${it.nivel}: ${it.animalesVivos} animales vivos y ${porcentaje(it.satisfaccionGlobal)} de satisfacción" },
+            avisos = listOf(p.actual, p.maximos, p.animalesVivos, p.satisfaccionGlobal).mapNotNull(::aviso).distinct(),
+        )
+    }
+
+    private const val SIN_ANIMALES = "Sin animales"
+    private const val NO_DISPONIBLE = "No disponible"
+
+    private fun valorNivel(s: Seccion<Double?>): String =
+        when (s) {
+            is Seccion.Disponible -> s.valor?.let(::porcentaje) ?: SIN_ANIMALES
+            is Seccion.NoDisponible -> NO_DISPONIBLE
+        }
+
+    private fun aviso(s: Seccion<*>): String? = (s as? Seccion.NoDisponible)?.motivo
+
+    fun monitor(m: MonitorSatisfaccion): MonitorUi =
+        MonitorUi(
+            parque = when (val p = m.parque) {
+                is Seccion.Disponible -> porcentaje(p.valor)
+                is Seccion.NoDisponible -> NO_DISPONIBLE
+            },
+            aviso = aviso(m.parque),
+            habitats = (m.habitats as? Seccion.Disponible)?.valor.orEmpty().map(::habitatMonitor),
+            avisoHabitats = aviso(m.habitats),
+        )
+
+    private fun habitatMonitor(h: HabitatMonitor) =
+        HabitatMonitorUi(
+            clave = h.nombre,
+            nombre = nombreHabitat(h.nombre),
+            valor = valorNivel(h.valor),
+            espacios = (h.espacios as? Seccion.Disponible)?.valor.orEmpty().map { espacioMonitor(h.nombre, it) },
+            aviso = aviso(h.valor) ?: aviso(h.espacios),
+        )
+
+    private fun espacioMonitor(habitat: String, e: EspacioMonitor) =
+        EspacioMonitorUi(
+            clave = "$habitat|${e.nombre}",
+            nombre = e.nombre,
+            valor = valorNivel(e.valor),
+            animales = animalesMonitor((e.animales as? Seccion.Disponible)?.valor.orEmpty()),
+            aviso = aviso(e.valor) ?: aviso(e.animales),
+        )
+
+    private fun animalesMonitor(l: List<AnimalMonitor>): List<AnimalMonitorUi> {
+        val etiquetas = desambiguar(l.map { "${it.nombre} (${it.especie})" }, l.map { it.edadAnios })
+        return l.mapIndexed { i, a -> AnimalMonitorUi(etiquetas[i], porcentaje(a.valor)) }
+    }
 
     fun existencia(e: Existencia) = LineaUi(e.nombre, "${e.cantidad} ${e.unidad}")
 
@@ -105,9 +307,215 @@ object Textos {
             MotivoRechazo.EspacioInexistente -> "El espacio ya no existe."
             MotivoRechazo.EspacioInactivo -> "El espacio está dado de baja y no se puede configurar."
             MotivoRechazo.SinCambios -> "No hay cambios que aplicar."
+            MotivoRechazo.EspecieInexistente -> "La especie ya no existe en el catálogo."
+            MotivoRechazo.EspecieBloqueada -> "Esa especie aún está bloqueada: súbela de nivel para comprarla."
+            MotivoRechazo.EspecieExclusiva -> "Las especies exclusivas solo se obtienen con misiones."
+            MotivoRechazo.EspacioLleno -> "El espacio no tiene capacidad libre."
+            MotivoRechazo.NombreInvalido -> "El nombre no puede estar vacío ni superar 40 caracteres."
+            MotivoRechazo.FichaIncompleta -> "La ficha necesita exactamente dos habilidades sociales y dos rasgos de personalidad."
+            MotivoRechazo.ParejaInexistente -> "La pareja elegida ya no está en el zoo."
+            MotivoRechazo.ParejaOtraEspecie -> "La pareja debe ser de la misma especie."
+            MotivoRechazo.ParejaOtroEspacio -> "La pareja debe estar en el mismo espacio."
+            MotivoRechazo.ParejaMenorDeEdad -> "Para ser pareja, los dos animales deben tener al menos 16 años."
+            MotivoRechazo.ParejaOcupada -> "Alguno de los dos ya tiene otra pareja. Quítala antes de elegir una nueva."
+            MotivoRechazo.AmigoInvalido -> "El mejor amigo debe ser otro animal del mismo espacio."
+            MotivoRechazo.AutoReferencia -> "Un animal no puede ser su propia pareja ni su propio mejor amigo."
+            MotivoRechazo.AnimalInexistente -> "El animal ya no existe."
+            MotivoRechazo.AnimalNoVivo -> "El animal ya no está en el zoo."
+            MotivoRechazo.AnimalEnfermo -> "Un animal enfermo no se puede vender."
+            MotivoRechazo.SinAlimentacion -> "Un animal sin alimentación no se puede vender."
+            MotivoRechazo.DestinoIgualAOrigen -> "El animal ya está en ese espacio."
+            MotivoRechazo.EspacioNoVacio -> "El espacio todavía tiene animales."
+            MotivoRechazo.EspacioConDependencias -> "El espacio tiene operaciones pendientes y no se puede dar de baja."
+            MotivoRechazo.AlimentacionCompleta -> "El animal ya tiene la alimentación al 100 %."
+            MotivoRechazo.NadaQueAlimentar -> "No hay animales vivos por debajo del 100 % de alimentación en este espacio."
+            MotivoRechazo.RacionNoConfigurada ->
+                "No hay una cantidad de bambú configurada para alguna de las especies; no se puede alimentar."
+            is MotivoRechazo.ConjuntoCambiado ->
+                "Los animales del espacio han cambiado. El nuevo total es de ${m.requerido} kg de bambú; revísalo y confirma de nuevo."
+            is MotivoRechazo.BambuInsuficiente ->
+                "Bambú insuficiente: se necesitan ${m.requerido} kg, hay ${m.disponible} kg y faltan ${m.faltante} kg."
+            MotivoRechazo.AnimalSano -> "El animal no está enfermo, no necesita tratamiento."
+            MotivoRechazo.ConsumoMedicoNoConfigurado ->
+                "No hay un consumo de insumos médicos configurado para este rango; no se puede tratar."
+            is MotivoRechazo.InsumosInsuficientes ->
+                "Insumos médicos insuficientes: " +
+                    m.faltantes.joinToString("; ") { "${it.nombre} (necesitas ${it.necesario}, tienes ${it.disponible})" } + "."
+            MotivoRechazo.SimulacionNoActiva -> "La simulación está en pausa."
+            is MotivoRechazo.CicloFueraDeOrden -> "El ciclo solicitado no es el siguiente."
+            MotivoRechazo.SinBeneficios -> "No hay beneficios pendientes de reclamar."
+            is MotivoRechazo.BeneficiosCambiados ->
+                "Los beneficios pendientes han cambiado: ahora son ${dinero(m.vigente)}. Revísalos y confirma de nuevo."
+            MotivoRechazo.AvisoInexistente -> "El aviso ya no existe."
             MotivoRechazo.ConflictoIdempotencia -> "La solicitud ya se registró con otro contenido. Inténtalo de nuevo."
             MotivoRechazo.PartidaInexistente -> "No hay una partida disponible."
         }
+
+    fun ofertaAnimal(o: OfertaAnimal): OfertaAnimalUi {
+        val e = o.especie
+        val estado = when (e.estado) {
+            EstadoTienda.COMERCIAL -> if (o.asequible) "Disponible" else "Saldo insuficiente"
+            EstadoTienda.BLOQUEADA -> "Bloqueada"
+            EstadoTienda.EXCLUSIVA -> "Exclusivo · solo por misión"
+        }
+        return OfertaAnimalUi(
+            ref = Ref(e.id),
+            nombre = e.nombre,
+            rango = e.rango,
+            coste = dinero(e.coste),
+            estado = estado,
+            detalle = if (e.estado == EstadoTienda.EXCLUSIVA) estado else "${e.rango} · $estado",
+            seleccionable = o.asequible,
+            bloqueada = e.estado != EstadoTienda.COMERCIAL,
+        )
+    }
+
+    /**
+     * Los nombres no son únicos (RF-32): si dos etiquetas de un mismo listado coinciden se añade la edad y, si aún
+     * coinciden, el número de orden de alta. Nunca se usa un identificador.
+     */
+    fun desambiguar(bases: List<String>, edades: List<Int>): List<String> {
+        val conEdad = bases.indices.map { i ->
+            if (bases.count { it == bases[i] } > 1) "${bases[i]} · ${if (edades[i] == 1) "1 año" else "${edades[i]} años"}" else bases[i]
+        }
+        val orden = HashMap<String, Int>()
+        return conEdad.map { l ->
+            if (conEdad.count { it == l } > 1) {
+                val k = (orden[l] ?: 0) + 1
+                orden[l] = k
+                "$l · n.º $k"
+            } else {
+                l
+            }
+        }
+    }
+
+    fun animalItems(l: List<AnimalResumen>): List<AnimalItemUi> {
+        val bases = l.map { "${it.nombre} (${it.especie})" }
+        val titulos = desambiguar(bases, l.map { it.edadAnios })
+        return l.mapIndexed { i, a ->
+            AnimalItemUi(
+                ref = Ref(a.id),
+                nombre = a.nombre + titulos[i].removePrefix(bases[i]),
+                especie = a.especie,
+                rango = a.rango,
+                detalle = "Alimentación ${a.alimentacion}% · ${if (a.enfermo) "Enfermo" else "Sano"} · Satisfacción ${porcentaje(a.satisfaccion)}",
+                necesitaAlimento = a.vivo && a.alimentacion < ReglasCuidado.ALIMENTACION_MAXIMA,
+            )
+        }
+    }
+
+    fun candidatos(l: List<AnimalResumen>): List<CandidatoUi> {
+        val etiquetas = desambiguar(l.map { "${it.nombre} (${it.especie})" }, l.map { it.edadAnios })
+        return l.mapIndexed { i, a -> CandidatoUi(Ref(a.id), etiquetas[i]) }
+    }
+
+    fun ficha(f: AnimalFicha, catalogo: CatalogoFicha) =
+        FichaAnimalUi(
+            ref = Ref(f.id),
+            nombre = f.nombre,
+            vivo = f.estadoVital == "VIVO",
+            lineas = listOf(
+                LineaUi("Especie", f.especie),
+                LineaUi("Hábitat", f.nombreHabitat?.let(::nombreHabitat) ?: "Sin hábitat"),
+                LineaUi("Espacio", f.nombreEspacio ?: "Sin espacio"),
+                LineaUi("Edad", f.edad.toString()),
+                LineaUi("Edad máxima", f.edadMaxima.toString()),
+                LineaUi("Alimentación", "${f.alimentacion}%"),
+                LineaUi("Salud", if (f.enfermo) "⚠ Enfermo" else "Sano"),
+                LineaUi("Satisfacción", porcentaje(f.satisfaccion)),
+                LineaUi("Pareja", f.nombrePareja ?: "Sin pareja"),
+                LineaUi("Mejor amigo", f.nombreMejorAmigo ?: "Sin mejor amigo"),
+            ),
+            habilidades = f.habilidades.map(catalogo::nombreHabilidad),
+            rasgos = f.rasgos.map(catalogo::nombreRasgo),
+            idHabilidades = f.habilidades,
+            idRasgos = f.rasgos,
+            idPareja = f.idPareja,
+            idMejorAmigo = f.idMejorAmigo,
+            nombrePareja = f.nombrePareja,
+            nombreMejorAmigo = f.nombreMejorAmigo,
+            alimentacion = f.alimentacion,
+            enfermo = f.enfermo,
+            rango = f.rango,
+        )
+
+    fun destino(d: EspacioConHabitat) =
+        DestinoUi(Ref(d.espacio.id), "${nombreHabitat(d.nombreHabitat)} · ${d.espacio.nombre} (${d.espacio.ocupacion}/${d.espacio.capacidadMax})")
+
+    fun beneficios(v: ConsultarBeneficios.Vista) =
+        BeneficiosUi(
+            pendiente = dinero(v.pendiente),
+            importe = v.pendiente,
+            saldo = dinero(v.saldo),
+            porCiclo = v.porCiclo.map { LineaUi("Ciclo ${it.numeroCiclo}", "${dinero(it.importe)} · ${if (it.reclamado) "Reclamado" else "Pendiente"}") },
+            puedeReclamar = v.pendiente > Dinero.CERO,
+        )
+
+    /** Fecha UTC legible a partir de segundos Unix (calendario gregoriano, sin dependencias de plataforma). */
+    fun fecha(segundos: Long): String {
+        val dias = segundos.floorDiv(86_400L)
+        val resto = segundos - dias * 86_400L
+        val z = dias + 719_468
+        val era = z.floorDiv(146_097L)
+        val doe = z - era * 146_097
+        val yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365
+        val doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+        val mp = (5 * doy + 2) / 153
+        val dia = doy - (153 * mp + 2) / 5 + 1
+        val mes = if (mp < 10) mp + 3 else mp - 9
+        val anio = yoe + era * 400 + if (mes <= 2) 1 else 0
+        fun dos(n: Long) = n.toString().padStart(2, '0')
+        return "${dos(dia)}/${dos(mes)}/$anio ${dos(resto / 3_600)}:${dos((resto % 3_600) / 60)} UTC"
+    }
+
+    fun aviso(a: Aviso): AvisoItemUi {
+        val (etiqueta, tono) = when (a.tipo.name) {
+            "CRITICA" -> "Crítica · Alta" to TipoAviso.ERROR
+            "OPERATIVA" -> "Operativa · Media" to TipoAviso.ADVERTENCIA
+            else -> "Informativa · Baja" to TipoAviso.INFO
+        }
+        val estado = when (a.estado) {
+            "PENDIENTE" -> "Pendiente"
+            "VISTA" -> "Vista"
+            "ACEPTADA" -> "Aceptada"
+            "RESUELTA" -> "Resuelta"
+            "DESCARTADA" -> "Descartada"
+            else -> "Estado no disponible"
+        }
+        return AvisoItemUi(
+            id = a.id,
+            etiqueta = etiqueta,
+            texto = a.texto,
+            estado = estado,
+            fecha = fecha(a.fecha),
+            tono = tono,
+            critico = a.tipo.name == "CRITICA",
+            pendiente = a.estado == "PENDIENTE",
+        )
+    }
+
+    fun criticos(l: List<RegistroCritico>): List<CriticoUi> {
+        val etiquetas = desambiguar(l.map { "${it.animal.nombre} (${it.animal.especie})" }, l.map { it.animal.edadAnios })
+        return l.mapIndexed { i, r ->
+            val causas = buildList {
+                if (r.animal.sinAlimento) add("Desnutrido")
+                if (r.animal.enfermo) add("Enfermo")
+            }
+            fun ciclos(n: Int) = if (n == 1) "1 ciclo" else "$n ciclos"
+            val contadores = buildList {
+                if (r.animal.sinAlimento) add("Desnutrición: ${ciclos(r.ciclosDesnutricion)}")
+                if (r.animal.enfermo) add("Enfermedad: ${ciclos(r.ciclosEnfermedad)}")
+            }
+            CriticoUi(
+                ref = Ref(r.animal.id),
+                titulo = etiquetas[i],
+                causa = causas.joinToString(" y "),
+                detalle = contadores.joinToString(" · ") + " · Quedan ${ciclos(r.ciclosRestantes)}",
+                urgente = r.ciclosRestantes <= 1,
+            )
+        }
+    }
 
     const val ERROR_TECNICO = "No se pudo completar la operación. No se ha realizado ningún cambio."
 }
