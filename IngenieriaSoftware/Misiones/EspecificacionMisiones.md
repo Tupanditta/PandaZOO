@@ -38,17 +38,17 @@ Parámetros:
 
 El progreso cuenta las compras confirmadas de la especie indicada realizadas después de crearse la instancia, incluida la compra de una unidad exclusiva concedida. Es acumulativo.
 
-### 3.2. Hacer crecer animales de una especie
+### 3.2. Hacer subir de nivel a animales de una especie
 
-Objetivo: hacer crecer una cantidad de animales de una especie concreta hasta una edad determinada.
+Objetivo: hacer que una cantidad de animales de una especie concreta alcance un nivel determinado.
 
 Parámetros:
 
 - Especie.
 - Cantidad de animales.
-- Edad requerida.
+- Nivel requerido (mínimo `2`: todo animal nace con nivel `1`, y alcanzarlo en el alta no es una subida).
 
-El progreso cuenta los animales de la especie que, durante un ciclo posterior a la creación de la instancia, pasan de tener menos años completos que la edad indicada a tener esa edad o más. Un animal que ya la superaba al comprarlo o al crearse la instancia no cuenta. Es acumulativo.
+El progreso cuenta los animales de la especie que, durante un ciclo posterior a la creación de la instancia, pasan de tener un nivel menor que el indicado a tener ese nivel o más. Como el nivel sube como máximo `1` por ciclo, un animal cruza el nivel requerido exactamente en el ciclo en que lo alcanza. Un animal que ya tenía ese nivel al crearse la instancia no cuenta. Es acumulativo.
 
 ### 3.3. Conseguir una cantidad total de animales
 
@@ -93,26 +93,26 @@ Parámetro:
 
 El progreso es el nivel de prestigio actual y la misión se cumple cuando es mayor o igual que el nivel requerido.
 
-### 3.7. Vender un animal de una especie y edad concretas
+### 3.7. Vender un animal de una especie y nivel concretos
 
-Objetivo: vender un animal que pertenezca a una especie determinada y tenga una edad determinada.
+Objetivo: vender un animal que pertenezca a una especie determinada y tenga un nivel determinado.
 
 Parámetros:
 
 - Especie.
-- Edad.
+- Nivel requerido.
 
-El objetivo es una única venta: el progreso pasa de `0` a `1` cuando, después de crearse la instancia, se confirma la venta de un animal de la especie cuya edad en años completos es mayor o igual que la edad indicada. Es acumulativo.
+El objetivo es una única venta: el progreso pasa de `0` a `1` cuando, después de crearse la instancia, se confirma la venta de un animal de la especie cuyo nivel es mayor o igual que el indicado. Es acumulativo.
 
-### 3.8. Vender un animal de una edad concreta
+### 3.8. Vender un animal de un nivel concreto
 
-Objetivo: vender un animal con una edad determinada sin tener en cuenta su especie.
+Objetivo: vender un animal con un nivel determinado sin tener en cuenta su especie.
 
 Parámetro:
 
-- Edad.
+- Nivel requerido.
 
-El objetivo es una única venta: el progreso pasa de `0` a `1` cuando, después de crearse la instancia, se confirma la venta de un animal cuya edad en años completos es mayor o igual que la edad indicada. Es acumulativo.
+El objetivo es una única venta: el progreso pasa de `0` a `1` cuando, después de crearse la instancia, se confirma la venta de un animal cuyo nivel es mayor o igual que el indicado. Es acumulativo.
 
 ### 3.9. Tener una familia
 
@@ -160,7 +160,7 @@ El progreso es la mayor satisfacción individual actual (`0..1`, sin redondear) 
 
 - Cada misión muestra su progreso en el apartado de misiones.
 - Las misiones de compra cuentan compras confirmadas y su progreso no disminuye.
-- Las misiones de crecimiento cuentan animales que alcanzan la edad requerida y su progreso no disminuye aunque el animal muera o se venda posteriormente.
+- Las misiones de subida de nivel cuentan animales que alcanzan el nivel requerido y su progreso no disminuye aunque el animal muera o se venda posteriormente.
 - Las misiones de animales en un hábitat cuentan animales vivos que cumplen la condición y su progreso disminuye si mueren, se venden o se reubican fuera del hábitat.
 - En las misiones de cantidad total y por hábitat solo cuentan animales vivos con espacio asignado; un animal trasladado deja de contar en el hábitat anterior y pasa a contar en el nuevo.
 - Las misiones de venta cuentan ventas confirmadas y su progreso no disminuye.
@@ -179,12 +179,12 @@ El progreso es la mayor satisfacción individual actual (`0..1`, sin redondear) 
 
 ### 4.1. Reglas de representación, progresión y cierre
 
-- **Edad.** Toda condición de edad se compara con los años completos del animal (`edad_anios`) y se cumple con una edad mayor o igual que la requerida.
+- **Nivel.** Toda condición de nivel se compara con el nivel del animal (`Animal.nivel`) y se cumple con un nivel mayor o igual que el requerido. La subida de nivel de la misión 3.2 se evalúa en la etapa de misiones del ciclo, que ve el nivel resultante de la etapa de nivel del mismo ciclo y solo a los animales que siguen vivos.
 - **Evaluación.** `ProgresoMision.progreso` guarda el valor actual (contador acumulativo o valor dinámico recalculado). Se evalúa en la transacción de cada evento que puede afectarlo y al cerrar cada ciclo, nunca por navegación. Una instancia `CUMPLIDA` no vuelve a `PENDIENTE` aunque un progreso dinámico baje después.
 - **Progresión de parámetros.** Al reclamar, cada parámetro numérico se recalcula con su operación (`SUMAR`, `RESTAR`, `MULTIPLICAR`, `DIVIDIR`) y su constante, en aritmética exacta; después se redondea al entero más cercano (medios hacia arriba) si el parámetro es entero, o al centésimo (medios hacia arriba) si es de satisfacción. `DIVIDIR` exige una constante mayor que `0`. El resultado debe estar en `[valor_minimo, valor_maximo]` del parámetro.
 - **Agotamiento.** Si el resultado de algún parámetro supera `valor_maximo` (o queda por debajo de `valor_minimo`), no se crea una nueva instancia: la instancia reclamada se sustituye por un marcador `AGOTADA`, el tipo deja de mostrarse como misión vigente y no vuelve a generarse en esa partida. La configuración distribuida solo usa `SUMAR` con constantes positivas.
 - **Nueva instancia.** Se crea con `progreso = 0`; si es de tipo dinámico se evalúa de inmediato en la misma transacción y puede quedar `CUMPLIDA` al instante si el estado del parque ya cumple los nuevos parámetros.
-- **Misiones imposibles.** Los máximos configurados garantizan que ningún objetivo supere lo alcanzable: edad máxima requerida `36` (la menor edad máxima de longevidad es `36` años), prestigio máximo `10` (`nivel_maximo`), satisfacción máxima `0.95`.
+- **Misiones imposibles.** Los máximos configurados garantizan que ningún objetivo supere lo alcanzable: nivel máximo requerido `15` (el menor `nivel_maximo` entre los rangos; todas las especies de misión pertenecen al rango 1), prestigio máximo `10` (`nivel_maximo`), satisfacción máxima `0.95`.
 
 ## 5. Estructura de una recompensa
 
@@ -256,13 +256,13 @@ Todos los valores de esta sección están en `valores_y_pesos.json` y son valore
 | Misión (`id_mision`) | Naturaleza | Parámetros base | Progresión (operación, constante, mín–máx) | Recompensa |
 |---|---|---|---|---|
 | `comprar_especie` | acumulativa | capibara, cantidad `2` | cantidad: sumar `1`, 1–50 | `200.00` fondos |
-| `crecer_especie` | acumulativa | nutria, cantidad `1`, edad `24` | cantidad: sumar `1`, 1–20; edad: sumar `4`, 1–36 | `30` kg de bambú |
+| `crecer_especie` | acumulativa | nutria, cantidad `1`, nivel `3` | cantidad: sumar `1`, 1–20; nivel: sumar `1`, 2–15 | `30` kg de bambú |
 | `total_animales` | dinámica | `5` animales | sumar `5`, 1–500 | `300.00` fondos |
 | `animales_habitat` | dinámica | hábitat bosque templado, `3` animales | sumar `2`, 1–200 | `5` insumos médicos |
 | `espacios_ocupados_habitat` | dinámica | hábitat humedal de agua dulce, mínimo `2` animales por espacio, `1` espacio | mínimo: sumar `1`, 1–20; espacios: sumar `1`, 1–50 | `400.00` fondos |
 | `subir_prestigio` | dinámica | nivel `1` | sumar `1`, 1–10 | animal aleatorio (`1`) |
-| `vender_especie_edad` | acumulativa | erizo, edad `22` | edad: sumar `2`, 1–36 | `150.00` fondos |
-| `vender_edad` | acumulativa | edad `22` | sumar `2`, 1–36 | `20` kg de bambú |
+| `vender_especie_nivel` | acumulativa | erizo, nivel `4` | nivel: sumar `1`, 1–15 | `150.00` fondos |
+| `vender_nivel` | acumulativa | nivel `4` | sumar `1`, 1–15 | `20` kg de bambú |
 | `familia` | dinámica | `1` hermano | sumar `1`, 1–8 | `250.00` fondos |
 | `familia_especie` | dinámica | zarigüeya, `1` hermano | sumar `1`, 1–8 | `4` insumos médicos |
 | `satisfaccion_minima` | dinámica | `0.60` | sumar `0.05`, 0.05–0.95 | `500.00` fondos |

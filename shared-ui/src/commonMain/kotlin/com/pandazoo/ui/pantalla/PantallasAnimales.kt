@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pandazoo.domain.animal.ReglasAnimal
 import com.pandazoo.domain.animal.ReglasCuidado
+import com.pandazoo.domain.animal.ReglasNivel
 
 // ---------------------------------------------------------------------------------------------------- Componentes
 
@@ -127,14 +128,12 @@ fun PantallaComprarAnimal(especie: Ref, alVolver: () -> Unit) {
     val espacios by vm.espacios.collectAsState()
     val habitatElegido by vm.habitatElegido.collectAsState()
     val espacioElegido by vm.espacioElegido.collectAsState()
-    val parejas by vm.parejasPosibles.collectAsState()
     val companeros by vm.companeros.collectAsState()
     val mensaje by vm.mensaje.collectAsState()
     val comprado by vm.comprado.collectAsState()
     var nombre by rememberSaveable { mutableStateOf("") }
     var habilidades by remember { mutableStateOf(emptySet<String>()) }
     var rasgos by remember { mutableStateOf(emptySet<String>()) }
-    var pareja by remember(espacioElegido) { mutableStateOf<Ref?>(null) }
     var amigo by remember(espacioElegido) { mutableStateOf<Ref?>(null) }
     LaunchedEffect(comprado) { if (comprado) alVolver() }
 
@@ -176,11 +175,14 @@ fun PantallaComprarAnimal(especie: Ref, alVolver: () -> Unit) {
                 Etiquetas(vm.habilidades, habilidades, ReglasAnimal.HABILIDADES_POR_FICHA) { habilidades = alternar(habilidades, it) }
                 Text("Rasgos de personalidad (elige 2)", style = MaterialTheme.typography.labelLarge)
                 Etiquetas(vm.rasgos, rasgos, ReglasAnimal.RASGOS_POR_FICHA) { rasgos = alternar(rasgos, it) }
-                Elegir("Pareja", "Sin pareja", parejas, pareja) { pareja = it }
                 Elegir("Mejor amigo", "Sin mejor amigo", companeros, amigo) { amigo = it }
+                Text(
+                    "La pareja se podrá asignar más adelante, cuando el animal alcance el nivel ${ReglasNivel.NIVEL_MINIMO_PAREJA}.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 BotonPrincipal(
                     "Confirmar compra",
-                    { vm.comprar(nombre, habilidades, rasgos, pareja, amigo) },
+                    { vm.comprar(nombre, habilidades, rasgos, amigo) },
                     enabled = oferta?.seleccionable == true && nombre.isNotBlank() &&
                         habilidades.size == ReglasAnimal.HABILIDADES_POR_FICHA && rasgos.size == ReglasAnimal.RASGOS_POR_FICHA,
                 )
@@ -330,7 +332,7 @@ fun PantallaFichaAnimal(animal: Ref, alVolver: () -> Unit, alEditar: () -> Unit,
     if (confirmando) {
         Confirmacion(
             titulo = "Vender animal",
-            texto = "Vas a vender a ${ficha?.nombre ?: "este animal"}. La venta no acredita fondos y no se puede deshacer.",
+            texto = ficha?.textoVenta ?: "Vas a vender este animal. La venta no se puede deshacer.",
             confirmar = "Confirmar venta",
             cancelar = "Cancelar",
             alConfirmar = vm::vender,
@@ -387,7 +389,7 @@ private fun FormularioFicha(vm: EditarFichaViewModel, f: FichaAnimalUi, candidat
     val parejas = candidatos.parejas.withActual(f.idPareja, f.nombrePareja)
     val amigos = candidatos.amigos.withActual(f.idMejorAmigo, f.nombreMejorAmigo)
 
-    Text("Especie, edad, alimentación, salud y satisfacción no se pueden editar.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text("Especie, nivel, alimentación, salud y satisfacción no se pueden editar.", color = MaterialTheme.colorScheme.onSurfaceVariant)
     OutlinedTextField(
         value = nombre,
         onValueChange = { nombre = it },

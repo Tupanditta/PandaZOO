@@ -82,10 +82,10 @@ Los espacios y hábitats sin animales vivos quedan sin métrica. La partida sin 
 | Cálculo o valor | Estado | Definición |
 |---|---|---|
 | Coste total de compra | DEFINIDO | Espacio por `capacidad_max`: `2`→100, `4`→180, `6`→250, `8`→320, `10`→400, `15`→550, `20`→700. Animal por rango: 200, 450, 900 y 1800 (rangos 1 a 4); el rango 5 vale `0.00` (solo la unidad concedida por recompensa). Bambú `0.50` por kilogramo; insumo médico `10.00` por unidad. Importes con dos decimales, medios hacia arriba. |
-| Importe de venta | DEFINIDO | `0` (RF-06). |
+| Importe de venta | DEFINIDO | Según nivel y rango (RF-06, RF-52): véase «Valor de venta». |
 | Consumo de alimento | DEFINIDO | Único alimento: bambú, en kilogramos enteros: `1` a `5` kg por cada incremento de 10 puntos, según el tamaño de la especie (`tablas.alimentos_por_especie`). Descenso por ciclo ordinario: 20 puntos. La alimentación grupal consume el total en una operación atómica. |
 | Consumo médico | DEFINIDO | Un único insumo médico universal; cantidad por tratamiento según el rango: `1`, `2`, `3`, `4` y `5` unidades (rangos 1 a 5). |
-| Beneficio o ingreso generado | DEFINIDO | `B_ciclo = redondear(S_global * suma de beneficio_por_animal_ciclo del rango de cada animal vivo alojado)`; importes por rango `4.00`, `8.00`, `14.00`, `22.00` y `35.00`; `0` sin animales. Sin multiplicadores. Se genera una vez por ciclo confirmado. |
+| Beneficio o ingreso generado | DEFINIDO | `B_ciclo = redondear(suma, sobre cada animal vivo alojado, de beneficio_base_animal_ciclo(rango) * S_i * M_nivel(nivel))`, con `M_nivel(n) = 1 + (multiplicador_nivel_maximo - 1) * (n - 1) / (nivel_maximo - 1)`; beneficio base por rango `12.00`, `24.00`, `40.00`, `64.00` y `100.00`; `0` sin animales. Sin multiplicadores por especie. Se genera una vez por ciclo confirmado. |
 | Beneficio acumulado | DEFINIDO | Cada ciclo añade el beneficio generado al pendiente; las mutaciones entre ciclos no lo cambian; las salidas solo afectan al futuro. |
 | Reclamación de beneficio | DEFINIDO | Acredita una sola vez el pendiente, marca los registros reclamados y deja el pendiente en `0` (RF-11). |
 | Saldos e inventarios | DEFINIDO | No negativos. Partida nueva: `2000.00` de fondos, `30` kg de bambú y `3` insumos médicos (`partida_inicial`). |
@@ -94,12 +94,13 @@ Los espacios y hábitats sin animales vivos quedan sin métrica. La partida sin 
 
 | Cálculo o valor | Estado | Definición |
 |---|---|---|
-| Pareja válida | DEFINIDO | Misma especie, misma partida, referencias válidas, pareja recíproca, sin autorreferencia, ambos de al menos 16 años y estado permitido. |
+| Valor de venta | DEFINIDO | `V = redondear(valor_venta_base(rango) * F_venta(nivel))`, lineal a tramos: `0.05` en el nivel 1, `1` (coste de compra) en el nivel de equilibrio `redondear(2/3 * nivel_maximo)` y `factor_venta_nivel_maximo` (`1.5` a `2.5`) en el tope. Valores base `200`, `450`, `900`, `1800` y `4000` (rango 5, referencia). RF-52. |
+| Pareja válida | DEFINIDO | Misma especie, misma partida, referencias válidas, pareja recíproca, sin autorreferencia, ambos con al menos el nivel mínimo de pareja (`4`) y estado permitido. |
 | Umbral de satisfacción reproductiva | DEFINIDO | Por rango: `0.60`, `0.65`, `0.70`, `0.75` y `0.80`; comparación `>=` con la satisfacción sin redondear. |
 | Probabilidad de reproducción | DEFINIDO | `max(0, probabilidad inicial - penalización * hijos vivos comunes)`. Probabilidad inicial por rango: `0.04`, `0.03`, `0.02`, `0.015`, `0.01`; penalización por hijo: `0.010`, `0.008`, `0.006`, `0.005`, `0.004`. Concepción si `aleatorio < probabilidad`. |
 | Concepción | DEFINIDO | Una por pareja y ciclo; disponible desde el ciclo siguiente durante tres ciclos; idempotente. |
 | Aforo para nacimiento | DEFINIDO | Hay aforo si `COUNT(animales VIVO del espacio) < capacidad_max`; sin aforo la aceptación se rechaza sin cambiar el estado ni consumir la notificación. |
-| Datos iniciales de la cría | DEFINIDO | Misma especie, 0 años, alimentación 100%, sana, edad máxima calculada como en cualquier alta, alojada en el espacio de los progenitores; `id_padre` es el progenitor de identificador menor e `id_madre` el de mayor; hermanos derivados; satisfacción calculada tras completar la ficha. |
+| Datos iniciales de la cría | DEFINIDO | Misma especie, nivel 1, alimentación 100%, sana, alojada en el espacio de los progenitores; `id_padre` es el progenitor de identificador menor e `id_madre` el de mayor; hermanos derivados; satisfacción calculada tras completar la ficha. |
 | Límite de hermanos | DEFINIDO | `C_hermanos = min(1, hermanos_vivos / tope_hermanos)` con `tope_hermanos` por especie (2, 3 o 4). |
 
 ## 6. Ciclos y simulación offline
@@ -111,8 +112,8 @@ Los espacios y hábitats sin animales vivos quedan sin métrica. La partida sin 
 | Descenso de alimentación | DEFINIDO | 20 puntos por ciclo ordinario; en offline, con los límites de RF-22. |
 | Enfermedad | DEFINIDO | Un animal vivo, alojado y sano enferma si `aleatorio < probabilidad_enfermedad(rango) * (1 - satisfaccion_actual)`. Probabilidad por rango: `0.010`, `0.010`, `0.015`, `0.015`, `0.020`. En offline el sorteo se detiene al enfermar y rigen los límites de RF-23. |
 | Ciclos críticos | DEFINIDO | El ciclo que deja al animal con alimentación `0%` o enfermo cuenta como el primero; contadores independientes; defunción al llegar a `3`. |
-| Longevidad máxima | DEFINIDO | `redondear(edad_media_anios * 360 * factor)` días con factor uniforme en `[0.90, 1.10]`; calendario de 30 días por mes y 12 meses por año; edad media por especie de `40` a `90` años (`tablas.edad_media_especie`). Edad inicial de un animal comprado: 20 años. |
-| Orden del ciclo | DEFINIDO | Edad, alimentación, salud, ciclos críticos, defunciones, reproducción, beneficios, misiones, métricas y persistencia (RF-14). |
+| Nivel del animal | DEFINIDO | Sustituye a la edad y a la longevidad. Nivel inicial `1` (compra, recompensa y cría); `+1` cada `72` ciclos en que el animal sigue vivo, sano y con alimentación mayor que `0`; tope por rango en `tablas.rangos_especie[].nivel_maximo` (`15`, `29`, `41`, `51`, `61`, es decir, 7, 14, 20, 25 y 30 días); nunca disminuye; nivel mínimo de pareja `4`. Sin muerte por vejez. Detalle: RF-51 y `EspecificacionBBDD.md`, secciones 1.4 y 2.3.1. |
+| Orden del ciclo | DEFINIDO | Alimentación, salud, ciclos críticos, defunciones, nivel, reproducción, beneficios, misiones, métricas y persistencia (RF-14). |
 
 ## 7. Capacidad y compatibilidad
 
@@ -148,7 +149,7 @@ Los espacios y hábitats sin animales vivos quedan sin métrica. La partida sin 
 Todos están completos en `valores_y_pesos.json`:
 
 - 5 biomas y 5 hábitats (uno por bioma).
-- 47 especies (38 comerciales y 9 exclusivas), cinco rangos, pesos de satisfacción y sociales, `tope_hermanos`, edad media y kilogramos de bambú por incremento.
+- 47 especies (38 comerciales y 9 exclusivas), cinco rangos, pesos de satisfacción y sociales, `tope_hermanos` y kilogramos de bambú por incremento; cada rango incluye además beneficio base, nivel máximo y multiplicador de nivel máximo.
 - 235 compatibilidades especie-bioma, 1128 afinidades entre pares de especies (incluidas las diagonales) y 47 curvas de `M_crit`.
 - Un alimento (bambú) y un insumo médico, con sus precios y cantidades.
 - 12 misiones con parámetros, progresión y recompensas, y la lista de recompensas de animal aleatorio.
@@ -163,7 +164,7 @@ Valores por defecto del DDL: se eliminan los valores por defecto de `tope_herman
 2. Prestigio: base, multiplicadores, límites y nivel máximo definidos.
 3. RF-15: beneficio definido por la fórmula de la sección 4.
 4. RF-16: umbral y probabilidad por rango definidos.
-5. RF-14 y RF-19: longevidad, calendario y conversión definidos.
+5. RF-14, RF-19 y RF-51: sin edad ni longevidad; nivel por ciclo sano definido.
 6. RF-21 y RF-24: remanente y ciclos offline definidos.
 7. Los valores por defecto del DDL están ratificados, sustituidos o eliminados (sección 10).
 8. Duplicados del JSON eliminados: las probabilidades de reproducción y penalización por hijo viven solo en `rangos_especie`; `desbloqueos_prestigio` es la única fuente de desbloqueos.

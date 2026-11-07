@@ -109,4 +109,17 @@ class Sprint9UiTest {
             // La misión se renueva con el objetivo progresado (5 + 5 = 10).
             esperar("Ten 10 animales en el zoo.")
         }
+
+    @Test
+    fun `TN_12 los textos de las misiones de crecimiento y venta hablan de nivel y no de edad`() =
+        prueba { c ->
+            esperar("Misiones")
+            onNodeWithText("Misiones").performClick()
+            esperar("alcancen el nivel 3", subcadena = true)
+            esperar("de nivel 4 o superior", subcadena = true)
+            textos().forEach { t ->
+                t.contains("años o más") shouldBe false
+                t.contains("lleguen a") shouldBe false
+            }
+        }
 }

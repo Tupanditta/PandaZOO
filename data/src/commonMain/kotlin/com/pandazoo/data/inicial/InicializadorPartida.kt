@@ -39,9 +39,11 @@ class InicializadorPartida(
         t.rangos.forEach {
             bd.escribir(
                 "INSERT INTO RangoEspecie (id_rango, nombre, umbral_reproduccion, probabilidad_reproduccion, " +
-                    "penalizacion_hijo_reproduccion, probabilidad_enfermedad, beneficio_por_animal_ciclo) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "penalizacion_hijo_reproduccion, probabilidad_enfermedad, beneficio_base_animal_ciclo, nivel_maximo, " +
+                    "multiplicador_nivel_maximo, valor_venta_base, factor_venta_nivel_maximo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 it.id, it.nombre, it.umbralReproduccion, it.probabilidadReproduccion, it.penalizacionHijo,
-                it.probabilidadEnfermedad, it.beneficioPorAnimalCiclo,
+                it.probabilidadEnfermedad, it.beneficioBase, it.nivelMaximo, it.multiplicadorNivelMaximo, it.valorVentaBase,
+                it.factorVentaNivelMaximo,
             )
         }
         val nivelPorEspecie = t.desbloqueos.flatMap { n -> n.especies.map { it to n.nivel } }.toMap()
@@ -50,10 +52,9 @@ class InicializadorPartida(
             bd.escribir(
                 "INSERT INTO Especie (id_especie, nombre_comun, id_rango, tope_hermanos, peso_bio, peso_soc, estado_catalogo, " +
                     "nivel_desbloqueo, peso_pareja, peso_amigo, peso_padre, peso_madre, peso_hermanos, peso_afinidad, " +
-                    "edad_media_anios, kg_bambu_por_incremento) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "kg_bambu_por_incremento) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 s.id, s.nombre, s.idRango, s.social.topeHermanos, s.pesos.bio, s.pesos.soc, s.categoria,
                 nivelPorEspecie[s.id], p.pareja, p.amigo, p.padre, p.madre, p.hermanos, p.afinidad,
-                t.edadMedia.first { it.idEspecie == s.id }.anios,
                 t.alimentosPorEspecie.first { it.idEspecie == s.id }.kilogramos,
             )
         }

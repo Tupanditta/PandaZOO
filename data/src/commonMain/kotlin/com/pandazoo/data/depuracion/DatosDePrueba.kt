@@ -25,7 +25,7 @@ class DatosDePrueba(private val bd: BaseDatos, private val ids: GeneradorId) {
         return id
     }
 
-    /** Alta de un animal vivo con la edad máxima media de su especie y satisfacción persistida `0` (sin calcular). */
+    /** Alta de un animal vivo del nivel indicado y satisfacción persistida `0` (sin calcular). */
     fun animal(
         idPartida: IdPartida,
         idEspacio: String,
@@ -35,15 +35,16 @@ class DatosDePrueba(private val bd: BaseDatos, private val ids: GeneradorId) {
         enfermo: Boolean = false,
         idPadre: String? = null,
         idMadre: String? = null,
+        nivel: Int = 1,
+        ciclosNivel: Int = 0,
     ): String {
         val id = ids.nuevo()
-        val edadMedia = bd.uno("SELECT edad_media_anios FROM Especie WHERE id_especie = ?", idEspecie) { it.entero(0) }
-            ?: error("Especie inexistente")
         bd.escribir(
-            "INSERT INTO Animal (id_animal, id_partida, id_especie, id_espacio, nombre, edad_anios, edad_maxima_anios, " +
-                "edad_maxima_meses, edad_maxima_dias, nivel_alimentacion, estado_salud, id_padre, id_madre, satisfaccion_actual) " +
-                "VALUES (?, ?, ?, ?, ?, 1, ?, 0, 0, ?, ?, ?, ?, 0)",
-            id, idPartida, idEspecie, idEspacio, nombre, edadMedia, alimentacion, if (enfermo) "ENFERMO" else "SANO", idPadre, idMadre,
+            "INSERT INTO Animal (id_animal, id_partida, id_especie, id_espacio, nombre, nivel, ciclos_nivel, " +
+                "nivel_alimentacion, estado_salud, id_padre, id_madre, satisfaccion_actual) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+            id, idPartida, idEspecie, idEspacio, nombre, nivel, ciclosNivel, alimentacion, if (enfermo) "ENFERMO" else "SANO",
+            idPadre, idMadre,
         )
         return id
     }
@@ -84,7 +85,7 @@ class DatosDePrueba(private val bd: BaseDatos, private val ids: GeneradorId) {
 
                 fun alta(especie: String, padre: String? = null, madre: String? = null): String {
                     val k = siguiente()
-                    return animal(idPartida, espacio, especie, "Ejemplar $k", alimentacion = ((k * 7) % 11) * 10, enfermo = k % 13 == 0, idPadre = padre, idMadre = madre)
+                    return animal(idPartida, espacio, especie, "Ejemplar $k", alimentacion = ((k * 7) % 11) * 10, enfermo = k % 13 == 0, idPadre = padre, idMadre = madre, nivel = 1 + (k * 3) % 12)
                 }
 
                 val padre = alta(a)

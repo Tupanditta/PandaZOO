@@ -62,13 +62,9 @@ class Sprint9Test {
 
     private fun vender(id: String) = e.venderAnimal.ejecutar(ComandoVenderAnimal(e.idPartida, id, nueva()))
 
-    /** Edad en años completos más `dias` días del calendario 30×12; fija también una longevidad que no interfiera. */
-    private fun edad(id: String, anios: Int, dias: Int = 0) {
-        val total = anios * 360 + dias
-        e.bd.escribir(
-            "UPDATE Animal SET edad_anios = ?, edad_meses = ?, edad_dias = ?, edad_maxima_anios = 80 WHERE id_animal = ?",
-            total / 360, (total % 360) / 30, total % 30, id,
-        )
+    /** Nivel del animal y ciclos sanos ya acumulados hacia el siguiente (RF-51). */
+    private fun nivel(id: String, nivel: Int, ciclosNivel: Int = 0) {
+        e.bd.escribir("UPDATE Animal SET nivel = ?, ciclos_nivel = ? WHERE id_animal = ?", nivel, ciclosNivel, id)
     }
 
     private fun reclamar(i: InstanciaMision) = e.reclamarRecompensa.ejecutar(ComandoReclamarRecompensa(e.idPartida, i.idInstancia))
@@ -118,14 +114,14 @@ class Sprint9Test {
     }
 
     @Test
-    fun `T9_2 crecer especie cuenta al cruzar la edad en un ciclo posterior y no a quien ya la superaba`() {
+    fun `TN_10 crecer especie cuenta al alcanzar el nivel en un ciclo posterior y no a quien ya lo tenia`() {
         val sp = espacio()
         val antes = animal(sp, "nutria", "Antes")
         val justo = animal(sp, "nutria", "Justo")
         val ya = animal(sp, "nutria", "Ya")
-        edad(antes, 23, 348) // 23 años y 348 días: tras +6 días aún 23 años completos
-        edad(justo, 23, 354) // +6 días = 24 años exactos
-        edad(ya, 24, 0) // ya la superaba al crearse la instancia
+        nivel(antes, 2, 70) // tras el ciclo lleva 71 ciclos: sigue en el nivel 2
+        nivel(justo, 2, 71) // el ciclo 72 le sube al nivel 3, el requerido
+        nivel(ya, 3, 0) // ya lo tenía al crearse la instancia
         e.ejecutarCiclo.siguiente(e.idPartida)
         progreso("crecer_especie") shouldBe 1.0
         estado("crecer_especie") shouldBe EstadoMision.CUMPLIDA
@@ -135,7 +131,7 @@ class Sprint9Test {
     fun `T9_2 crecer especie no cumple si nadie cruza`() {
         val sp = espacio()
         val a = animal(sp, "nutria", "Antes")
-        edad(a, 23, 348)
+        nivel(a, 2, 10)
         e.ejecutarCiclo.siguiente(e.idPartida)
         progreso("crecer_especie") shouldBe 0.0
         estado("crecer_especie") shouldBe EstadoMision.PENDIENTE
@@ -195,34 +191,34 @@ class Sprint9Test {
     }
 
     @Test
-    fun `T9_2 vender especie y edad exige la especie y los anios completos`() {
+    fun `TN_10 vender especie y nivel exige la especie y el nivel en la frontera`() {
         val sp = espacio()
         val joven = animal(sp, "erizo", "Joven")
         val otraEspecie = animal(sp, "nutria", "Otra")
         val justo = animal(sp, "erizo", "Justo")
-        edad(joven, 21, 359)
-        edad(otraEspecie, 30)
-        edad(justo, 22)
+        nivel(joven, 3)
+        nivel(otraEspecie, 10)
+        nivel(justo, 4)
         exito(vender(joven))
         exito(vender(otraEspecie))
-        progreso("vender_especie_edad") shouldBe 0.0
+        progreso("vender_especie_nivel") shouldBe 0.0
         exito(vender(justo))
-        progreso("vender_especie_edad") shouldBe 1.0
-        estado("vender_especie_edad") shouldBe EstadoMision.CUMPLIDA
+        progreso("vender_especie_nivel") shouldBe 1.0
+        estado("vender_especie_nivel") shouldBe EstadoMision.CUMPLIDA
     }
 
     @Test
-    fun `T9_2 vender por edad ignora la especie`() {
+    fun `TN_10 vender por nivel ignora la especie`() {
         val sp = espacio()
         val joven = animal(sp, "erizo", "Joven")
         val mayor = animal(sp, "nutria", "Mayor")
-        edad(joven, 21)
-        edad(mayor, 22)
+        nivel(joven, 3)
+        nivel(mayor, 4)
         exito(vender(joven))
-        estado("vender_edad") shouldBe EstadoMision.PENDIENTE
+        estado("vender_nivel") shouldBe EstadoMision.PENDIENTE
         exito(vender(mayor))
-        estado("vender_edad") shouldBe EstadoMision.CUMPLIDA
-        progreso("vender_edad") shouldBe 1.0
+        estado("vender_nivel") shouldBe EstadoMision.CUMPLIDA
+        progreso("vender_nivel") shouldBe 1.0
     }
 
     private fun familia(sp: String, especie: String, hijos: Int): List<String> {
@@ -351,7 +347,7 @@ class Sprint9Test {
         exito(reclamar(mision("crecer_especie")))
         val m = mision("crecer_especie")
         m.numericos["cantidad_animales"] shouldBe 2.0 // sumar 1
-        m.numericos["edad_requerida"] shouldBe 28.0 // sumar 4
+        m.numericos["nivel_requerido"] shouldBe 4.0 // sumar 1 al nivel base 3
         m.textos["id_especie"] shouldBe "nutria"
     }
 
@@ -619,7 +615,7 @@ class Sprint9Test {
         recalcular()
         estado("total_animales") shouldBe EstadoMision.CUMPLIDA
         val mortal = animal(sp, nombre = "Mortal")
-        e.bd.escribir("UPDATE Animal SET edad_maxima_anios = 1, edad_anios = 1 WHERE id_animal = ?", mortal)
+        e.bd.escribir("UPDATE Animal SET nivel_alimentacion = 0, ciclos_desnutricion = 2 WHERE id_animal = ?", mortal)
         e.ejecutarCiclo.siguiente(e.idPartida)
         e.bd.uno("SELECT estado_vital FROM Animal WHERE id_animal = ?", mortal) { it.texto(0) } shouldBe "MUERTO"
     }

@@ -318,7 +318,7 @@ class MonitorSql(private val bd: BaseDatos) : MonitorRepositorio {
 
     override fun animales(idPartida: IdPartida): List<AnimalActivo> =
         bd.leer(
-            "SELECT a.id_espacio, a.nombre, s.nombre_comun, a.satisfaccion_actual, a.edad_anios FROM Animal a " +
+            "SELECT a.id_espacio, a.nombre, s.nombre_comun, a.satisfaccion_actual, a.nivel FROM Animal a " +
                 "JOIN Especie s ON s.id_especie = a.id_especie " +
                 "WHERE a.id_partida = ? AND a.estado_vital = 'VIVO' AND a.id_espacio IS NOT NULL ORDER BY a.nombre, a.rowid",
             idPartida,

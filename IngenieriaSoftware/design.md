@@ -170,7 +170,7 @@ Todas con versión fija en `libs.versions.toml`. Se usa una librería solo si re
 | Satisfacción, afinidad, probabilidades | `Double` | Sin redondeo interno; rango `0..1`. Los tests de frontera usan valores exactamente representables o `BigDecimal` en el caso concreto |
 | Porcentaje mostrado | `Int` | `HALF_UP` de `valor * 100` |
 | Umbral de animales de prestigio | Decimal propio de escala fija (`Long` en millonésimas) sin redondear para encadenar niveles | Comparación con el entero redondeado medio hacia arriba; se define en el Sprint 6 |
-| Edad | `Int` en días | 30 días por mes, 12 meses por año, 360 días por año |
+| Nivel del animal | `Int` | `>= 1`, `+1` por ciclo sano, acotado por el `nivel_maximo` del rango; el multiplicador de beneficio `M_nivel` usa `Double` sin redondeo interno |
 | Instantes | `Long` en segundos desde la época Unix | Se obtienen del puerto `Reloj`; no se usa `java.time` |
 | Remanente y tiempo transcurrido | `Long` en segundos | |
 

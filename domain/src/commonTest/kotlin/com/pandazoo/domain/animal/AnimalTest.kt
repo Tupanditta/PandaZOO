@@ -3,41 +3,8 @@ package com.pandazoo.domain.animal
 import io.kotest.matchers.shouldBe
 import kotlin.test.Test
 
-/** T3.2 (parte de dominio): edad máxima fijada con el factor aleatorio en [0.90, 1.10]. */
+/** T3.2 (parte de dominio): fichas con catálogos cerrados. */
 class AnimalTest {
-    @Test
-    fun `el factor cubre el intervalo cerrado por abajo y abierto por arriba`() {
-        ReglasAnimal.factorEdad(0.0) shouldBe 0.90
-        ReglasAnimal.factorEdad(0.5) shouldBe 1.0
-        (ReglasAnimal.factorEdad(0.999999) < 1.10) shouldBe true
-    }
-
-    @Test
-    fun `edad maxima con casos calculados a mano`() {
-        // 20 años * 360 días * 0.90 = 6480 días = 18 años exactos.
-        ReglasAnimal.edadMaxima(20, 0.90) shouldBe Edad(18, 0, 0)
-        // 20 * 360 * 1.00 = 7200 días = 20 años.
-        ReglasAnimal.edadMaxima(20, 1.0) shouldBe Edad(20, 0, 0)
-        // 15 * 360 * 1.10 = 5940 días = 16 años (5760) + 180 días = 6 meses.
-        ReglasAnimal.edadMaxima(15, 1.10) shouldBe Edad(16, 6, 0)
-        // 7 * 360 * 0.93 = 2343,6 → 2344 días = 6 años (2160) + 184 días = 6 meses y 4 días.
-        ReglasAnimal.edadMaxima(7, 0.93) shouldBe Edad(6, 6, 4)
-    }
-
-    @Test
-    fun `la edad maxima minima posible supera la edad de alta`() {
-        // Con la menor edad media del catálogo (40 años) y factor 0.90 siempre se supera EDAD_ALTA (BBDD 2.3.1).
-        (ReglasAnimal.edadMaxima(40, 0.90).totalDias > ReglasAnimal.EDAD_ALTA_ANIOS * Edad.DIAS_ANIO) shouldBe true
-    }
-
-    @Test
-    fun `descomposicion en anios meses y dias`() {
-        Edad.deDias(0) shouldBe Edad(0, 0, 0)
-        Edad.deDias(359) shouldBe Edad(0, 11, 29)
-        Edad.deDias(360) shouldBe Edad(1, 0, 0)
-        Edad(3, 2, 1).totalDias shouldBe 3 * 360 + 60 + 1
-    }
-
     @Test
     fun `catalogo exige exactamente dos distintos y del catalogo`() {
         val c = CatalogoFicha(

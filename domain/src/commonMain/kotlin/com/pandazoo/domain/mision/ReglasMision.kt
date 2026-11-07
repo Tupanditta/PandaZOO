@@ -39,8 +39,8 @@ object ReglasMision {
         "animales_habitat" to "numero_animales",
         "espacios_ocupados_habitat" to "numero_espacios_requeridos",
         "subir_prestigio" to "nivel_prestigio_requerido",
-        "vender_especie_edad" to null,
-        "vender_edad" to null,
+        "vender_especie_nivel" to null,
+        "vender_nivel" to null,
         "familia" to "numero_minimo_hermanos",
         "familia_especie" to "numero_minimo_hermanos",
         "satisfaccion_minima" to "satisfaccion_minima",
@@ -104,10 +104,9 @@ object ReglasMision {
         return idInstancia.substring(0, corte + 1) + (n + 1)
     }
 
-    /** ¿La misión de crecimiento cuenta a un animal que pasó de `antes` a `despues` años completos? */
-    fun cruzaEdad(antesAnios: Int, despuesAnios: Int, requerida: Double): Boolean =
-        antesAnios < requerida && despuesAnios >= requerida
+    /** ¿La misión de crecimiento cuenta a un animal que pasó del nivel `antes` al nivel `despues`? */
+    fun alcanzaNivel(antes: Int, despues: Int, requerido: Double): Boolean = antes < requerido && despues >= requerido
 
-    /** ¿La venta de un animal de `edadAnios` cumple la edad de una misión de venta? */
-    fun ventaCumple(edadAnios: Int, requerida: Double): Boolean = edadAnios >= requerida
+    /** ¿La venta de un animal de `nivel` cumple el nivel de una misión de venta? */
+    fun ventaCumple(nivel: Int, requerido: Double): Boolean = nivel >= requerido
 }

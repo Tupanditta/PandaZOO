@@ -138,7 +138,9 @@ class Sprint3UiTest {
             sinIdentificadoresTecnicos(c)
             onNodeWithText("Pincho").performClick()
 
-            esperar("20 años, 0 meses y 0 días")
+            esperar("1 de 15") // nivel inicial y tope del rango Común
+            esperar("0 de 72 ciclos sanos para el nivel 2")
+            esperar("Común")
             esperar("100%")
             esperar("Sano")
             esperar("Cuidador, Líder")
@@ -151,7 +153,7 @@ class Sprint3UiTest {
     fun `T3_14 un nombre repetido se acepta y la lista distingue los homonimos sin claves`() =
         prueba { c ->
             val sp = espacio(c, "Madriguera")
-            DatosDePrueba(c.bd, c.ids).animal(c.idPartida, sp, "erizo", "Pincho")
+            DatosDePrueba(c.bd, c.ids).animal(c.idPartida, sp, "erizo", "Pincho", nivel = 3)
             onNodeWithContentDescription("Abrir tienda").performClick()
             pulsar("Comprar animales")
             esperar("Erizo")
@@ -170,8 +172,8 @@ class Sprint3UiTest {
             onNodeWithContentDescription("Volver").performClick()
             onNodeWithContentDescription("Volver").performClick()
             irAlEspacio()
-            esperar("Pincho · 1 año")
-            esperar("Pincho · 20 años")
+            esperar("Pincho · nivel 1")
+            esperar("Pincho · nivel 3")
             sinIdentificadoresTecnicos(c)
         }
 
@@ -199,7 +201,7 @@ class Sprint3UiTest {
             // Editar: sin dos habilidades y dos rasgos no se puede guardar.
             esperar("Editar ficha")
             pulsar("Editar ficha")
-            esperar("Especie, edad, alimentación, salud y satisfacción no se pueden editar.")
+            esperar("Especie, nivel, alimentación, salud y satisfacción no se pueden editar.")
             onNodeWithText("Guardar").performScrollTo().assertIsNotEnabled()
             elegirCuatroEtiquetas()
             onNodeWithText("Guardar").performScrollTo().assertIsEnabled().performClick()
@@ -218,10 +220,12 @@ class Sprint3UiTest {
             esperar("Cuidador, Líder")
             c.consultarZoo.espacio(c.idPartida, origen)!!.estado.name shouldBe "ACTIVO"
 
-            // Vender: exige confirmación, no acredita fondos y ofrece la baja del espacio vacío.
+            // Vender: exige confirmación con el importe según el nivel, lo acredita y ofrece la baja del espacio vacío.
             val antes = fondos(c)
             pulsar("Vender")
             esperar("Vender animal")
+            esperar("Vas a vender a Pincho (nivel 1) por 🪙 10.00", subcadena = true)
+            esperar("En el nivel 10 se recupera el coste de compra", subcadena = true)
             onNodeWithText("Cancelar").performClick()
             c.bd.uno("SELECT COUNT(*) FROM Animal WHERE estado_vital = 'VIVO'") { it.entero(0) } shouldBe 1
             pulsar("Vender")
@@ -232,7 +236,7 @@ class Sprint3UiTest {
             // Tras la venta se vuelve a la pantalla del espacio original, activo y vacío.
             esperar("Este espacio no tiene animales.")
             c.bd.uno("SELECT estado_vital FROM Animal") { it.texto(0) } shouldBe "VENDIDO"
-            fondos(c) shouldBe antes
+            fondos(c) shouldBe antes + Dinero.desdeDecimal(10.0)
             c.consultarZoo.espacio(c.idPartida, refugio)!!.estado.name shouldBe "INACTIVO"
             c.consultarZoo.espacio(c.idPartida, origen)!!.estado.name shouldBe "ACTIVO"
             sinIdentificadoresTecnicos(c)
@@ -252,5 +256,31 @@ class Sprint3UiTest {
             onNodeWithText("Confirmar baja").performClick()
             esperar("De baja", subcadena = true) // vuelve a la lista del hábitat, donde figura de baja
             c.consultarZoo.espacio(c.idPartida, sp)!!.estado.name shouldBe "INACTIVO"
+        }
+
+    @Test
+    fun `TN_12 la ficha muestra el nivel su progreso el rango y el valor de venta sin edad ni identificadores`() =
+        prueba { c ->
+            val sp = espacio(c, "Madriguera")
+            DatosDePrueba(c.bd, c.ids).animal(c.idPartida, sp, "erizo", "Veterano", nivel = 15)
+            DatosDePrueba(c.bd, c.ids).animal(c.idPartida, sp, "erizo", "Novato", nivel = 8, ciclosNivel = 30)
+            irAlEspacio()
+            esperar("Nivel 15 · Alimentación 100%", subcadena = true)
+            onNodeWithText("Veterano").performClick()
+            esperar("15 de 15")
+            esperar("Nivel máximo alcanzado")
+            esperar("Común")
+            esperar("🪙 300.00") // venta en el tope del rango 1
+            textos().forEach { t ->
+                t.contains("Edad", ignoreCase = true) shouldBe false
+                t.contains("años") shouldBe false
+            }
+            sinIdentificadoresTecnicos(c)
+            onNodeWithContentDescription("Volver").performClick()
+            onNodeWithText("Novato").performClick()
+            esperar("8 de 15")
+            esperar("30 de 72 ciclos sanos para el nivel 9")
+            esperar("🪙 ", subcadena = true)
+            sinIdentificadoresTecnicos(c)
         }
 }

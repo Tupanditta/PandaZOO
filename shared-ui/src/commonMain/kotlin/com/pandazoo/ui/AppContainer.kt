@@ -125,7 +125,7 @@ class AppContainer(
     // Sprint 3: gestión de especímenes.
     private val animales = AnimalSql(bd)
     val catalogoFicha: CatalogoFicha = cfg.catalogoFicha()
-    val adquirirAnimal = AdquirirAnimal(ejecutor, economia, zoo, animales, catalogoFicha, azar, ids, reloj, recalcularSatisfaccion, misionesRepo, seguimientoMisiones)
+    val adquirirAnimal = AdquirirAnimal(ejecutor, economia, zoo, animales, catalogoFicha, ids, reloj, recalcularSatisfaccion, misionesRepo, seguimientoMisiones)
     val editarFicha = EditarFicha(ejecutor, animales, catalogoFicha, recalcularSatisfaccion)
     val reubicarAnimal = ReubicarAnimal(ejecutor, zoo, animales, recalcularSatisfaccion)
     val venderAnimal = VenderAnimal(ejecutor, economia, zoo, animales, reloj, recalcularSatisfaccion, seguimientoMisiones)
@@ -150,7 +150,11 @@ class AppContainer(
         ejecutor, ciclos, animales, auditoria, recalcularSatisfaccion, azar, reloj,
         reproduccion = EtapaReproduccion(reproduccion, auditoria, azar, reloj),
         misiones = EtapaMisiones(seguimientoMisiones),
+        ciclosPorNivel = cfg.reglas.nivel.ciclosPorNivel,
     )
+
+    /** Ciclos sanos que sube un nivel (`reglas_de_calculo.nivel.ciclos_por_nivel`), para mostrar el progreso. */
+    val ciclosPorNivel: Int = cfg.reglas.nivel.ciclosPorNivel
     val reclamarBeneficios = ReclamarBeneficios(ejecutor, economia, beneficios, ciclos, reloj)
     val consultarBeneficios = ConsultarBeneficios(beneficios, economia)
     val consultarSeguimiento = ConsultarSeguimientoCritico(SeguimientoSql(bd))
@@ -166,7 +170,7 @@ class AppContainer(
     val consultarMisiones = ConsultarMisiones(misionesRepo)
 
     // Sprint 7: reproducción.
-    val aceptarReproduccion = AceptarReproduccion(ejecutor, reproduccion, ciclos, animales, zoo, catalogoFicha, azar, ids, recalcularSatisfaccion)
+    val aceptarReproduccion = AceptarReproduccion(ejecutor, reproduccion, ciclos, animales, zoo, catalogoFicha, ids, recalcularSatisfaccion)
     val consultarReproduccion = ConsultarReproduccion(reproduccion, ciclos, animales, zoo)
     private val purgarRetencion = PurgarRetencion(bd, RetencionSql(bd), ciclos, cfg.retencion)
 
@@ -251,7 +255,7 @@ class AppContainer(
     fun anadirPanda(): Boolean {
         check(depuracion) { "Añadir un panda directo solo existe en modo de depuración" }
         return bd.ejecutar {
-            val especie = animales.especieTienda(idPartida, "panda") ?: return@ejecutar false
+            if (animales.especieTienda(idPartida, "panda") == null) return@ejecutar false
             val espacio = zoo.espaciosConCupo(idPartida).firstOrNull()?.espacio ?: return@ejecutar false
             animales.crear(
                 idPartida,
@@ -260,7 +264,6 @@ class AppContainer(
                     idEspecie = "panda",
                     idEspacio = espacio.id,
                     nombre = "Panda",
-                    edadMaxima = ReglasAnimal.edadMaxima(especie.edadMediaAnios, 1.0),
                     habilidades = catalogoFicha.habilidades.take(ReglasAnimal.HABILIDADES_POR_FICHA).map { it.id },
                     rasgos = catalogoFicha.rasgos.take(ReglasAnimal.RASGOS_POR_FICHA).map { it.id },
                     idPareja = null,

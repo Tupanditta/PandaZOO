@@ -10,9 +10,9 @@ class MisionTest {
     @Test
     fun `T9_2 el objetivo sale del parametro de cada tipo y las ventas valen uno`() {
         ReglasMision.objetivo("comprar_especie", mapOf("cantidad_requerida" to 2.0)) shouldBe 2.0
-        ReglasMision.objetivo("crecer_especie", mapOf("cantidad_animales" to 3.0, "edad_requerida" to 24.0)) shouldBe 3.0
+        ReglasMision.objetivo("crecer_especie", mapOf("cantidad_animales" to 3.0, "nivel_requerido" to 3.0)) shouldBe 3.0
         ReglasMision.objetivo("espacios_ocupados_habitat", mapOf("numero_espacios_requeridos" to 2.0)) shouldBe 2.0
-        ReglasMision.objetivo("vender_edad", mapOf("edad_requerida" to 22.0)) shouldBe 1.0
+        ReglasMision.objetivo("vender_nivel", mapOf("nivel_requerido" to 4.0)) shouldBe 1.0
         ReglasMision.objetivo("satisfaccion_minima", mapOf("satisfaccion_minima" to 0.6)) shouldBe 0.6
         ReglasMision.objetivo("inventada", emptyMap()) shouldBe null
         ReglasMision.objetivo("familia", emptyMap()) shouldBe null
@@ -27,19 +27,19 @@ class MisionTest {
     }
 
     @Test
-    fun `T9_2 cruce de edad solo cuenta al pasar de menos a igual o mas`() {
-        ReglasMision.cruzaEdad(23, 24, 24.0) shouldBe true
-        ReglasMision.cruzaEdad(23, 23, 24.0) shouldBe false
-        ReglasMision.cruzaEdad(24, 24, 24.0) shouldBe false
-        ReglasMision.cruzaEdad(24, 25, 24.0) shouldBe false
-        ReglasMision.cruzaEdad(22, 25, 24.0) shouldBe true
+    fun `TN_10 alcanzar nivel solo cuenta al pasar de menos a igual o mas`() {
+        ReglasMision.alcanzaNivel(2, 3, 3.0) shouldBe true
+        ReglasMision.alcanzaNivel(2, 2, 3.0) shouldBe false
+        ReglasMision.alcanzaNivel(3, 3, 3.0) shouldBe false
+        ReglasMision.alcanzaNivel(3, 4, 3.0) shouldBe false
+        ReglasMision.alcanzaNivel(1, 4, 3.0) shouldBe true
     }
 
     @Test
-    fun `T9_2 una venta cumple con edad mayor o igual`() {
-        ReglasMision.ventaCumple(22, 22.0) shouldBe true
-        ReglasMision.ventaCumple(21, 22.0) shouldBe false
-        ReglasMision.ventaCumple(30, 22.0) shouldBe true
+    fun `TN_10 una venta cumple con nivel mayor o igual`() {
+        ReglasMision.ventaCumple(4, 4.0) shouldBe true
+        ReglasMision.ventaCumple(3, 4.0) shouldBe false
+        ReglasMision.ventaCumple(15, 4.0) shouldBe true
     }
 
     @Test

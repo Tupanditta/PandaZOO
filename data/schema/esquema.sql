@@ -21,7 +21,6 @@ CREATE TABLE Especie (
     peso_madre REAL NOT NULL CHECK (peso_madre >= 0),
     peso_hermanos REAL NOT NULL CHECK (peso_hermanos >= 0),
     peso_afinidad REAL NOT NULL CHECK (peso_afinidad >= 0),
-    edad_media_anios INTEGER NOT NULL CHECK (edad_media_anios > 0),
     kg_bambu_por_incremento INTEGER NOT NULL CHECK (kg_bambu_por_incremento > 0),
     FOREIGN KEY (id_rango) REFERENCES RangoEspecie(id_rango)
         ON UPDATE RESTRICT ON DELETE RESTRICT,
@@ -51,7 +50,11 @@ CREATE TABLE RangoEspecie (
     probabilidad_reproduccion REAL NOT NULL CHECK (probabilidad_reproduccion BETWEEN 0.00 AND 1.00),
     penalizacion_hijo_reproduccion REAL NOT NULL CHECK (penalizacion_hijo_reproduccion BETWEEN 0.00 AND 1.00),
     probabilidad_enfermedad REAL NOT NULL CHECK (probabilidad_enfermedad BETWEEN 0.00 AND 1.00),
-    beneficio_por_animal_ciclo REAL NOT NULL CHECK (beneficio_por_animal_ciclo >= 0 AND beneficio_por_animal_ciclo = ROUND(beneficio_por_animal_ciclo, 2))
+    beneficio_base_animal_ciclo REAL NOT NULL CHECK (beneficio_base_animal_ciclo >= 0 AND beneficio_base_animal_ciclo = ROUND(beneficio_base_animal_ciclo, 2)),
+    nivel_maximo INTEGER NOT NULL CHECK (nivel_maximo >= 2),
+    multiplicador_nivel_maximo REAL NOT NULL CHECK (multiplicador_nivel_maximo >= 1.00),
+    valor_venta_base REAL NOT NULL CHECK (valor_venta_base >= 0 AND valor_venta_base = ROUND(valor_venta_base, 2)),
+    factor_venta_nivel_maximo REAL NOT NULL CHECK (factor_venta_nivel_maximo > 1.00)
 )
 ;;
 CREATE TABLE AfinidadEspecies (
@@ -204,12 +207,8 @@ CREATE TABLE Animal (
     id_especie TEXT NOT NULL,
     id_espacio TEXT NULL,
     nombre TEXT NOT NULL,
-    edad_anios INTEGER NOT NULL DEFAULT 0 CHECK (edad_anios >= 0),
-    edad_meses INTEGER NOT NULL DEFAULT 0 CHECK (edad_meses BETWEEN 0 AND 11),
-    edad_dias INTEGER NOT NULL DEFAULT 0 CHECK (edad_dias BETWEEN 0 AND 29),
-    edad_maxima_anios INTEGER NOT NULL CHECK (edad_maxima_anios >= 0),
-    edad_maxima_meses INTEGER NOT NULL CHECK (edad_maxima_meses BETWEEN 0 AND 11),
-    edad_maxima_dias INTEGER NOT NULL CHECK (edad_maxima_dias BETWEEN 0 AND 29),
+    nivel INTEGER NOT NULL DEFAULT 1 CHECK (nivel >= 1),
+    ciclos_nivel INTEGER NOT NULL DEFAULT 0 CHECK (ciclos_nivel >= 0),
     nivel_alimentacion INTEGER NOT NULL DEFAULT 100 CHECK (nivel_alimentacion BETWEEN 0 AND 100 AND nivel_alimentacion % 10 = 0),
     estado_salud TEXT NOT NULL DEFAULT 'SANO' CHECK (estado_salud IN ('SANO', 'ENFERMO')),
     estado_vital TEXT NOT NULL DEFAULT 'VIVO' CHECK (estado_vital IN ('VIVO', 'MUERTO', 'VENDIDO')),

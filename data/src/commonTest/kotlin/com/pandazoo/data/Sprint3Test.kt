@@ -12,7 +12,6 @@ import com.pandazoo.application.caso.FichaNueva
 import com.pandazoo.application.error.MotivoRechazo
 import com.pandazoo.application.error.Resultado
 import com.pandazoo.application.puerto.EstadoTienda
-import com.pandazoo.domain.animal.Edad
 import com.pandazoo.domain.economia.Dinero
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactly
@@ -51,12 +50,11 @@ class Sprint3Test {
         especie: String = "erizo",
         hab: List<String> = habilidades,
         ras: List<String> = rasgos,
-        pareja: String? = null,
         amigo: String? = null,
         id: String = nueva(),
         entorno: Entorno = e,
     ) = entorno.adquirirAnimal.ejecutar(
-        ComandoAdquirirAnimal(entorno.idPartida, especie, espacio, FichaNueva(nombre, hab, ras, pareja, amigo), id),
+        ComandoAdquirirAnimal(entorno.idPartida, especie, espacio, FichaNueva(nombre, hab, ras, amigo), id),
     )
 
     private fun editar(
@@ -82,12 +80,9 @@ class Sprint3Test {
 
     private fun <T> exito(r: Resultado<T>): T = (r as Resultado.Exito<T>).valor
 
-    /** Animal ya adulto, alta directa para montar escenarios (los de compra nacen con 20 años). */
-    private fun existente(espacio: String, especie: String, nombre: String, edad: Int = 20, alimentacion: Int = 100, enfermo: Boolean = false): String {
-        val id = e.datos.animal(e.idPartida, espacio, especie, nombre, alimentacion, enfermo)
-        e.bd.escribir("UPDATE Animal SET edad_anios = ? WHERE id_animal = ?", edad, id)
-        return id
-    }
+    /** Animal ya criado, alta directa para montar escenarios (los de compra nacen en el nivel 1; este, por defecto, en el 4). */
+    private fun existente(espacio: String, especie: String, nombre: String, nivel: Int = 4, alimentacion: Int = 100, enfermo: Boolean = false): String =
+        e.datos.animal(e.idPartida, espacio, especie, nombre, alimentacion, enfermo, nivel = nivel)
 
     private fun satisfaccion(id: String) = e.bd.uno("SELECT satisfaccion_actual FROM Animal WHERE id_animal = ?", id) { it.decimal(0) }!!
 
@@ -193,32 +188,33 @@ class Sprint3Test {
     // ---- T3.2 valores iniciales ----
 
     @Test
-    fun `T3_2 el animal comprado nace con 20 anios 100 por ciento sano y edad maxima en el rango`() {
+    fun `TN_2 el animal comprado nace en el nivel 1 con 100 por ciento y sano`() {
         val sp = espacio()
         val id = exito(comprar(sp, "Pincho")).idAnimal
         val f = e.consultarAnimales.ficha(e.idPartida, id)!!
-        f.edad shouldBe Edad(20, 0, 0)
+        f.nivel shouldBe 1
+        f.ciclosNivel shouldBe 0
+        f.parametros.nivelMaximo shouldBe 15 // erizo: rango Común
         f.alimentacion shouldBe 100
         f.enfermo shouldBe false
         f.estadoVital shouldBe "VIVO"
-        f.edadMaxima shouldBe Edad(40, 0, 0) // erizo: 40 años de edad media, factor 1.0 con azar 0.5
         f.rango shouldBe "Común"
         f.habilidades.toSet() shouldBe habilidades.toSet()
         f.rasgos.toSet() shouldBe rasgos.toSet()
     }
 
     @Test
-    fun `T3_2 los extremos del azar dan los extremos de la edad maxima`() {
-        val minimo = Entorno(valorAzar = 0.0)
-        val maximo = Entorno(valorAzar = 0.999999)
+    fun `TN_2 el nivel inicial no depende del azar`() {
+        val bajo = Entorno(valorAzar = 0.0)
+        val alto = Entorno(valorAzar = 0.999999)
         try {
-            val a = exito(comprar(minimo.datos.espacio(minimo.idPartida, minimo.habitat("bosque_templado"), "E"), "Pincho", entorno = minimo))
-            val b = exito(comprar(maximo.datos.espacio(maximo.idPartida, maximo.habitat("bosque_templado"), "E"), "Pincho", entorno = maximo))
-            minimo.consultarAnimales.ficha(minimo.idPartida, a.idAnimal)!!.edadMaxima shouldBe Edad(36, 0, 0) // 40·360·0.90 días
-            maximo.consultarAnimales.ficha(maximo.idPartida, b.idAnimal)!!.edadMaxima shouldBe Edad(44, 0, 0) // 40·360·1.10 días
+            val a = exito(comprar(bajo.datos.espacio(bajo.idPartida, bajo.habitat("bosque_templado"), "E"), "Pincho", entorno = bajo))
+            val b = exito(comprar(alto.datos.espacio(alto.idPartida, alto.habitat("bosque_templado"), "E"), "Pincho", entorno = alto))
+            bajo.consultarAnimales.ficha(bajo.idPartida, a.idAnimal)!!.nivel shouldBe 1
+            alto.consultarAnimales.ficha(alto.idPartida, b.idAnimal)!!.nivel shouldBe 1
         } finally {
-            minimo.cerrar()
-            maximo.cerrar()
+            bajo.cerrar()
+            alto.cerrar()
         }
     }
 
@@ -300,27 +296,39 @@ class Sprint3Test {
     // ---- T3.7 vínculos ----
 
     @Test
-    fun `T3_7 pareja valida en la compra es reciproca`() {
+    fun `TN_8 la compra no ofrece pareja y el animal nuevo no tiene vinculo`() {
         val sp = espacio()
-        val otro = existente(sp, "erizo", "Zarza")
-        val nuevo = exito(comprar(sp, "Pincho", pareja = otro)).idAnimal
-        campo(nuevo, "id_pareja") shouldBe otro
-        campo(otro, "id_pareja") shouldBe nuevo
+        existente(sp, "erizo", "Zarza")
+        val nuevo = exito(comprar(sp, "Pincho")).idAnimal
+        campo(nuevo, "id_pareja") shouldBe null
     }
 
     @Test
-    fun `T3_7 pareja de otra especie de otro espacio menor de 16 o ya ocupada se rechaza`() {
+    fun `TN_8 CU-05 rechaza la pareja con nivel 3 y la acepta con nivel 4 y es reciproca`() {
+        val sp = espacio()
+        val a = existente(sp, "erizo", "Alfa", nivel = 3)
+        val b = existente(sp, "erizo", "Beta", nivel = 4)
+        rechazo(editar(a, "Alfa", pareja = b)) shouldBe MotivoRechazo.ParejaNivelInsuficiente
+        rechazo(editar(b, "Beta", pareja = a)) shouldBe MotivoRechazo.ParejaNivelInsuficiente
+        e.bd.escribir("UPDATE Animal SET nivel = 4 WHERE id_animal = ?", a)
+        exito(editar(a, "Alfa", pareja = b))
+        campo(a, "id_pareja") shouldBe b
+        campo(b, "id_pareja") shouldBe a
+    }
+
+    @Test
+    fun `T3_7 pareja de otra especie de otro espacio o ya ocupada se rechaza en la edicion`() {
         val sp = espacio(capacidad = 10)
         val otroEspacio = espacio("Otra")
-        rechazo(comprar(sp, "A", pareja = existente(sp, "nutria", "Nut"))) shouldBe MotivoRechazo.ParejaOtraEspecie
-        rechazo(comprar(sp, "A", pareja = existente(otroEspacio, "erizo", "Lejano"))) shouldBe MotivoRechazo.ParejaOtroEspacio
-        rechazo(comprar(sp, "A", pareja = existente(sp, "erizo", "Cria", edad = 15))) shouldBe MotivoRechazo.ParejaMenorDeEdad
-        val a = existente(sp, "erizo", "Par1")
-        val b = existente(sp, "erizo", "Par2")
-        e.datos.parejas(e.idPartida, a, b)
-        rechazo(comprar(sp, "A", pareja = a)) shouldBe MotivoRechazo.ParejaOcupada
-        rechazo(comprar(sp, "A", pareja = "fantasma")) shouldBe MotivoRechazo.ParejaInexistente
-        e.contar("Animal") shouldBe 5 // solo los animales del escenario
+        val a = existente(sp, "erizo", "Alfa")
+        rechazo(editar(a, "Alfa", pareja = existente(sp, "nutria", "Nut"))) shouldBe MotivoRechazo.ParejaOtraEspecie
+        rechazo(editar(a, "Alfa", pareja = existente(otroEspacio, "erizo", "Lejano"))) shouldBe MotivoRechazo.ParejaOtroEspacio
+        val p1 = existente(sp, "erizo", "Par1")
+        val p2 = existente(sp, "erizo", "Par2")
+        e.datos.parejas(e.idPartida, p1, p2)
+        rechazo(editar(a, "Alfa", pareja = p1)) shouldBe MotivoRechazo.ParejaOcupada
+        rechazo(editar(a, "Alfa", pareja = "fantasma")) shouldBe MotivoRechazo.ParejaInexistente
+        campo(a, "id_pareja") shouldBe null
     }
 
     @Test
@@ -338,13 +346,13 @@ class Sprint3Test {
         val sp = espacio()
         val a = existente(sp, "erizo", "Alfa")
         val b = existente(sp, "erizo", "Beta")
-        val menor = existente(sp, "erizo", "Menor", edad = 5)
+        val menor = existente(sp, "erizo", "Menor", nivel = 3)
         val nut = existente(sp, "nutria", "Nut")
         val antes = instantanea()
         rechazo(editar(a, "Alfa", pareja = a)) shouldBe MotivoRechazo.AutoReferencia
         rechazo(editar(a, "Alfa", amigo = a)) shouldBe MotivoRechazo.AutoReferencia
         rechazo(editar(a, "Alfa", pareja = nut)) shouldBe MotivoRechazo.ParejaOtraEspecie
-        rechazo(editar(a, "Alfa", pareja = menor)) shouldBe MotivoRechazo.ParejaMenorDeEdad
+        rechazo(editar(a, "Alfa", pareja = menor)) shouldBe MotivoRechazo.ParejaNivelInsuficiente
         instantanea() shouldBe antes
 
         exito(editar(a, "Alfa", pareja = b, amigo = nut))
@@ -390,14 +398,14 @@ class Sprint3Test {
     // ---- T3.8 campos protegidos ----
 
     @Test
-    fun `T3_8 editar la ficha no toca especie edad alimentacion salud estado ni espacio`() {
+    fun `T3_8 editar la ficha no toca especie nivel alimentacion salud estado ni espacio`() {
         val sp = espacio()
         val id = existente(sp, "erizo", "Alfa", alimentacion = 60)
         e.recalcular.alConsolidar(e.idPartida, AlcanceRecalculo.Parque)
-        val columnas = "id_especie, edad_anios, edad_meses, edad_dias, edad_maxima_anios, nivel_alimentacion, estado_salud, estado_vital, id_espacio, satisfaccion_actual"
-        val antes = e.bd.uno("SELECT $columnas FROM Animal WHERE id_animal = ?", id) { f -> (0 until 10).map { f.textoONulo(it) } }
+        val columnas = "id_especie, nivel, ciclos_nivel, nivel_alimentacion, estado_salud, estado_vital, id_espacio, satisfaccion_actual"
+        val antes = e.bd.uno("SELECT $columnas FROM Animal WHERE id_animal = ?", id) { f -> (0 until 8).map { f.textoONulo(it) } }
         exito(editar(id, "Alfa Dos", hab = listOf("mediador", "vigilante"), ras = listOf("valiente", "astuto")))
-        e.bd.uno("SELECT $columnas FROM Animal WHERE id_animal = ?", id) { f -> (0 until 10).map { f.textoONulo(it) } } shouldBe antes
+        e.bd.uno("SELECT $columnas FROM Animal WHERE id_animal = ?", id) { f -> (0 until 8).map { f.textoONulo(it) } } shouldBe antes
         val ficha = e.consultarAnimales.ficha(e.idPartida, id)!!
         ficha.nombre shouldBe "Alfa Dos"
         ficha.habilidades.toSet() shouldBe setOf("mediador", "vigilante")
@@ -489,7 +497,7 @@ class Sprint3Test {
     // ---- T3.10 vender ----
 
     @Test
-    fun `T3_10 la venta correcta no suma fondos libera aforo y mantiene la genealogia`() {
+    fun `T3_10 la venta correcta abona el importe por nivel libera aforo y mantiene la genealogia`() {
         val sp = espacio()
         val padre = existente(sp, "erizo", "Padre")
         val madre = existente(sp, "erizo", "Madre")
@@ -502,7 +510,8 @@ class Sprint3Test {
 
         val r = exito(vender(padre))
         r.origenVacio shouldBe false
-        e.fondos() shouldBe fondos
+        r.importe shouldBe Dinero.desdeDecimal(73.33) // erizo (rango 1, base 200) en el nivel 4: 200 · (0.05 + 0.95 · 3 / 9)
+        e.fondos() shouldBe fondos + r.importe
         campo(padre, "estado_vital") shouldBe "VENDIDO"
         campo(padre, "id_espacio") shouldBe null
         campo(padre, "id_pareja") shouldBe null
@@ -510,7 +519,7 @@ class Sprint3Test {
         campo(cria, "id_mejor_amigo") shouldBe null
         campo(cria, "id_padre") shouldBe padre // la genealogía se conserva
         e.consultarZoo.espacio(e.idPartida, sp)!!.ocupacion shouldBe 2
-        e.contar("MovimientoEconomico", "tipo = 'VENTA' AND importe = 0.0") shouldBe 1
+        e.contar("MovimientoEconomico", "tipo = 'VENTA' AND importe = 73.33") shouldBe 1
         e.contar("RasgoPersonalidad", "id_animal = '$padre'") shouldBe 0
         (satisfaccion(cria) < satisfaccionCria) shouldBe true // perdió padre y amigo vivos: se recalculó
     }
@@ -681,13 +690,12 @@ class Sprint3Test {
     @Test
     fun `la ficha lleva nombres legibles de espacio habitat pareja y amigo`() {
         val sp = espacio("Madriguera")
-        val par = existente(sp, "erizo", "Zarza")
         val amigo = existente(sp, "nutria", "Nut")
-        val id = exito(comprar(sp, "Pincho", pareja = par, amigo = amigo)).idAnimal
+        val id = exito(comprar(sp, "Pincho", amigo = amigo)).idAnimal
         val f = e.consultarAnimales.ficha(e.idPartida, id)!!
         f.nombreEspacio shouldBe "Madriguera"
         f.nombreHabitat shouldBe "Hábitat Bosque templado"
-        f.nombrePareja shouldBe "Zarza"
+        f.nombrePareja shouldBe null
         f.nombreMejorAmigo shouldBe "Nut"
         f.especie shouldBe "Erizo"
         (f.satisfaccion > 0.0) shouldBe true

@@ -61,15 +61,23 @@ La unidad monetaria del juego se representa con un dibujo de una moneda dorada. 
 
 El coste de un recurso comprado es `cantidad_solicitada * precio_unitario`. El precio concreto del bambú es común por kilogramo y el precio del insumo es por unidad. Los espacios se cobran según su capacidad máxima en `CosteEspacio`; los animales se cobran por el rango de su especie en `CosteRango`. La excepción de unidad exclusiva temporal con coste cero prevalece sobre el coste ordinario. Los valores concretos están en `tablas.costes_espacios` (capacidades 2, 4, 6, 8, 10, 15 y 20), `tablas.costes_rangos`, `tablas.costes_alimentos` y `tablas.costes_insumos` de `valores_y_pesos.json`.
 
-La venta de un animal acredita `0` unidades monetarias. La operación sigue registrándose y actualizando el estado del animal como venta confirmada, pero no incrementa los fondos.
+La venta de un animal acredita en `Partida.fondos` el importe `V` definido en esta sección (valor de venta según nivel y rango), lo registra como `MovimientoEconomico` de tipo `VENTA` y actualiza el estado del animal a venta confirmada, todo en la misma transacción.
 
 El consumo médico de un tratamiento se determina por rango e insumo. El tratamiento solo se confirma si hay existencias suficientes de todos los insumos requeridos; consume todas las cantidades configuradas de forma atómica y restablece la salud a «sano». No se permiten tratamientos parciales.
 
-El beneficio se calcula para el parque completo, no por animal, espacio o hábitat. Al cerrar cada ciclo, el importe generado se suma a los beneficios acumulados pendientes. Una reclamación acredita el total pendiente en `Partida.fondos`, marca los registros incluidos como reclamados y deja el pendiente acumulado en cero. Las mutaciones entre ciclos actualizan los datos mostrados, pero no cambian el total acumulado reclamable; solo el cierre de ciclo suma beneficios al acumulado. Las muertes, ventas y demás salidas de animales solo afectan a beneficios futuros; sin animales vivos, el beneficio generado es cero. **Fórmula del beneficio por ciclo.** Con `S_global` (satisfacción global vigente, `0..1`, sin redondear) y `beneficio_por_animal_ciclo(r)` el importe configurado para el rango `r` en `RangoEspecie`:
+El beneficio se calcula para el parque completo (cada ciclo genera un único importe), pero se compone de la aportación de cada animal vivo alojado, que depende de su satisfacción individual, de su nivel y del rango de su especie. Al cerrar cada ciclo, el importe generado se suma a los beneficios acumulados pendientes. Una reclamación acredita el total pendiente en `Partida.fondos`, marca los registros incluidos como reclamados y deja el pendiente acumulado en cero. Las mutaciones entre ciclos actualizan los datos mostrados, pero no cambian el total acumulado reclamable; solo el cierre de ciclo suma beneficios al acumulado. Las muertes, ventas y demás salidas de animales solo afectan a beneficios futuros; sin animales vivos, el beneficio generado es cero. **Fórmula del beneficio por ciclo.** Para cada animal vivo alojado `i`, con `S_i` su satisfacción individual (`Animal.satisfaccion_actual` persistida al inicio del ciclo, `0..1`, sin redondear), `n_i` su nivel tras la etapa de nivel del ciclo y `r` el rango de su especie en `RangoEspecie`:
 
-$$B_{ciclo} = redondear_{0.01}\Big(S_{global} \times \sum_{i \in vivos\ alojados} beneficio\_por\_animal\_ciclo(rango(especie_i))\Big)$$
+$$M_{nivel}(n) = 1 + \big(multiplicador\_nivel\_maximo(r) - 1\big) \times \frac{n - 1}{nivel\_maximo(r) - 1}$$
 
-El redondeo es al centésimo más cercano con los medios hacia arriba. Sin animales vivos alojados, `B_ciclo = 0`. No hay multiplicadores por especie: las exclusivas usan el importe del rango 5. Se calcula en la etapa «beneficios» del ciclo (tras las defunciones), con la satisfacción global vigente al inicio de esa etapa. Un `B_ciclo` igual a `0` no genera fila en `BeneficioPendiente`. Los importes están en `tablas.rangos_especie[].beneficio_por_animal_ciclo` (4.00, 8.00, 14.00, 22.00 y 35.00).
+$$b_i = beneficio\_base\_animal\_ciclo(r) \times S_i \times M_{nivel}(n_i) \qquad\qquad B_{ciclo} = redondear_{0.01}\Big(\sum_{i \in vivos\ alojados} b_i\Big)$$
+
+`M_nivel(1) = 1` y `M_nivel(nivel_maximo) = multiplicador_nivel_maximo`; es lineal entre ambos y vale `multiplicador_nivel_maximo` también si el animal ya está en el tope. `b_i` no se redondea; solo se redondea la suma al centésimo más cercano con los medios hacia arriba. Sin animales vivos alojados, `B_ciclo = 0`. A igual satisfacción, un animal de mayor nivel aporta más beneficio. No hay multiplicadores por especie: las exclusivas usan los valores del rango 5. La satisfacción global no interviene (solo en el prestigio). Se calcula en la etapa «beneficios» del ciclo, tras las defunciones y la etapa de nivel. Un `B_ciclo` igual a `0` no genera fila en `BeneficioPendiente`. Los valores están en `tablas.rangos_especie`: beneficio base `12.00`, `24.00`, `40.00`, `64.00` y `100.00`; nivel máximo `15`, `29`, `41`, `51` y `61`; multiplicador en el tope `3.0`, `3.5`, `4.0`, `4.5` y `5.0`.
+
+**Valor de venta de un animal.** Con `n` el nivel del animal, `r` su rango y `n_eq(r) = redondear_medio_arriba(fraccion_equilibrio * nivel_maximo(r))` el nivel de equilibrio (`fraccion_equilibrio = 0.6667`, es decir, 2/3 del tope):
+
+$$F_{venta}(n) = \begin{cases} f_1 + (1 - f_1)\dfrac{n - 1}{n_{eq} - 1} & n \le n_{eq} \\ 1 + \big(factor\_venta\_nivel\_maximo(r) - 1\big)\dfrac{n - n_{eq}}{nivel\_maximo(r) - n_{eq}} & n > n_{eq} \end{cases} \qquad V = redondear_{0.01}\big(valor\_venta\_base(r) \times F_{venta}(n)\big)$$
+
+con `f_1 = factor_venta_nivel_1 = 0.05`. `F_venta(1) = 0.05`, `F_venta(n_eq) = 1` y `F_venta(nivel_maximo) = factor_venta_nivel_maximo`. En los rangos 1 a 4, `valor_venta_base` es igual al coste de compra de `CosteRango`; por tanto, vender en `n_eq` devuelve exactamente lo pagado, por debajo se pierde y por encima se gana. El rango 5 (exclusivas, coste `0`) usa `valor_venta_base` como valor de referencia. Valores: `valor_venta_base` `200.00`, `450.00`, `900.00`, `1800.00` y `4000.00`; `n_eq` `10`, `19`, `27`, `34` y `41`; `factor_venta_nivel_maximo` `1.5`, `1.75`, `2.0`, `2.25` y `2.5`; venta en el tope `300.00`, `787.50`, `1800.00`, `4050.00` y `10000.00`. `V` se calcula sobre el nivel del animal al confirmar la venta.
 
 ## 2. Diccionario de datos DDL (SQLite / Room)
 
@@ -100,7 +108,6 @@ CREATE TABLE Especie (
     peso_madre REAL NOT NULL CHECK (peso_madre >= 0),
     peso_hermanos REAL NOT NULL CHECK (peso_hermanos >= 0),
     peso_afinidad REAL NOT NULL CHECK (peso_afinidad >= 0),
-    edad_media_anios INTEGER NOT NULL CHECK (edad_media_anios > 0),
     kg_bambu_por_incremento INTEGER NOT NULL CHECK (kg_bambu_por_incremento > 0),
     FOREIGN KEY (id_rango) REFERENCES RangoEspecie(id_rango)
         ON UPDATE RESTRICT ON DELETE RESTRICT,
@@ -124,7 +131,7 @@ CREATE TABLE Especie (
 -- siempre un valor calculado. `estado_catalogo` solo distingue COMERCIAL de EXCLUSIVA: el estado «bloqueada» de
 -- una especie comercial para una partida es la ausencia de su fila en `DesbloqueoEspecie`.
 -- `nivel_desbloqueo` procede de `tablas.desbloqueos_prestigio` (0 = disponible desde el inicio; NULL para exclusivas).
--- `edad_media_anios` procede de `tablas.edad_media_especie` y `kg_bambu_por_incremento` de `tablas.alimentos_por_especie`.
+-- `kg_bambu_por_incremento` procede de `tablas.alimentos_por_especie`. Las especies no tienen edad media ni longevidad (RF-51).
 
 CREATE TABLE CompatibilidadBioma (
     id_especie TEXT NOT NULL,
@@ -146,10 +153,17 @@ CREATE TABLE RangoEspecie (
     probabilidad_reproduccion REAL NOT NULL CHECK (probabilidad_reproduccion BETWEEN 0.00 AND 1.00),
     penalizacion_hijo_reproduccion REAL NOT NULL CHECK (penalizacion_hijo_reproduccion BETWEEN 0.00 AND 1.00),
     probabilidad_enfermedad REAL NOT NULL CHECK (probabilidad_enfermedad BETWEEN 0.00 AND 1.00),
-    beneficio_por_animal_ciclo REAL NOT NULL CHECK (beneficio_por_animal_ciclo >= 0 AND beneficio_por_animal_ciclo = ROUND(beneficio_por_animal_ciclo, 2))
+    beneficio_base_animal_ciclo REAL NOT NULL CHECK (beneficio_base_animal_ciclo >= 0 AND beneficio_base_animal_ciclo = ROUND(beneficio_base_animal_ciclo, 2)),
+    nivel_maximo INTEGER NOT NULL CHECK (nivel_maximo >= 2),
+    multiplicador_nivel_maximo REAL NOT NULL CHECK (multiplicador_nivel_maximo >= 1.00),
+    valor_venta_base REAL NOT NULL CHECK (valor_venta_base >= 0 AND valor_venta_base = ROUND(valor_venta_base, 2)),
+    factor_venta_nivel_maximo REAL NOT NULL CHECK (factor_venta_nivel_maximo > 1.00)
 );
 
 -- Cinco rangos (1 Común, 2 Poco común, 3 Raro, 4 Épico, 5 Exclusivo), cargados de `tablas.rangos_especie`.
+-- `beneficio_base_animal_ciclo` es el beneficio de un animal de nivel 1 con satisfacción 1.00 en un ciclo (antes `beneficio_por_animal_ciclo`).
+-- `nivel_maximo` es el tope de nivel de los animales del rango y `multiplicador_nivel_maximo` el valor de `M_nivel` en ese tope (sección 1.4).
+-- `valor_venta_base` y `factor_venta_nivel_maximo` definen el valor de venta según nivel (sección 1.4); `valor_venta_base` coincide con `CosteRango` en los rangos con coste.
 -- Las especies exclusivas pertenecen al rango 5, el de mayor nivel.
 
 CREATE TABLE AfinidadEspecies (
@@ -320,12 +334,8 @@ CREATE TABLE Animal (
     id_especie TEXT NOT NULL,
     id_espacio TEXT NULL,
     nombre TEXT NOT NULL,
-    edad_anios INTEGER NOT NULL DEFAULT 0 CHECK (edad_anios >= 0),
-    edad_meses INTEGER NOT NULL DEFAULT 0 CHECK (edad_meses BETWEEN 0 AND 11),
-    edad_dias INTEGER NOT NULL DEFAULT 0 CHECK (edad_dias BETWEEN 0 AND 29),
-    edad_maxima_anios INTEGER NOT NULL CHECK (edad_maxima_anios >= 0),
-    edad_maxima_meses INTEGER NOT NULL CHECK (edad_maxima_meses BETWEEN 0 AND 11),
-    edad_maxima_dias INTEGER NOT NULL CHECK (edad_maxima_dias BETWEEN 0 AND 29),
+    nivel INTEGER NOT NULL DEFAULT 1 CHECK (nivel >= 1),
+    ciclos_nivel INTEGER NOT NULL DEFAULT 0 CHECK (ciclos_nivel >= 0),
     nivel_alimentacion INTEGER NOT NULL DEFAULT 100 CHECK (nivel_alimentacion BETWEEN 0 AND 100 AND nivel_alimentacion % 10 = 0),
     estado_salud TEXT NOT NULL DEFAULT 'SANO' CHECK (estado_salud IN ('SANO', 'ENFERMO')),
     estado_vital TEXT NOT NULL DEFAULT 'VIVO' CHECK (estado_vital IN ('VIVO', 'MUERTO', 'VENDIDO')),
@@ -355,6 +365,11 @@ CREATE TABLE Animal (
     CHECK (id_animal IS NULL OR id_animal <> id_pareja),
     CHECK (id_animal IS NULL OR id_animal <> id_mejor_amigo)
 );
+
+-- `nivel` sustituye a la edad (RF-51): `1` al alta y `+1` cada `ciclos_por_nivel` ciclos sanos hasta `RangoEspecie.nivel_maximo`;
+-- `ciclos_nivel` (`0 .. ciclos_por_nivel - 1`, siempre `0` en el tope) es el progreso hacia el siguiente nivel. La cota superior depende del rango
+-- de la especie y no puede expresarse como `CHECK` de una sola tabla; la garantiza la regla de dominio de la etapa de nivel
+-- (sección 2.3.1) y la verifica un test de propiedad. `Animal` no guarda edad ni edad máxima.
 
 CREATE TABLE RasgoPersonalidad (
     id_animal TEXT NOT NULL,
@@ -561,6 +576,8 @@ La recuperación procesa como máximo `retencion.max_ciclos_offline` ciclos; si 
 
 Durante una recuperación offline, la alimentación baja 20 puntos porcentuales por ciclo. El nivel al inicio de la recuperación determina el límite total: si era `100%`, `80%` o `60%`, puede bajar hasta `40%`; si era `40%` o `20%`, puede bajar hasta `0%`; si ya era `0%`, no baja más. Alcanzado ese límite, no se aplican más descensos de alimentación durante esa recuperación. El ciclo que lleva la alimentación a `0%` cuenta como un ciclo de desnutrición, al igual que los ciclos posteriores que permanezca en ese estado. Si el animal ya estaba al `0%` al comenzar la recuperación, se computa como máximo un ciclo de desnutrición en esa recuperación, conforme a RF-22.
 
+La etapa de nivel (RF-51) se aplica en cada ciclo diferido, en memoria, sobre el estado resultante de esos límites: un animal vivo, sano y con alimentación mayor que `0` al cierre de las defunciones del ciclo suma un ciclo sano de nivel (`72` suben un nivel), hasta el tope de su rango. No hay un límite de niveles específico de la recuperación; el máximo ganado queda acotado por `retencion.max_ciclos_offline` y por `nivel_maximo`. El beneficio de cada ciclo diferido usa el nivel y la satisfacción individual de ese ciclo en memoria. El nivel final se escribe una única vez, junto con el resto del estado, al terminar la recuperación.
+
 La enfermedad respeta el límite offline de RF-23: el ciclo en que un animal enferma cuenta como un ciclo de enfermedad; si ya estaba enfermo al iniciar la recuperación, acumula como máximo dos ciclos adicionales. Los contadores de desnutrición y enfermedad avanzan de forma independiente y se reinician al recuperarse el estado correspondiente. Si ambos estados críticos coinciden, se usa el contador mayor; cuando este alcanza `3`, el animal muere y no se procesa en ciclos posteriores de esa recuperación. La condición ordinaria que hace enfermar a un animal sano es la definida en la sección 2.3.1; durante una recuperación offline el sorteo de un animal se detiene en cuanto enferma.
 
 CREATE TABLE ReproduccionCiclo (
@@ -663,12 +680,12 @@ SQLite no puede expresar completamente estas reglas mediante restricciones de fi
 1. El espacio destino pertenece a la partida, tiene estado activo y no supera `capacidad_max` contando solo animales `VIVO`. La compatibilidad entre especie y bioma no bloquea la ubicación; su factor solo afecta al cálculo de satisfacción.
 2. La capacidad solicitada para crear un espacio debe existir en `CosteEspacio`; no se permite crear espacios con capacidades fuera de esa tabla.
 3. Un hábitat no se edita ni elimina durante la partida; solo se crea mediante la carga inicial autorizada.
-4. Los progenitores y la pareja deben ser de la misma especie, estar en la misma partida y cumplir el estado vital exigido. `id_pareja` debe ser recíproco y ambos animales deben tener al menos 16 años; `id_mejor_amigo` puede ser interespecie, pero nunca autorreferente. La afinidad no familiar se consulta por el par de especies de los animales.
+4. Los progenitores y la pareja deben ser de la misma especie, estar en la misma partida y cumplir el estado vital exigido. `id_pareja` debe ser recíproco y ambos animales deben tener al menos el nivel mínimo de pareja (`reglas_de_calculo.nivel.nivel_minimo_pareja`, `4`); `id_mejor_amigo` puede ser interespecie, pero nunca autorreferente. La afinidad no familiar se consulta por el par de especies de los animales.
 5. Una ficha solo se confirma con exactamente dos filas en `RasgoPersonalidad` y dos en `HabilidadSocial`; la satisfacción se calcula después de completar los datos del usuario y del sistema, antes de incorporar el animal al zoológico. Estas filas solo existen para animales `VIVO`: se borran al pasar a `MUERTO` o `VENDIDO`.
 6. Una pareja de `ReproduccionCiclo` debe ser válida y única por ciclo; la aplicación normaliza el orden de sus identificadores antes de insertar.
 7. Una concepción se hace disponible en el ciclo inmediatamente posterior al ciclo de concepción y expira tras tres ciclos disponibles; durante esa ventana no se vuelve a exigir el umbral de satisfacción de los progenitores.
 8. La probabilidad total de reproducción se calcula como `max(0, probabilidad_reproduccion - penalizacion_hijo_reproduccion * hijos_vivos)`, usando los valores del rango de la especie. `hijos_vivos` cuenta todos los hijos comunes de la pareja con estado vital `VIVO`, estén alojados o no; los hijos muertos o vendidos no se cuentan. En cada ciclo se obtiene un valor aleatorio uniforme en `[0,1)` y se concibe si `aleatorio < probabilidad_total`, de modo que una probabilidad de `0` nunca concibe y una de `1` siempre concibe.
-9. El beneficio se calcula para el parque completo y se genera al finalizar cada ciclo. El importe de cada ciclo se suma al total pendiente; reclamarlo acredita dicho total en los fondos y deja el acumulado pendiente en cero. Las mutaciones entre ciclos actualizan solo los datos mostrados y no cambian el importe acumulado reclamable. Muertes, ventas y otras salidas solo afectan a beneficios futuros; sin animales vivos, el beneficio generado es `0`. La fórmula está en la sección 1.4 y los importes por rango en `RangoEspecie.beneficio_por_animal_ciclo`.
+9. El beneficio se calcula para el parque completo y se genera al finalizar cada ciclo. El importe de cada ciclo se suma al total pendiente; reclamarlo acredita dicho total en los fondos y deja el acumulado pendiente en cero. Las mutaciones entre ciclos actualizan solo los datos mostrados y no cambian el importe acumulado reclamable. Muertes, ventas y otras salidas solo afectan a beneficios futuros; sin animales vivos, el beneficio generado es `0`. La fórmula (satisfacción individual, nivel y rango de cada animal) está en la sección 1.4 y los valores por rango en `RangoEspecie` (`beneficio_base_animal_ciclo`, `nivel_maximo`, `multiplicador_nivel_maximo`).
 10. Una compra, venta, traslado, nacimiento, alimentación, tratamiento, baja o reclamación valida saldo, inventario, estado y capacidad antes de escribir.
 11. Una especie exclusiva nunca se inserta como compra comercial. Un registro de `DesbloqueoEspecie` o `DesbloqueoHabitat` no se elimina ni se revoca; la ausencia del registro indica que la entidad sigue bloqueada.
 12. Las relaciones sociales se limpian al morir o vender un animal, pero nunca se limpian `id_padre` ni `id_madre`; solo la poda de la sección 5.3 puede borrar físicamente la fila de un animal inactivo.
@@ -690,11 +707,11 @@ SQLite no puede expresar completamente estas reglas mediante restricciones de fi
 
 Estas reglas completan las etapas de RF-14 y sus valores están en `reglas_de_calculo` y `tablas` de `valores_y_pesos.json`.
 
-- **Edad.** Cada ciclo suma 6 días a la edad. Calendario fijo: un mes tiene 30 días y un año 12 meses (360 días); la edad se normaliza tras sumar (`meses` 0..11, `dias` 0..29). La edad máxima se calcula una sola vez al alta: `dias_maximos = redondear_medio_arriba(edad_media_anios * 360 * factor)` con `factor` uniforme en `[0.90, 1.10]`, y se descompone en años, meses y días con el mismo calendario. La defunción por longevidad se produce en la etapa de defunciones cuando la edad total en días es mayor o igual que la edad máxima total en días. Un animal comprado se da de alta con 20 años (superior a los 16 años exigidos para la pareja e inferior a la menor edad máxima posible, 36 años); una cría nace con 0 años.
+- **Nivel.** El animal no tiene edad y no muere por vejez. Toda alta (compra, unidad gratuita de recompensa o cría) empieza en el nivel `reglas_de_calculo.nivel.nivel_inicial` (`1`). La etapa de nivel se ejecuta después de las defunciones: cada animal que sigue `VIVO`, está `SANO` y tiene `nivel_alimentacion > 0` suma `1` a `Animal.ciclos_nivel`; al llegar a `ciclos_por_nivel` (`72`) sube `1` nivel y `ciclos_nivel` vuelve a `0`, sin superar `RangoEspecie.nivel_maximo` de su rango; un animal en el tope conserva su nivel y mantiene `ciclos_nivel = 0`. Esta condición equivale a `ciclos_desnutricion = 0` y `ciclos_enfermedad = 0` tras la etapa de ciclos críticos. Un animal que enferma, termina el ciclo con alimentación `0` o muere en ese ciclo no sube. Ni el nivel ni `ciclos_nivel` disminuyen ni se modifican fuera de esta etapa; un ciclo no sano ni suma ni resta. Alimentar o tratar entre ciclos cambia el estado que verá la siguiente etapa, no el nivel. La pareja exige que ambos animales alcancen `nivel_minimo_pareja` (`4`, inferior al menor `nivel_maximo`, `15`). Una cría nace con nivel `1`, igual que un animal comprado.
 - **Alimentación.** Cada ciclo ordinario baja la alimentación 20 puntos porcentuales, sin bajar de `0`. En recuperación offline se aplican además los límites de RF-22.
 - **Salud.** En la etapa de salud, cada animal vivo, alojado y `SANO` enferma si `aleatorio < probabilidad_enfermedad(rango) * (1 - satisfaccion_actual)`, con `aleatorio` uniforme en `[0,1)` y `satisfaccion_actual` la persistida al inicio del ciclo, sin redondear. Un animal `ENFERMO` no se sortea. La salud solo vuelve a `SANO` mediante tratamiento.
 - **Ciclos críticos.** Un ciclo en que el animal termina con alimentación `0%` suma `1` a `ciclos_desnutricion`; en cualquier otro caso lo pone a `0`. Un ciclo en que termina `ENFERMO` suma `1` a `ciclos_enfermedad`; en otro caso lo pone a `0`. Por tanto el ciclo en que se entra en el estado ya cuenta como el primero. Alimentar (alimentación mayor que `0`) o tratar reinicia el contador correspondiente de inmediato. La defunción se produce cuando el mayor de los dos contadores alcanza `3`.
-- **Cría.** Hereda la especie y se aloja en el espacio de sus progenitores. `id_padre` es el progenitor con identificador menor y `id_madre` el de identificador mayor (el modelo no tiene sexo; la norma solo asigna los dos vínculos de forma determinista). Los hermanos no se almacenan: son los animales vivos con el mismo `id_padre` o `id_madre`. Se calcula su edad máxima como para cualquier alta.
+- **Cría.** Hereda la especie y se aloja en el espacio de sus progenitores. `id_padre` es el progenitor con identificador menor y `id_madre` el de identificador mayor (el modelo no tiene sexo; la norma solo asigna los dos vínculos de forma determinista). Los hermanos no se almacenan: son los animales vivos con el mismo `id_padre` o `id_madre`. Nace con nivel `1`.
 - **Aforo.** El aforo usado de un espacio es `COUNT(*)` de `Animal` con `estado_vital = 'VIVO'` e `id_espacio` igual al espacio, dentro de la transacción; hay aforo libre si es menor que `capacidad_max`. Sin aforo, la operación se rechaza sin cambiar estados ni consumir la notificación.
 - **Familiares y afinidad.** Para `C_afinidad` son familiares de un animal su pareja, su padre, su madre, sus hermanos vivos y sus hijos vivos. El mejor amigo no es familiar: si comparte espacio, cuenta en la media de afinidad.
 - **Rasgos y habilidades.** Se eligen de `catalogos.rasgos_personalidad` y `catalogos.habilidades_sociales`; son descriptivos y no intervienen en ninguna fórmula.
@@ -709,7 +726,7 @@ Estas reglas completan las etapas de RF-14 y sus valores están en `reglas_de_ca
 | `RecompensaMision` | `PENDIENTE` | `PENDIENTE` → `RECLAMADA` solo en la transacción que acredita la recompensa; `PENDIENTE` → `ANULADA` solo por corrección excepcional auditada antes de reclamar, sin acreditar nada | `RECLAMADA`, `ANULADA` |
 | `CicloSimulacion` | `PENDIENTE` | `PENDIENTE` → `EJECUTANDO` → `CONFIRMADO`; `EJECUTANDO` → `REVERTIDO`; `REVERTIDO` → `EJECUTANDO` solo en una recuperación reintentable del mismo número y la misma clave | `CONFIRMADO` (y `REVERTIDO` si el fallo es definitivo) |
 | `BeneficioPendiente` | `PENDIENTE` | `PENDIENTE` → `RECLAMADO` en la transacción que acredita los fondos; `PENDIENTE` → `ANULADO` solo para un beneficio demostrablemente inválido, con motivo auditado | `RECLAMADO`, `ANULADO` |
-| `Animal.estado_vital` | `VIVO` (compra o nacimiento confirmados; no se persiste ningún estado intermedio) | `VIVO` → `MUERTO` (longevidad o 3 ciclos críticos); `VIVO` → `VENDIDO` | `MUERTO`, `VENDIDO` |
+| `Animal.estado_vital` | `VIVO` (compra o nacimiento confirmados; no se persiste ningún estado intermedio) | `VIVO` → `MUERTO` (solo por 3 ciclos críticos); `VIVO` → `VENDIDO` | `MUERTO`, `VENDIDO` |
 | `Animal.estado_salud` | `SANO` | `SANO` → `ENFERMO` por el sorteo de 2.3.1; `ENFERMO` → `SANO` al completar un tratamiento | ninguno |
 | `Partida` | `ACTIVA` | `ACTIVA` ↔ `PAUSADA` por acción explícita; `ACTIVA`/`PAUSADA` → `FINALIZADA` por acción explícita | `FINALIZADA` |
 | `Habitat`, `Espacio` | `ACTIVO` | `ACTIVO` → `INACTIVO` solo por la baja de un espacio vacío (CU-14); los hábitats no se dan de baja (RES-05) | `INACTIVO` mientras existan dependencias históricas |
@@ -782,7 +799,7 @@ La clave de idempotencia solo se almacena como texto en `AuditoriaEvento` (todas
 - **Detalle mínimo.** `detalle` es un JSON con solo lo necesario: valores anterior y nuevo en cambios de estado, cantidades e importe en operaciones económicas, insumos consumidos, motivo de rechazo o reversión y referencias de la operación. Nunca guarda fichas completas.
 - **Siempre.** Partida, tipo, entidad, `id_entidad` si existe, origen, fecha UTC, ciclo (`0` fuera de ciclo), resultado y detalle.
 - **Una fila por operación.** No hay filas separadas para pasos internos de la misma transacción ni se duplica el evento en un reintento con la misma clave. Los ciclos offline no se auditan uno a uno: se aplica la única auditoría de recuperación de la sección 2.
-- **Movimientos económicos.** `COMPRA` para espacios, animales, bambú e insumos; `VENTA` para ventas (con importe `0`); `INGRESO` para la reclamación de beneficios; `RECOMPENSA` para fondos de misiones. `GASTO` queda reservado y sin uso funcional.
+- **Movimientos económicos.** `COMPRA` para espacios, animales, bambú e insumos; `VENTA` para ventas (con el importe de venta según nivel y rango, mayor que `0`); `INGRESO` para la reclamación de beneficios; `RECOMPENSA` para fondos de misiones. `GASTO` queda reservado y sin uso funcional.
 
 ## 4. Regla formal de satisfacción
 
@@ -869,7 +886,7 @@ Un espacio vacío puede pasar a `INACTIVO` tras confirmación del usuario, pero 
 Los datos que antes figuraban como insuficiencias quedan cubiertos así:
 
 - coste de adquisición de espacios: `CosteEspacio`, desde `tablas.costes_espacios`;
-- longevidad máxima y su conversión temporal: sección 2.3.1 y columnas de edad de `Animal`;
+- nivel del animal y su tope por rango: sección 2.3.1, `Animal.nivel` y `RangoEspecie.nivel_maximo`;
 - cantidad y objeto de las recompensas de misión: `Mision.tipo_recompensa`, `id_item_recompensa` y `cantidad_recompensa`, y `RecompensaMision.id_item` y `cantidad`;
 - ciclos acumulados y restantes de los avisos críticos: se leen de `Animal.ciclos_desnutricion` y `Animal.ciclos_enfermedad` (restantes `= 3 - max(ambos)`), mostrados por separado cuando concurren;
 - contenido y origen de los avisos: `Notificacion.codigo`, `entidad`, `id_entidad` y `detalle`;

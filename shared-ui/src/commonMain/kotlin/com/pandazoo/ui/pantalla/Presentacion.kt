@@ -18,11 +18,13 @@ import com.pandazoo.application.caso.RecompensaReclamada
 import com.pandazoo.application.caso.RecompensaVista
 import com.pandazoo.application.puerto.TipoRecompensa
 import com.pandazoo.application.puerto.AnimalFicha
+import com.pandazoo.application.puerto.valorVenta
 import com.pandazoo.application.puerto.AnimalResumen
 import com.pandazoo.application.puerto.EspacioConHabitat
 import com.pandazoo.application.puerto.EstadoTienda
 import com.pandazoo.domain.animal.CatalogoFicha
 import com.pandazoo.domain.animal.ReglasCuidado
+import com.pandazoo.domain.animal.ReglasNivel
 import com.pandazoo.domain.economia.Redondeo
 import com.pandazoo.domain.modelo.Espacio
 import com.pandazoo.domain.modelo.Existencia
@@ -175,6 +177,9 @@ data class FichaAnimalUi(
     val alimentacion: Int,
     val enfermo: Boolean,
     val rango: String,
+    /** Importe que se acreditaría al vender ahora; se envía al confirmar para detectar un cambio de nivel (CU-06, 4.a). */
+    val importeVenta: Dinero,
+    val textoVenta: String,
 )
 
 object Textos {
@@ -303,7 +308,7 @@ object Textos {
         )
 
     private fun animalesMonitor(l: List<AnimalMonitor>): List<AnimalMonitorUi> {
-        val etiquetas = desambiguar(l.map { "${it.nombre} (${it.especie})" }, l.map { it.edadAnios })
+        val etiquetas = desambiguar(l.map { "${it.nombre} (${it.especie})" }, l.map { it.nivel })
         return l.mapIndexed { i, a -> AnimalMonitorUi(etiquetas[i], porcentaje(a.valor)) }
     }
 
@@ -332,7 +337,8 @@ object Textos {
             MotivoRechazo.ParejaInexistente -> "La pareja elegida ya no está en el zoo."
             MotivoRechazo.ParejaOtraEspecie -> "La pareja debe ser de la misma especie."
             MotivoRechazo.ParejaOtroEspacio -> "La pareja debe estar en el mismo espacio."
-            MotivoRechazo.ParejaMenorDeEdad -> "Para ser pareja, los dos animales deben tener al menos 16 años."
+            MotivoRechazo.ParejaNivelInsuficiente ->
+                "Para ser pareja, los dos animales deben tener al menos el nivel ${ReglasNivel.NIVEL_MINIMO_PAREJA}."
             MotivoRechazo.ParejaOcupada -> "Alguno de los dos ya tiene otra pareja. Quítala antes de elegir una nueva."
             MotivoRechazo.AmigoInvalido -> "El mejor amigo debe ser otro animal del mismo espacio."
             MotivoRechazo.AutoReferencia -> "Un animal no puede ser su propia pareja ni su propio mejor amigo."
@@ -340,6 +346,8 @@ object Textos {
             MotivoRechazo.AnimalNoVivo -> "El animal ya no está en el zoo."
             MotivoRechazo.AnimalEnfermo -> "Un animal enfermo no se puede vender."
             MotivoRechazo.SinAlimentacion -> "Un animal sin alimentación no se puede vender."
+            is MotivoRechazo.ImporteVentaCambiado ->
+                "El nivel del animal ha cambiado y ahora se vendería por ${dinero(m.vigente)}. Revisa el importe y confirma de nuevo."
             MotivoRechazo.DestinoIgualAOrigen -> "El animal ya está en ese espacio."
             MotivoRechazo.EspacioNoVacio -> "El espacio todavía tiene animales."
             MotivoRechazo.EspacioConDependencias -> "El espacio tiene operaciones pendientes y no se puede dar de baja."
@@ -425,16 +433,16 @@ object Textos {
     }
 
     /**
-     * Los nombres no son únicos (RF-32): si dos etiquetas de un mismo listado coinciden se añade la edad y, si aún
+     * Los nombres no son únicos (RF-32): si dos etiquetas de un mismo listado coinciden se añade el nivel y, si aún
      * coinciden, el número de orden de alta. Nunca se usa un identificador.
      */
-    fun desambiguar(bases: List<String>, edades: List<Int>): List<String> {
-        val conEdad = bases.indices.map { i ->
-            if (bases.count { it == bases[i] } > 1) "${bases[i]} · ${if (edades[i] == 1) "1 año" else "${edades[i]} años"}" else bases[i]
+    fun desambiguar(bases: List<String>, niveles: List<Int>): List<String> {
+        val conNivel = bases.indices.map { i ->
+            if (bases.count { it == bases[i] } > 1) "${bases[i]} · nivel ${niveles[i]}" else bases[i]
         }
         val orden = HashMap<String, Int>()
-        return conEdad.map { l ->
-            if (conEdad.count { it == l } > 1) {
+        return conNivel.map { l ->
+            if (conNivel.count { it == l } > 1) {
                 val k = (orden[l] ?: 0) + 1
                 orden[l] = k
                 "$l · n.º $k"
@@ -446,25 +454,42 @@ object Textos {
 
     fun animalItems(l: List<AnimalResumen>): List<AnimalItemUi> {
         val bases = l.map { "${it.nombre} (${it.especie})" }
-        val titulos = desambiguar(bases, l.map { it.edadAnios })
+        val titulos = desambiguar(bases, l.map { it.nivel })
         return l.mapIndexed { i, a ->
             AnimalItemUi(
                 ref = Ref(a.id),
                 nombre = a.nombre + titulos[i].removePrefix(bases[i]),
                 especie = a.especie,
                 rango = a.rango,
-                detalle = "Alimentación ${a.alimentacion}% · ${if (a.enfermo) "Enfermo" else "Sano"} · Satisfacción ${porcentaje(a.satisfaccion)}",
+                detalle = "Nivel ${a.nivel} · Alimentación ${a.alimentacion}% · ${if (a.enfermo) "Enfermo" else "Sano"} · Satisfacción ${porcentaje(a.satisfaccion)}",
                 necesitaAlimento = a.vivo && a.alimentacion < ReglasCuidado.ALIMENTACION_MAXIMA,
             )
         }
     }
 
     fun candidatos(l: List<AnimalResumen>): List<CandidatoUi> {
-        val etiquetas = desambiguar(l.map { "${it.nombre} (${it.especie})" }, l.map { it.edadAnios })
+        val etiquetas = desambiguar(l.map { "${it.nombre} (${it.especie})" }, l.map { it.nivel })
         return l.mapIndexed { i, a -> CandidatoUi(Ref(a.id), etiquetas[i]) }
     }
 
-    fun ficha(f: AnimalFicha, catalogo: CatalogoFicha) =
+    /** «Nivel n de máx.» y el avance hacia el siguiente nivel (RF-51). Nunca se muestra una edad. */
+    private fun lineasNivel(f: AnimalFicha, ciclosPorNivel: Int): List<LineaUi> {
+        val tope = f.parametros.nivelMaximo
+        val progreso = if (f.nivel >= tope) {
+            "Nivel máximo alcanzado"
+        } else {
+            "${f.ciclosNivel} de $ciclosPorNivel ciclos sanos para el nivel ${f.nivel + 1}"
+        }
+        return listOf(LineaUi("Nivel", "${f.nivel} de $tope"), LineaUi("Progreso de nivel", progreso))
+    }
+
+    fun ficha(f: AnimalFicha, catalogo: CatalogoFicha, ciclosPorNivel: Int = ReglasNivel.CICLOS_POR_NIVEL): FichaAnimalUi {
+        val importe = f.valorVenta()
+        val equilibrio = ReglasNivel.nivelEquilibrio(f.parametros.nivelMaximo)
+        return fichaUi(f, catalogo, ciclosPorNivel, importe, equilibrio)
+    }
+
+    private fun fichaUi(f: AnimalFicha, catalogo: CatalogoFicha, ciclosPorNivel: Int, importe: Dinero, equilibrio: Int) =
         FichaAnimalUi(
             ref = Ref(f.id),
             nombre = f.nombre,
@@ -473,8 +498,9 @@ object Textos {
                 LineaUi("Especie", f.especie),
                 LineaUi("Hábitat", f.nombreHabitat?.let(::nombreHabitat) ?: "Sin hábitat"),
                 LineaUi("Espacio", f.nombreEspacio ?: "Sin espacio"),
-                LineaUi("Edad", f.edad.toString()),
-                LineaUi("Edad máxima", f.edadMaxima.toString()),
+                LineaUi("Rango", f.rango),
+            ) + lineasNivel(f, ciclosPorNivel) + listOf(
+                LineaUi("Valor de venta", dinero(importe)),
                 LineaUi("Alimentación", "${f.alimentacion}%"),
                 LineaUi("Salud", if (f.enfermo) "⚠ Enfermo" else "Sano"),
                 LineaUi("Satisfacción", porcentaje(f.satisfaccion)),
@@ -492,6 +518,10 @@ object Textos {
             alimentacion = f.alimentacion,
             enfermo = f.enfermo,
             rango = f.rango,
+            importeVenta = importe,
+            textoVenta = "Vas a vender a ${f.nombre} (nivel ${f.nivel}) por ${dinero(importe)}. " +
+                "En el nivel $equilibrio se recupera el coste de compra; por debajo se pierde dinero y por encima se gana. " +
+                "La venta no se puede deshacer.",
         )
 
     fun destino(d: EspacioConHabitat) =
@@ -551,7 +581,7 @@ object Textos {
     }
 
     fun criticos(l: List<RegistroCritico>): List<CriticoUi> {
-        val etiquetas = desambiguar(l.map { "${it.animal.nombre} (${it.animal.especie})" }, l.map { it.animal.edadAnios })
+        val etiquetas = desambiguar(l.map { "${it.animal.nombre} (${it.animal.especie})" }, l.map { it.animal.nivel })
         return l.mapIndexed { i, r ->
             val causas = buildList {
                 if (r.animal.sinAlimento) add("Desnutrido")

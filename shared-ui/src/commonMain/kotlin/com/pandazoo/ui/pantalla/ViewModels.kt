@@ -33,6 +33,7 @@ import com.pandazoo.application.caso.FichaNueva
 import com.pandazoo.domain.animal.OpcionFicha
 import com.pandazoo.domain.animal.ReglasAnimal
 import com.pandazoo.domain.animal.ReglasCuidado
+import com.pandazoo.domain.animal.ReglasNivel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -400,17 +401,6 @@ class ComprarAnimalViewModel(c: AppContainer, private val especie: Ref) : BaseVi
         if (s == null) emptyList() else c.consultarAnimales.animalesDe(c.idPartida, s.valor).let(Textos::candidatos)
     }
 
-    /** Animales del espacio elegido que pueden ser pareja: misma especie, 16 años o más y sin pareja. */
-    val parejasPosibles: StateFlow<List<CandidatoUi>> = observarPor(espacioElegido, emptyList()) { s ->
-        if (s == null) {
-            emptyList()
-        } else {
-            c.consultarAnimales.animalesDe(c.idPartida, s.valor)
-                .filter { it.idEspecie == especie.valor && it.edadAnios >= ReglasAnimal.EDAD_MINIMA_PAREJA_ANIOS && it.idPareja == null }
-                .let(Textos::candidatos)
-        }
-    }
-
     val habilidades: List<OpcionUi> = opciones(c.catalogoFicha.habilidades)
     val rasgos: List<OpcionUi> = opciones(c.catalogoFicha.rasgos)
     val comprado = MutableStateFlow(false)
@@ -426,13 +416,13 @@ class ComprarAnimalViewModel(c: AppContainer, private val especie: Ref) : BaseVi
         descartarMensaje()
     }
 
-    fun comprar(nombre: String, habilidades: Set<String>, rasgos: Set<String>, pareja: Ref?, amigo: Ref?) {
+    fun comprar(nombre: String, habilidades: Set<String>, rasgos: Set<String>, amigo: Ref?) {
         val espacio = espacioElegido.value ?: return
         val comando = ComandoAdquirirAnimal(
             idPartida = c.idPartida,
             idEspecie = especie.valor,
             idEspacio = espacio.valor,
-            ficha = FichaNueva(nombre, habilidades.toList(), rasgos.toList(), pareja?.valor, amigo?.valor),
+            ficha = FichaNueva(nombre, habilidades.toList(), rasgos.toList(), amigo?.valor),
             idSolicitud = solicitud,
         )
         ejecutar({ c.adquirirAnimal.ejecutar(comando) }) {
@@ -508,7 +498,7 @@ class AnimalesViewModel(c: AppContainer, private val espacio: Ref) : BaseViewMod
 /** Ficha técnica de un animal (RF-25) con las acciones de vender (CU-06). */
 class FichaAnimalViewModel(c: AppContainer, private val animal: Ref) : BaseViewModel(c) {
     val ficha: StateFlow<FichaAnimalUi?> = observar<FichaAnimalUi?>(null) {
-        c.consultarAnimales.ficha(c.idPartida, animal.valor)?.let { Textos.ficha(it, c.catalogoFicha) }
+        c.consultarAnimales.ficha(c.idPartida, animal.valor)?.let { Textos.ficha(it, c.catalogoFicha, c.ciclosPorNivel) }
     }
     val confirmandoVenta = MutableStateFlow(false)
 
@@ -586,9 +576,10 @@ class FichaAnimalViewModel(c: AppContainer, private val animal: Ref) : BaseViewM
 
     fun vender() {
         confirmandoVenta.value = false
-        ejecutar({ c.venderAnimal.ejecutar(ComandoVenderAnimal(c.idPartida, animal.valor, solicitud)) }) {
+        val confirmado = ficha.value?.importeVenta
+        ejecutar({ c.venderAnimal.ejecutar(ComandoVenderAnimal(c.idPartida, animal.valor, solicitud, confirmado)) }) {
             if (it.origenVacio) ofertaBaja.value = Ref(it.idEspacioOrigen) else terminado.value = true
-            "Animal vendido. No se acreditan fondos."
+            "Animal vendido por ${Textos.dinero(it.importe)}."
         }
     }
 
@@ -615,7 +606,7 @@ data class CandidatosUi(val parejas: List<CandidatoUi>, val amigos: List<Candida
 /** CU-05: edición de nombre, habilidades, rasgos, pareja y mejor amigo. */
 class EditarFichaViewModel(c: AppContainer, private val animal: Ref) : BaseViewModel(c) {
     val ficha: StateFlow<FichaAnimalUi?> = observar<FichaAnimalUi?>(null) {
-        c.consultarAnimales.ficha(c.idPartida, animal.valor)?.let { Textos.ficha(it, c.catalogoFicha) }
+        c.consultarAnimales.ficha(c.idPartida, animal.valor)?.let { Textos.ficha(it, c.catalogoFicha, c.ciclosPorNivel) }
     }
 
     val candidatos: StateFlow<CandidatosUi> = observar(CandidatosUi(emptyList(), emptyList())) {
@@ -625,8 +616,8 @@ class EditarFichaViewModel(c: AppContainer, private val animal: Ref) : BaseViewM
         val otros = lista.filter { it.id != animal.valor }
         CandidatosUi(
             parejas = otros.filter {
-                yo != null && yo.edadAnios >= ReglasAnimal.EDAD_MINIMA_PAREJA_ANIOS && it.idEspecie == yo.idEspecie &&
-                    it.edadAnios >= ReglasAnimal.EDAD_MINIMA_PAREJA_ANIOS && (it.idPareja == null || it.id == yo.idPareja)
+                yo != null && yo.nivel >= ReglasNivel.NIVEL_MINIMO_PAREJA && it.idEspecie == yo.idEspecie &&
+                    it.nivel >= ReglasNivel.NIVEL_MINIMO_PAREJA && (it.idPareja == null || it.id == yo.idPareja)
             }.let(Textos::candidatos),
             amigos = otros.let(Textos::candidatos),
         )
@@ -704,7 +695,7 @@ class CriaViewModel(c: AppContainer, private val aviso: Ref) : BaseViewModel(c) 
         val comando = ComandoAceptarReproduccion(
             idPartida = c.idPartida,
             idNotificacion = idAviso,
-            ficha = FichaNueva(nombre, habilidades.toList(), rasgos.toList(), null, amigo?.valor),
+            ficha = FichaNueva(nombre, habilidades.toList(), rasgos.toList(), amigo?.valor),
             idSolicitud = solicitud,
         )
         ejecutar({ c.aceptarReproduccion.ejecutar(comando) }) {

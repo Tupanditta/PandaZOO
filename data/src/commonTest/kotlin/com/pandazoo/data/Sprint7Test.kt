@@ -86,7 +86,6 @@ class Sprint7Test {
             nombre,
             e.catalogoFicha.habilidades.take(2).map { it.id },
             e.catalogoFicha.rasgos.take(2).map { it.id },
-            null,
             amigo,
         )
 
@@ -314,7 +313,7 @@ class Sprint7Test {
     // ---- T7.8 la cria ----
 
     @Test
-    fun `T7_8 la cria hereda la especie nace con 0 anios sana alimentada y con sus progenitores`() {
+    fun `T7_8 la cria hereda la especie nace en el nivel 1 sana alimentada y con sus progenitores`() {
         val (sp, a, b) = pareja()
         val hermano = animal(sp, "Hermano", padre = a, madre = b)
         exito(ciclo())
@@ -324,21 +323,21 @@ class Sprint7Test {
 
         val (padre, madre) = if (a < b) a to b else b to a
         val fila = e.bd.uno(
-            "SELECT id_especie, edad_anios, edad_meses, edad_dias, nivel_alimentacion, estado_salud, estado_vital, id_padre, id_madre, " +
+            "SELECT id_especie, nivel, ciclos_nivel, nivel_alimentacion, estado_salud, estado_vital, id_padre, id_madre, " +
                 "id_espacio, id_mejor_amigo, id_pareja, satisfaccion_actual FROM Animal WHERE id_animal = ?",
             cria.idAnimal,
-        ) { f -> (0..12).map { f.textoONulo(it) } }!!
+        ) { f -> (0..11).map { f.textoONulo(it) } }!!
         fila[0] shouldBe "erizo"
-        fila.subList(1, 4) shouldBe listOf("0", "0", "0")
-        fila[4] shouldBe "100"
-        fila[5] shouldBe "SANO"
-        fila[6] shouldBe "VIVO"
-        fila[7] shouldBe padre
-        fila[8] shouldBe madre
-        fila[9] shouldBe sp
-        fila[10] shouldBe hermano
-        fila[11] shouldBe null
-        (fila[12]!!.toDouble() > 0.0) shouldBe true
+        fila.subList(1, 3) shouldBe listOf("1", "0")
+        fila[3] shouldBe "100"
+        fila[4] shouldBe "SANO"
+        fila[5] shouldBe "VIVO"
+        fila[6] shouldBe padre
+        fila[7] shouldBe madre
+        fila[8] shouldBe sp
+        fila[9] shouldBe hermano
+        fila[10] shouldBe null
+        (fila[11]!!.toDouble() > 0.0) shouldBe true
         e.contar("HabilidadSocial", "id_animal = '${cria.idAnimal}'") shouldBe 2
         e.contar("RasgoPersonalidad", "id_animal = '${cria.idAnimal}'") shouldBe 2
         // Hermanos automáticos: ya comparten padre y madre con el hermano existente.
@@ -350,17 +349,12 @@ class Sprint7Test {
     }
 
     @Test
-    fun `T7_8 la edad maxima se calcula como en cualquier alta`() {
+    fun `TN_2 la cria nace en el nivel 1 sea cual sea el azar`() {
         pareja()
         reiniciarConPareja(0.0)
         exito(ciclo())
         val cria = exito(aceptar())
-        val (anios, meses, dias) = e.bd.uno(
-            "SELECT edad_maxima_anios, edad_maxima_meses, edad_maxima_dias FROM Animal WHERE id_animal = ?", cria.idAnimal,
-        ) { listOf(it.entero(0), it.entero(1), it.entero(2)) }!!
-        val media = e.bd.uno("SELECT edad_media_anios FROM Especie WHERE id_especie = 'erizo'") { it.entero(0) }!!
-        // Con azar 0 el factor es 0.90.
-        (anios * 360 + meses * 30 + dias) shouldBe kotlin.math.floor(media * 360 * 0.90 + 0.5).toInt()
+        e.bd.uno("SELECT nivel, ciclos_nivel FROM Animal WHERE id_animal = ?", cria.idAnimal) { it.entero(0) to it.entero(1) } shouldBe (1 to 0)
     }
 
     private fun reiniciarConPareja(azar: Double) {
@@ -424,7 +418,7 @@ class Sprint7Test {
             override fun confirmar(idPartida: String, concepcion: Concepcion, numeroCiclo: Int) = error("fallo simulado")
         }
         val caso = AceptarReproduccion(
-            e.ejecutor, fallo, e.ciclos, e.animales, e.zoo, e.catalogoFicha, e.azar, e.ids, e.recalcular,
+            e.ejecutor, fallo, e.ciclos, e.animales, e.zoo, e.catalogoFicha, e.ids, e.recalcular,
         )
         val antes = instantanea()
         shouldThrow<IllegalStateException> {

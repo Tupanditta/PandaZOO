@@ -2,6 +2,8 @@ package com.pandazoo.domain.config
 
 import com.pandazoo.domain.economia.Decimales
 import com.pandazoo.domain.economia.Redondeo
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 /** La configuración no es completa o coherente; impide crear una partida. */
 class ConfiguracionInvalidaException(val errores: List<String>) :
@@ -17,6 +19,9 @@ object ValidadorConfiguracion {
     private val OPERACIONES = setOf("SUMAR", "RESTAR", "MULTIPLICAR", "DIVIDIR")
     private val TIPOS_RECOMPENSA = setOf("FONDOS", "ALIMENTO", "INSUMO", "ESPECIE")
     const val ALIMENTO_BAMBU = "bambu"
+
+    /** Tope aplicable a un parámetro de nivel cuando la misión no está ligada a una especie. */
+    private const val NIVEL_MAXIMO_SIN_ESPECIE = 60
 
     fun validarOExcepcion(cfg: ConfiguracionJuego) {
         val errores = validar(cfg)
@@ -90,8 +95,13 @@ object ValidadorConfiguracion {
                 "probabilidad_enfermedad" to r.probabilidadEnfermedad,
             )
             campos.filterValues { !enUnidad(it) }.keys.forEach { e += "rango ${r.id}: $it fuera de 0..1" }
-            if (!importeValido(r.beneficioPorAnimalCiclo)) e += "rango ${r.id}: beneficio por animal inválido"
+            if (!importeValido(r.beneficioBase)) e += "rango ${r.id}: beneficio base por animal inválido"
+            if (r.nivelMaximo < 2) e += "rango ${r.id}: nivel_maximo debe ser al menos 2"
+            if (r.multiplicadorNivelMaximo < 1.0) e += "rango ${r.id}: multiplicador_nivel_maximo debe ser al menos 1"
+            if (!importeValido(r.valorVentaBase)) e += "rango ${r.id}: valor_venta_base inválido"
+            if (r.factorVentaNivelMaximo <= 1.0) e += "rango ${r.id}: factor_venta_nivel_maximo debe ser mayor que 1"
         }
+        validarNivelYVenta(cfg, e)
         idsRango.forEach { id ->
             if (t.costesRangos.none { it.idRango == id }) e += "falta coste de rango $id"
             if (t.consumoMedico.none { it.idRango == id }) e += "falta consumo médico del rango $id"
@@ -115,6 +125,39 @@ object ValidadorConfiguracion {
         t.costesInsumos.filter { !importeValido(it.precio) }.forEach { e += "precio de insumo ${it.idInsumo} inválido" }
     }
 
+    /** Reglas de nivel (RF-51) y de venta (RF-52) y su coherencia con los rangos. */
+    private fun validarNivelYVenta(cfg: ConfiguracionJuego, e: MutableList<String>) {
+        val t = cfg.tablas
+        val n = cfg.reglas.nivel
+        val v = cfg.reglas.venta
+        if (n.nivelInicial < 1) e += "nivel: nivel_inicial debe ser al menos 1"
+        if (n.ciclosPorNivel < 1) e += "nivel: ciclos_por_nivel debe ser al menos 1"
+        val menorTope = t.rangos.minOfOrNull { it.nivelMaximo }
+        if (n.nivelMinimoPareja < 1 || (menorTope != null && n.nivelMinimoPareja > menorTope)) {
+            e += "nivel: nivel_minimo_pareja debe estar entre 1 y el menor nivel_maximo"
+        }
+        if (v.factorNivel1 <= 0.0 || v.factorNivel1 >= 1.0) e += "venta: factor_venta_nivel_1 fuera de (0,1)"
+        if (v.fraccionEquilibrio <= 0.5 || v.fraccionEquilibrio >= 1.0) e += "venta: fraccion_equilibrio fuera de (0.5,1)"
+        t.rangos.forEach { r ->
+            if (r.nivelMaximo >= 2) {
+                val eq = Redondeo.entero(v.fraccionEquilibrio * r.nivelMaximo)
+                if (eq < 2 || eq >= r.nivelMaximo) e += "rango ${r.id}: nivel de equilibrio $eq fuera de [2, nivel_maximo)"
+            }
+            val coste = t.costesRangos.firstOrNull { it.idRango == r.id }?.importe
+            if (coste != null && coste > 0.0 && coste != r.valorVentaBase) {
+                e += "rango ${r.id}: valor_venta_base debe ser igual al coste de compra"
+            }
+        }
+        t.rangos.sortedBy { it.id }.zipWithNext().forEach { (a, b) ->
+            if (b.valorVentaBase < a.valorVentaBase || b.factorVentaNivelMaximo < a.factorVentaNivelMaximo) {
+                e += "venta: valor_venta_base y factor_venta_nivel_maximo no pueden decrecer con el rango (${b.id})"
+            }
+            val ventaA = a.valorVentaBase * a.factorVentaNivelMaximo
+            val ventaB = b.valorVentaBase * b.factorVentaNivelMaximo
+            if (ventaB < ventaA) e += "venta: el valor de venta en el tope decrece con el rango (${b.id})"
+        }
+    }
+
     private fun validarEspecies(cfg: ConfiguracionJuego, e: MutableList<String>) {
         val t = cfg.tablas
         unico(cfg.especies.map { it.id }, "especies", e)
@@ -135,13 +178,10 @@ object ValidadorConfiguracion {
             if (s.idRango !in rangos) e += "${s.id}: rango inexistente ${s.idRango}"
             if (s.categoria != "COMERCIAL" && s.categoria != "EXCLUSIVA") e += "${s.id}: categoría inválida ${s.categoria}"
             if (s.categoria == "EXCLUSIVA" && s.idRango != 5) e += "${s.id}: las exclusivas deben ser de rango 5"
-            val edad = t.edadMedia.filter { it.idEspecie == s.id }
-            if (edad.size != 1 || edad[0].anios <= 0) e += "${s.id}: falta edad media válida"
             val alim = t.alimentosPorEspecie.filter { it.idEspecie == s.id }
             if (alim.size != 1 || alim[0].kilogramos <= 0) e += "${s.id}: falta cantidad de bambú por incremento"
         }
         val ids = cfg.especies.map { it.id }.toSet()
-        t.edadMedia.filter { it.idEspecie !in ids }.forEach { e += "edad media de especie inexistente ${it.idEspecie}" }
         t.alimentosPorEspecie.filter { it.idEspecie !in ids }.forEach { e += "alimento de especie inexistente ${it.idEspecie}" }
         t.alimentosPorEspecie.filter { it.idAlimento != ALIMENTO_BAMBU }.forEach { e += "${it.idEspecie}: solo se admite bambú" }
     }
@@ -243,7 +283,24 @@ object ValidadorConfiguracion {
                 if (p.operacion == "DIVIDIR" && p.constante <= 0) e += "misión ${s.id}.$nombre: divisor no positivo"
                 if (p.minimo > p.maximo) e += "misión ${s.id}.$nombre: mínimo mayor que máximo"
             }
+            validarMisionDeNivel(cfg, s, e)
         }
+    }
+
+    /** Un parámetro `nivel_requerido` no puede superar el tope de nivel de su especie (o del mayor rango si no tiene especie). */
+    private fun validarMisionDeNivel(cfg: ConfiguracionJuego, s: MisionCfg, e: MutableList<String>) {
+        val prog = s.progresion["nivel_requerido"] ?: return
+        val idEspecie = (s.parametrosBase["id_especie"] as? JsonPrimitive)?.contentOrNull
+        val tope = if (idEspecie != null) {
+            val rango = cfg.especies.firstOrNull { it.id == idEspecie }?.idRango
+            cfg.tablas.rangos.firstOrNull { it.id == rango }?.nivelMaximo ?: return
+        } else {
+            NIVEL_MAXIMO_SIN_ESPECIE
+        }
+        val menorTope = cfg.tablas.rangos.minOfOrNull { it.nivelMaximo } ?: tope
+        if (prog.maximo > tope) e += "misión ${s.id}: nivel_requerido máximo ${prog.maximo} supera el nivel_maximo $tope"
+        if (s.id == "crecer_especie" && prog.minimo < 2) e += "misión ${s.id}: nivel_requerido mínimo debe ser al menos 2"
+        if (s.id == "crecer_especie" && prog.maximo > menorTope) e += "misión ${s.id}: nivel_requerido máximo supera el menor tope de rango ($menorTope)"
     }
 
     private fun validarRetencion(cfg: ConfiguracionJuego, e: MutableList<String>) {

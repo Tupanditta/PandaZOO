@@ -52,7 +52,7 @@ sealed class MotivoRechazo(val codigo: String) {
 
     data object ParejaOtroEspacio : MotivoRechazo("PAREJA_OTRO_ESPACIO")
 
-    data object ParejaMenorDeEdad : MotivoRechazo("PAREJA_MENOR_DE_EDAD")
+    data object ParejaNivelInsuficiente : MotivoRechazo("PAREJA_NIVEL_INSUFICIENTE")
 
     data object ParejaOcupada : MotivoRechazo("PAREJA_OCUPADA")
 
@@ -106,6 +106,9 @@ sealed class MotivoRechazo(val codigo: String) {
 
     /** No hay beneficios pendientes de reclamar (CU-08, 1.a). */
     data object SinBeneficios : MotivoRechazo("SIN_BENEFICIOS")
+
+    /** El nivel del animal cambió entre la vista previa y la confirmación y el importe de venta ya no coincide (CU-06, 4.a). */
+    data class ImporteVentaCambiado(val vigente: Dinero) : MotivoRechazo("IMPORTE_VENTA_CAMBIADO")
 
     /** El importe pendiente cambió entre la vista previa y la confirmación (CU-08, 4.a). */
     data class BeneficiosCambiados(val vigente: Dinero) : MotivoRechazo("BENEFICIOS_CAMBIADOS")

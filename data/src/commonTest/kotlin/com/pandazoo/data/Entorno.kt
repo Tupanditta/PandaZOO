@@ -103,7 +103,7 @@ class Entorno(val cfg: ConfiguracionJuego = configuracionBase, valorAzar: Double
     // Sprint 3: gestión de especímenes.
     val animales = AnimalSql(bd)
     val catalogoFicha = cfg.catalogoFicha()
-    val adquirirAnimal = AdquirirAnimal(ejecutor, economia, zoo, animales, catalogoFicha, azar, ids, reloj, recalcular, misionesRepo, seguimientoMisiones)
+    val adquirirAnimal = AdquirirAnimal(ejecutor, economia, zoo, animales, catalogoFicha, ids, reloj, recalcular, misionesRepo, seguimientoMisiones)
     val editarFicha = EditarFicha(ejecutor, animales, catalogoFicha, recalcular)
     val reubicarAnimal = ReubicarAnimal(ejecutor, zoo, animales, recalcular)
     val venderAnimal = VenderAnimal(ejecutor, economia, zoo, animales, reloj, recalcular, seguimientoMisiones)
@@ -138,7 +138,7 @@ class Entorno(val cfg: ConfiguracionJuego = configuracionBase, valorAzar: Double
     val abrirAviso = AbrirAviso(ejecutor, avisos, ciclos)
 
     // Sprint 7: reproducción.
-    val aceptarReproduccion = AceptarReproduccion(ejecutor, reproduccion, ciclos, animales, zoo, catalogoFicha, azar, ids, recalcular)
+    val aceptarReproduccion = AceptarReproduccion(ejecutor, reproduccion, ciclos, animales, zoo, catalogoFicha, ids, recalcular)
     val consultarReproduccion = ConsultarReproduccion(reproduccion, ciclos, animales, zoo)
     val purgarRetencion = PurgarRetencion(bd, RetencionSql(bd), ciclos, cfg.retencion)
 

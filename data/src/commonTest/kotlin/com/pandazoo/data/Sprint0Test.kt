@@ -98,7 +98,7 @@ class Sprint0Test {
     private fun insertarAnimal(columna: String? = null, valor: Any? = null, id: String = "a1", nombre: String = "Rex") {
         val base = linkedMapOf<String, Any?>(
             "id_animal" to id, "id_partida" to e.idPartida, "id_especie" to "leon", "nombre" to nombre,
-            "edad_maxima_anios" to 50, "edad_maxima_meses" to 0, "edad_maxima_dias" to 0, "satisfaccion_actual" to 0.5,
+            "satisfaccion_actual" to 0.5,
         )
         if (columna != null) base[columna] = valor
         acepta("INSERT INTO Animal (${base.keys.joinToString()}) VALUES (${base.keys.joinToString { "?" }})", *base.values.toTypedArray())
@@ -111,8 +111,8 @@ class Sprint0Test {
         shouldThrow<ErrorSql> { insertarAnimal("nivel_alimentacion", 55, "a2", "B") } // no múltiplo de 10
         shouldThrow<ErrorSql> { insertarAnimal("nivel_alimentacion", 110, "a3", "C") }
         shouldThrow<ErrorSql> { insertarAnimal("estado_salud", "ROTO", "a4", "D") }
-        shouldThrow<ErrorSql> { insertarAnimal("edad_meses", 12, "a5", "E") }
-        shouldThrow<ErrorSql> { insertarAnimal("edad_dias", 30, "a6", "F") }
+        shouldThrow<ErrorSql> { insertarAnimal("nivel", 0, "a5", "E") }
+        shouldThrow<ErrorSql> { insertarAnimal("ciclos_nivel", -1, "a6", "F") }
         shouldThrow<ErrorSql> { insertarAnimal("satisfaccion_actual", 1.5, "a7", "G") }
         shouldThrow<ErrorSql> { insertarAnimal("ciclos_desnutricion", 4, "a8", "H") }
         shouldThrow<ErrorSql> { insertarAnimal("id_pareja", "a9", "a9", "I") } // autorreferencia

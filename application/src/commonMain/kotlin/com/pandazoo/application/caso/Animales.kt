@@ -7,7 +7,6 @@ import com.pandazoo.application.operacion.Operacion
 import com.pandazoo.application.puerto.AnimalFicha
 import com.pandazoo.application.puerto.AnimalRepositorio
 import com.pandazoo.application.puerto.AnimalResumen
-import com.pandazoo.application.puerto.Azar
 import com.pandazoo.application.puerto.EconomiaRepositorio
 import com.pandazoo.application.puerto.EspacioConHabitat
 import com.pandazoo.application.puerto.EspecieTienda
@@ -18,8 +17,10 @@ import com.pandazoo.application.puerto.Reloj
 import com.pandazoo.application.puerto.TipoMovimiento
 import com.pandazoo.application.puerto.UnidadesGratuitas
 import com.pandazoo.application.puerto.ZooRepositorio
+import com.pandazoo.application.puerto.valorVenta
 import com.pandazoo.domain.animal.CatalogoFicha
 import com.pandazoo.domain.animal.ReglasAnimal
+import com.pandazoo.domain.animal.ReglasNivel
 import com.pandazoo.domain.economia.Dinero
 import com.pandazoo.domain.modelo.EstadoEntidad
 import com.pandazoo.domain.modelo.Habitat
@@ -28,21 +29,22 @@ import com.pandazoo.domain.modelo.IdPartida
 /** Reglas de vínculos sociales compartidas por CU-01 y CU-05 (RF-34, RF-48). */
 internal object Vinculos {
     /**
-     * @param propio animal que recibe la pareja, o `null` si es un alta; `idEspecie`, `idEspacio` y `edadAnios` son los suyos.
+     * @param propio animal que recibe la pareja; `idEspecie`, `idEspacio` y `nivel` son los suyos. El nivel mínimo solo se
+     * exige al crear el vínculo (RF-34).
      */
     fun validarPareja(
         candidata: AnimalResumen?,
         propio: AnimalResumen?,
         idEspecie: String,
         idEspacio: String,
-        edadAnios: Int,
+        nivel: Int,
+        nivelMinimo: Int = ReglasNivel.NIVEL_MINIMO_PAREJA,
     ): MotivoRechazo? {
         if (candidata == null || !candidata.vivo) return MotivoRechazo.ParejaInexistente
         if (candidata.id == propio?.id) return MotivoRechazo.AutoReferencia
         if (candidata.idEspecie != idEspecie) return MotivoRechazo.ParejaOtraEspecie
         if (candidata.idEspacio != idEspacio) return MotivoRechazo.ParejaOtroEspacio
-        val minima = ReglasAnimal.EDAD_MINIMA_PAREJA_ANIOS
-        if (edadAnios < minima || candidata.edadAnios < minima) return MotivoRechazo.ParejaMenorDeEdad
+        if (nivel < nivelMinimo || candidata.nivel < nivelMinimo) return MotivoRechazo.ParejaNivelInsuficiente
         if (candidata.idPareja != null && candidata.idPareja != propio?.id) return MotivoRechazo.ParejaOcupada
         if (propio?.idPareja != null && propio.idPareja != candidata.id) return MotivoRechazo.ParejaOcupada
         return null
@@ -70,7 +72,6 @@ data class FichaNueva(
     val nombre: String,
     val habilidades: List<String>,
     val rasgos: List<String>,
-    val idPareja: String? = null,
     val idMejorAmigo: String? = null,
 )
 
@@ -85,8 +86,9 @@ data class ComandoAdquirirAnimal(
 data class AnimalAdquirido(val idAnimal: String, val coste: Dinero, val saldo: Dinero)
 
 /**
- * CU-01 Adquirir espécimen (RF-01, RF-29, RF-32, RF-33, RES-08, RES-09). Alta atómica: cargo, animal con 20 años,
- * alimentación 100 %, sano y edad máxima fijada una sola vez, ficha, vínculos y satisfacción.
+ * CU-01 Adquirir espécimen (RF-01, RF-29, RF-32, RF-33, RF-51, RES-08, RES-09). Alta atómica: cargo, animal de nivel 1,
+ * alimentación 100 % y sano, ficha, mejor amigo y satisfacción. La pareja se asigna después con CU-05, cuando el
+ * animal alcance el nivel mínimo.
  * La compatibilidad con el hábitat no impide la ubicación: solo afecta a la satisfacción.
  */
 class AdquirirAnimal(
@@ -95,7 +97,6 @@ class AdquirirAnimal(
     private val zoo: ZooRepositorio,
     private val animales: AnimalRepositorio,
     private val catalogo: CatalogoFicha,
-    private val azar: Azar,
     private val ids: GeneradorId,
     private val reloj: Reloj,
     private val recalculo: RecalcularSatisfaccion,
@@ -112,7 +113,7 @@ class AdquirirAnimal(
             origen = "CU-01",
             idSolicitud = c.idSolicitud,
             huella = "especie=${c.idEspecie};espacio=${c.idEspacio};nombre=${f.nombre.trim()};hab=${f.habilidades.sorted()};" +
-                "ras=${f.rasgos.sorted()};pareja=${f.idPareja};amigo=${f.idMejorAmigo}",
+                "ras=${f.rasgos.sorted()};amigo=${f.idMejorAmigo}",
             codificar = { "${it.idAnimal}|${it.coste.centimos}|${it.saldo.centimos}" },
             decodificar = {
                 val (id, coste, saldo) = it.split("|")
@@ -142,11 +143,6 @@ class AdquirirAnimal(
 
         val nombre = c.ficha.nombre.trim()
         Vinculos.validarFicha(nombre, c.ficha.habilidades, c.ficha.rasgos, catalogo)?.let { return rechazo(it) }
-        c.ficha.idPareja?.let { id ->
-            val candidata = animales.animal(c.idPartida, id)
-            Vinculos.validarPareja(candidata, null, c.idEspecie, c.idEspacio, ReglasAnimal.EDAD_ALTA_ANIOS)
-                ?.let { return rechazo(it) }
-        }
         c.ficha.idMejorAmigo?.let { id ->
             Vinculos.validarAmigo(animales.animal(c.idPartida, id), null, c.idEspacio)?.let { return rechazo(it) }
         }
@@ -156,7 +152,6 @@ class AdquirirAnimal(
         if (saldo < coste) return rechazo(MotivoRechazo.SaldoInsuficiente(coste, saldo))
 
         val idAnimal = ids.nuevo()
-        val factor = ReglasAnimal.factorEdad(azar.siguienteDouble())
         economia.actualizarFondos(c.idPartida, saldo - coste)
         animales.crear(
             c.idPartida,
@@ -165,10 +160,9 @@ class AdquirirAnimal(
                 idEspecie = c.idEspecie,
                 idEspacio = c.idEspacio,
                 nombre = nombre,
-                edadMaxima = ReglasAnimal.edadMaxima(especie.edadMediaAnios, factor),
                 habilidades = c.ficha.habilidades,
                 rasgos = c.ficha.rasgos,
-                idPareja = c.ficha.idPareja,
+                idPareja = null,
                 idMejorAmigo = c.ficha.idMejorAmigo,
             ),
         )
@@ -200,7 +194,7 @@ data class FichaEditada(val idAnimal: String)
 
 /**
  * CU-05 Editar ficha: nombre, dos habilidades, dos rasgos, pareja y mejor amigo (RF-03, RF-34, RF-48, RES-03).
- * Solo existen estos campos en el comando: la especie, la edad, la alimentación, la salud y la satisfacción no son editables.
+ * Solo existen estos campos en el comando: la especie, el nivel, la alimentación, la salud y la satisfacción no son editables.
  */
 class EditarFicha(
     private val ejecutor: EjecutorOperacion,
@@ -237,7 +231,7 @@ class EditarFicha(
         val cambiaPareja = c.idPareja != actual.idPareja
         val cambiaAmigo = c.idMejorAmigo != actual.idMejorAmigo
         if (cambiaPareja && c.idPareja != null) {
-            Vinculos.validarPareja(animales.animal(c.idPartida, c.idPareja), actual, actual.idEspecie, espacio, actual.edadAnios)
+            Vinculos.validarPareja(animales.animal(c.idPartida, c.idPareja), actual, actual.idEspecie, espacio, actual.nivel)
                 ?.let { return rechazo(it) }
         }
         if (cambiaAmigo && c.idMejorAmigo != null) {
@@ -317,11 +311,20 @@ class ReubicarAnimal(
 
 // ---------------------------------------------------------------------------------------------------- CU-06
 
-data class ComandoVenderAnimal(val idPartida: IdPartida, val idAnimal: String, val idSolicitud: String)
+/**
+ * @property importeConfirmado importe que el gestor vio al confirmar; si el nivel cambió y el importe ya no coincide,
+ * la venta se rechaza (CU-06, 4.a). `null` vende por el importe vigente (uso interno y tests).
+ */
+data class ComandoVenderAnimal(
+    val idPartida: IdPartida,
+    val idAnimal: String,
+    val idSolicitud: String,
+    val importeConfirmado: Dinero? = null,
+)
 
-data class AnimalVendido(val idAnimal: String, val idEspacioOrigen: String, val origenVacio: Boolean)
+data class AnimalVendido(val idAnimal: String, val idEspacioOrigen: String, val origenVacio: Boolean, val importe: Dinero = Dinero.CERO)
 
-/** CU-06 Vender espécimen (RF-06, RES-11): no acredita fondos, libera el aforo y conserva la genealogía. */
+/** CU-06 Vender espécimen (RF-06, RF-52, RES-11): abona el importe según nivel y rango, libera el aforo y conserva la genealogía. */
 class VenderAnimal(
     private val ejecutor: EjecutorOperacion,
     private val economia: EconomiaRepositorio,
@@ -339,10 +342,10 @@ class VenderAnimal(
             origen = "CU-06",
             idSolicitud = c.idSolicitud,
             huella = "animal=${c.idAnimal}",
-            codificar = { "${it.idAnimal}|${it.idEspacioOrigen}|${if (it.origenVacio) 1 else 0}" },
+            codificar = { "${it.idAnimal}|${it.idEspacioOrigen}|${if (it.origenVacio) 1 else 0}|${it.importe.centimos}" },
             decodificar = {
-                val (id, origen, vacio) = it.split("|")
-                AnimalVendido(id, origen, vacio == "1")
+                val (id, origen, vacio, importe) = it.split("|")
+                AnimalVendido(id, origen, vacio == "1", Dinero.deCentimos(importe.toLong()))
             },
             idEntidad = { it.idAnimal },
         )
@@ -355,6 +358,8 @@ class VenderAnimal(
         if (!animal.vivo || origen == null) return rechazo(MotivoRechazo.AnimalNoVivo)
         if (animal.enfermo) return rechazo(MotivoRechazo.AnimalEnfermo)
         if (animal.alimentacion <= 0) return rechazo(MotivoRechazo.SinAlimentacion)
+        val importe = animal.valorVenta()
+        if (c.importeConfirmado != null && c.importeConfirmado != importe) return rechazo(MotivoRechazo.ImporteVentaCambiado(importe))
 
         // Los afectados se calculan antes de retirar el animal: después ya no hay vínculos que seguir.
         val afectados = HashSet<String>().apply {
@@ -362,11 +367,12 @@ class VenderAnimal(
             addAll(animales.espaciosRelacionados(c.idPartida, c.idAnimal))
         }
         animales.retirar(c.idPartida, c.idAnimal, ESTADO_VENDIDO)
-        economia.registrarMovimiento(c.idPartida, TipoMovimiento.VENTA, Dinero.CERO, "CU-06", 0, reloj.ahoraSegundos())
-        misiones?.alVender(c.idPartida, animal.idEspecie, animal.edadAnios)
+        economia.actualizarFondos(c.idPartida, economia.fondos(c.idPartida) + importe)
+        economia.registrarMovimiento(c.idPartida, TipoMovimiento.VENTA, importe, "CU-06", 0, reloj.ahoraSegundos())
+        misiones?.alVender(c.idPartida, animal.idEspecie, animal.nivel)
         recalculo.alConsolidar(c.idPartida, AlcanceRecalculo.Espacios(afectados))
         val vacio = (zoo.espacio(c.idPartida, origen)?.ocupacion ?: 0) == 0
-        return Resultado.Exito(AnimalVendido(c.idAnimal, origen, vacio))
+        return Resultado.Exito(AnimalVendido(c.idAnimal, origen, vacio, importe))
     }
 
     private companion object {

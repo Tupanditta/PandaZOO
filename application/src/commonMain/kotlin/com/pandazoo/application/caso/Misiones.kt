@@ -25,8 +25,8 @@ import com.pandazoo.domain.modelo.TipoRecurso
 
 // ---------------------------------------------------------------------------------------------------- Seguimiento
 
-/** Un animal que cambió de años completos durante un ciclo. */
-data class CruceEdad(val idEspecie: String, val antesAnios: Int, val despuesAnios: Int)
+/** Un animal que pasó de un nivel a otro durante un ciclo. */
+data class CruceNivel(val idEspecie: String, val antes: Int, val despues: Int)
 
 /**
  * Actualiza el progreso de las instancias vigentes (RF-39, RF-44, `EspecificacionMisiones.md` 4 y 4.1). Solo lo invocan
@@ -51,26 +51,26 @@ class ActualizarMisiones(private val misiones: MisionRepositorio) {
             .forEach { fijar(idPartida, it, it.progreso + 1) }
     }
 
-    /** Venta confirmada: una sola venta con edad en años completos mayor o igual que la requerida. Acumulativa. */
-    fun alVender(idPartida: IdPartida, idEspecie: String, edadAnios: Int) {
+    /** Venta confirmada: una sola venta de un animal con nivel mayor o igual que el requerido. Acumulativa. */
+    fun alVender(idPartida: IdPartida, idEspecie: String, nivel: Int) {
         for (i in pendientes(idPartida)) {
-            val edad = i.numericos["edad_requerida"] ?: continue
+            val requerido = i.numericos["nivel_requerido"] ?: continue
             val aplica = when (i.idMision) {
-                "vender_especie_edad" -> i.textos["id_especie"] == idEspecie
-                "vender_edad" -> true
+                "vender_especie_nivel" -> i.textos["id_especie"] == idEspecie
+                "vender_nivel" -> true
                 else -> false
             }
-            if (aplica && ReglasMision.ventaCumple(edadAnios, edad)) fijar(idPartida, i, 1.0)
+            if (aplica && ReglasMision.ventaCumple(nivel, requerido)) fijar(idPartida, i, 1.0)
         }
     }
 
-    /** Animales que cruzaron la edad requerida durante un ciclo posterior a la creación de la instancia. Acumulativa. */
-    fun alCrecer(idPartida: IdPartida, cruces: List<CruceEdad>) {
+    /** Animales que alcanzaron el nivel requerido durante un ciclo posterior a la creación de la instancia. Acumulativa. */
+    fun alSubirNivel(idPartida: IdPartida, cruces: List<CruceNivel>) {
         if (cruces.isEmpty()) return
         for (i in pendientes(idPartida).filter { it.idMision == "crecer_especie" }) {
-            val edad = i.numericos["edad_requerida"] ?: continue
+            val requerido = i.numericos["nivel_requerido"] ?: continue
             val especie = i.textos["id_especie"] ?: continue
-            val cuenta = cruces.count { it.idEspecie == especie && ReglasMision.cruzaEdad(it.antesAnios, it.despuesAnios, edad) }
+            val cuenta = cruces.count { it.idEspecie == especie && ReglasMision.alcanzaNivel(it.antes, it.despues, requerido) }
             if (cuenta > 0) fijar(idPartida, i, i.progreso + cuenta)
         }
     }
@@ -87,19 +87,13 @@ class ActualizarMisiones(private val misiones: MisionRepositorio) {
     }
 }
 
-/** Etapa de misiones del ciclo (CU-11, 3.8): cuenta a los animales que cruzaron la edad requerida en este ciclo. */
+/** Etapa de misiones del ciclo (CU-11, 3.8): cuenta a los animales que subieron de nivel en este ciclo. */
 class EtapaMisiones(private val seguimiento: ActualizarMisiones) : EtapaCiclo {
     override fun ejecutar(idPartida: IdPartida, numeroCiclo: Int, vivos: List<AnimalEnCiclo>) {
         val cruces = vivos.mapNotNull {
-            val antes = it.edadPreviaDias / DIAS_ANIO
-            val despues = it.edadDias / DIAS_ANIO
-            if (despues > antes) CruceEdad(it.idEspecie, antes, despues) else null
+            if (it.nivel > it.nivelPrevio) CruceNivel(it.idEspecie, it.nivelPrevio, it.nivel) else null
         }
-        seguimiento.alCrecer(idPartida, cruces)
-    }
-
-    private companion object {
-        const val DIAS_ANIO = 360
+        seguimiento.alSubirNivel(idPartida, cruces)
     }
 }
 
@@ -281,14 +275,14 @@ class ConsultarMisiones(private val misiones: MisionRepositorio) {
         val hb = habitat ?: "el hábitat indicado"
         return when (i.idMision) {
             "comprar_especie" -> "Compra ${n("cantidad_requerida")} ejemplares de $sp."
-            "crecer_especie" -> "Haz que ${n("cantidad_animales")} ejemplares de $sp lleguen a ${n("edad_requerida")} años."
+            "crecer_especie" -> "Haz que ${n("cantidad_animales")} ejemplares de $sp alcancen el nivel ${n("nivel_requerido")}."
             "total_animales" -> "Ten ${n("numero_animales")} animales en el zoo."
             "animales_habitat" -> "Ten ${n("numero_animales")} animales en el hábitat $hb."
             "espacios_ocupados_habitat" ->
                 "Ten ${n("numero_espacios_requeridos")} espacios del hábitat $hb con al menos ${n("numero_minimo_animales_por_espacio")} animales."
             "subir_prestigio" -> "Alcanza el nivel de prestigio ${n("nivel_prestigio_requerido")}."
-            "vender_especie_edad" -> "Vende un ejemplar de $sp de ${n("edad_requerida")} años o más."
-            "vender_edad" -> "Vende un animal de ${n("edad_requerida")} años o más."
+            "vender_especie_nivel" -> "Vende un ejemplar de $sp de nivel ${n("nivel_requerido")} o superior."
+            "vender_nivel" -> "Vende un animal de nivel ${n("nivel_requerido")} o superior."
             "familia" -> "Ten una familia: un animal con padre, madre y al menos ${n("numero_minimo_hermanos")} hermanos vivos."
             "familia_especie" -> "Ten una familia de $sp: padre, madre y al menos ${n("numero_minimo_hermanos")} hermanos vivos."
             "satisfaccion_minima" ->

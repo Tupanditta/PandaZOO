@@ -77,8 +77,8 @@ class Sprint5Test {
     private fun instantanea(): List<Any?> = listOf(
         e.fondos(), e.contar("Animal"), e.contar("CicloSimulacion"), e.contar("BeneficioPendiente"), e.contar("Notificacion"),
         ultimoCiclo(),
-        e.bd.leer("SELECT id_animal, edad_anios, edad_meses, edad_dias, nivel_alimentacion, estado_salud, estado_vital, ciclos_desnutricion, ciclos_enfermedad, satisfaccion_actual FROM Animal ORDER BY id_animal") {
-            listOf(it.texto(0), it.entero(1), it.entero(2), it.entero(3), it.entero(4), it.texto(5), it.texto(6), it.entero(7), it.entero(8), it.decimal(9))
+        e.bd.leer("SELECT id_animal, nivel, ciclos_nivel, nivel_alimentacion, estado_salud, estado_vital, ciclos_desnutricion, ciclos_enfermedad, satisfaccion_actual FROM Animal ORDER BY id_animal") {
+            listOf(it.texto(0), it.entero(1), it.entero(2), it.entero(3), it.texto(4), it.texto(5), it.entero(6), it.entero(7), it.decimal(8))
         },
         e.bd.leer("SELECT nivel, id_espacio, valor FROM MetricaSatisfaccion ORDER BY id_metrica") { listOf(it.texto(0), it.textoONulo(1), it.decimal(2)) },
     )
@@ -90,47 +90,27 @@ class Sprint5Test {
         val sp = espacio()
         val a = animal(sp, alimentacion = 100)
         e.recalcular.alConsolidar(e.idPartida, AlcanceRecalculo.Parque)
-        val vistas = mutableListOf<Triple<String, Int, Int>>() // etapa, edad en días, alimentación
+        val vistas = mutableListOf<Triple<String, Int, Int>>() // etapa, ciclos de nivel, alimentación
         val extension = mutableListOf<Int>()
         val ext = EtapaCiclo { _, _, vivos -> extension += vivos.single().alimentacion }
         val caso = EjecutarCiclo(
             e.ejecutor, e.ciclos, e.animales, e.auditoria, e.recalcular, e.azar, e.reloj,
-            traza = { etapa, animales -> vistas += Triple(etapa, animales.single().edadDias, animales.single().alimentacion) },
+            traza = { etapa, animales -> vistas += Triple(etapa, animales.single().ciclosNivel, animales.single().alimentacion) },
             reproduccion = ext,
             misiones = ext,
         )
         exito(caso.ejecutar(ComandoEjecutarCiclo(e.idPartida, 1)))
 
         vistas.map { it.first } shouldContainExactly listOf(
-            Etapas.EDAD, Etapas.ALIMENTACION, Etapas.SALUD, Etapas.CICLOS_CRITICOS, Etapas.DEFUNCIONES, Etapas.REPRODUCCION,
+            Etapas.ALIMENTACION, Etapas.SALUD, Etapas.CICLOS_CRITICOS, Etapas.DEFUNCIONES, Etapas.NIVEL, Etapas.REPRODUCCION,
             Etapas.BENEFICIOS, Etapas.MISIONES, Etapas.METRICAS, Etapas.PERSISTENCIA,
         )
-        val inicial = 1 * 360 // los animales de prueba nacen con 1 año
-        vistas.first { it.first == Etapas.EDAD }.let { it.second shouldBe inicial + 6; it.third shouldBe 100 }
-        vistas.first { it.first == Etapas.ALIMENTACION }.let { it.second shouldBe inicial + 6; it.third shouldBe 80 }
-        // Las extensiones se ejecutan una vez cada una y ya ven la alimentación reducida por la etapa 2.
+        // La alimentación ya baja en su etapa; el progreso de nivel solo suma en la etapa de nivel, tras las defunciones.
+        vistas.first { it.first == Etapas.ALIMENTACION }.let { it.second shouldBe 0; it.third shouldBe 80 }
+        vistas.first { it.first == Etapas.DEFUNCIONES }.let { it.second shouldBe 0; it.third shouldBe 80 }
+        vistas.first { it.first == Etapas.NIVEL }.let { it.second shouldBe 1; it.third shouldBe 80 }
+        // Las extensiones se ejecutan una vez cada una y ya ven la alimentación reducida por la etapa 1.
         extension shouldContainExactly listOf(80, 80)
-    }
-
-    // ---- T5.2 edad ----
-
-    @Test
-    fun `T5_2 cinco ciclos suman un mes y se cruza el anio correctamente`() {
-        val sp = espacio()
-        val a = animal(sp)
-        e.recalcular.alConsolidar(e.idPartida, AlcanceRecalculo.Parque)
-        repeat(5) { exito(ciclo()) }
-        campoInt(a, "edad_anios") shouldBe 1
-        campoInt(a, "edad_meses") shouldBe 1
-        campoInt(a, "edad_dias") shouldBe 0
-
-        e.bd.escribir(
-            "UPDATE Animal SET edad_anios = 20, edad_meses = 11, edad_dias = 29, edad_maxima_anios = 50, nivel_alimentacion = 100 WHERE id_animal = ?", a,
-        )
-        exito(ciclo())
-        campoInt(a, "edad_anios") shouldBe 21
-        campoInt(a, "edad_meses") shouldBe 0
-        campoInt(a, "edad_dias") shouldBe 5
     }
 
     // ---- T5.3 alimentación ----
@@ -246,10 +226,10 @@ class Sprint5Test {
         estadoVital(a) shouldBe "MUERTO"
     }
 
-    // ---- T5.6 longevidad y defunción ----
+    // ---- T5.6 defunción (TN.7: ya no hay muerte por vejez) ----
 
     @Test
-    fun `T5_6 la muerte por longevidad libera aforo anula vinculos y conserva la genealogia`() {
+    fun `T5_6 la muerte por ciclos criticos libera aforo anula vinculos y conserva la genealogia`() {
         val sp = espacio(capacidad = 4)
         val padre = animal(sp, nombre = "Padre")
         val madre = animal(sp, nombre = "Madre")
@@ -257,11 +237,8 @@ class Sprint5Test {
         val hijo = e.datos.animal(e.idPartida, sp, "erizo", "Hijo", 100, false, padre, madre)
         e.animales.fijarPareja(e.idPartida, padre, madre)
         e.animales.fijarMejorAmigo(e.idPartida, amigo, padre)
-        // El padre alcanza su edad máxima con este ciclo (+6 días).
-        e.bd.escribir(
-            "UPDATE Animal SET edad_anios = 10, edad_meses = 0, edad_dias = 0, edad_maxima_anios = 10, edad_maxima_meses = 0, edad_maxima_dias = 5 WHERE id_animal = ?",
-            padre,
-        )
+        // El padre llega al tercer ciclo de desnutrición con este ciclo.
+        e.bd.escribir("UPDATE Animal SET nivel_alimentacion = 0, ciclos_desnutricion = 2 WHERE id_animal = ?", padre)
         e.recalcular.alConsolidar(e.idPartida, AlcanceRecalculo.Parque)
         e.consultarZoo.espacio(e.idPartida, sp)!!.ocupacion shouldBe 4
 
@@ -281,23 +258,20 @@ class Sprint5Test {
     @Test
     fun `T5_7 el beneficio sigue la formula y se calcula tras las defunciones`() {
         val sp = espacio()
-        val a = animal(sp, "erizo", "A") // rango 1: 4,00
+        val a = animal(sp, "erizo", "A") // rango 1: base 12,00
         val b = animal(sp, "erizo", "B")
-        val rey = animal(sp, "leon", "Rey") // rango 3: 14,00
+        val rey = animal(sp, "leon", "Rey") // rango 3: base 40,00
         listOf(a, b, rey).forEach { fijarSatisfaccion(it, 0.5) }
-        // 0,5 · (4 + 4 + 14) = 11,00
-        exito(ciclo()).beneficio shouldBe d("11.00")
-        pendientes() shouldBe d("11.00")
+        // Por animal, nivel 1: 12 · 0,5 + 12 · 0,5 + 40 · 0,5 = 32,00
+        exito(ciclo()).beneficio shouldBe d("32.00")
+        pendientes() shouldBe d("32.00")
         e.contar("BeneficioPendiente") shouldBe 1
 
-        // Uno de los erizos muere por longevidad en el ciclo 2: no cuenta (0,5 · (4 + 14) = 9,00).
-        e.bd.escribir(
-            "UPDATE Animal SET edad_anios = 20, edad_meses = 0, edad_dias = 0, edad_maxima_anios = 20, edad_maxima_meses = 0, edad_maxima_dias = 5 WHERE id_animal = ?", b,
-        )
-        e.bd.escribir("UPDATE Animal SET edad_maxima_anios = 100 WHERE id_animal IN (?, ?)", a, rey)
+        // Uno de los erizos muere en el ciclo 2 (tercer ciclo crítico): no cuenta (6 + 20 = 26,00).
+        e.bd.escribir("UPDATE Animal SET nivel_alimentacion = 0, ciclos_desnutricion = 2 WHERE id_animal = ?", b)
         listOf(a, b, rey).forEach { fijarSatisfaccion(it, 0.5) } // el recálculo del ciclo 1 cambió la satisfacción
-        exito(ciclo()).beneficio shouldBe d("9.00")
-        pendientes() shouldBe d("20.00")
+        exito(ciclo()).beneficio shouldBe d("26.00")
+        pendientes() shouldBe d("58.00")
     }
 
     @Test
@@ -312,12 +286,12 @@ class Sprint5Test {
     fun `T5_7 satisfaccion fraccionaria redondea al centimo con los medios hacia arriba`() {
         val sp = espacio()
         val a = animal(sp)
-        fijarSatisfaccion(a, 0.125) // 0,125 · 4,00 = 0,50
-        exito(ciclo()).beneficio shouldBe d("0.50")
+        fijarSatisfaccion(a, 0.00125) // 12,00 · 0,00125 = 0,015 → 0,02 (medio hacia arriba)
+        exito(ciclo()).beneficio shouldBe d("0.02")
         val b = animal(sp, nombre = "B")
         fijarSatisfaccion(a, 0.3333)
-        fijarSatisfaccion(b, 0.3333) // media 0,3333 · 8,00 = 2,6664 → 2,67
-        exito(ciclo()).beneficio shouldBe d("2.67")
+        fijarSatisfaccion(b, 0.3333) // 12 · 0,3333 + 12 · 0,3333 = 7,9992 → 8,00
+        exito(ciclo()).beneficio shouldBe d("8.00")
     }
 
     // ---- T5.8 mutaciones entre ciclos ----
@@ -347,19 +321,19 @@ class Sprint5Test {
         val a = animal(sp)
         fijarSatisfaccion(a, 1.0)
         repeat(3) { fijarSatisfaccion(a, 1.0); exito(ciclo()) }
-        pendientes() shouldBe d("12.00")
+        pendientes() shouldBe d("36.00")
         val antes = e.fondos()
 
-        val r = exito(e.reclamarBeneficios.ejecutar(ComandoReclamarBeneficios(e.idPartida, d("12.00"), nueva())))
-        r.importe shouldBe d("12.00")
-        r.saldo shouldBe antes + d("12.00")
-        e.fondos() shouldBe antes + d("12.00")
+        val r = exito(e.reclamarBeneficios.ejecutar(ComandoReclamarBeneficios(e.idPartida, d("36.00"), nueva())))
+        r.importe shouldBe d("36.00")
+        r.saldo shouldBe antes + d("36.00")
+        e.fondos() shouldBe antes + d("36.00")
         pendientes() shouldBe Dinero.CERO
         e.contar("BeneficioPendiente", "estado = 'RECLAMADO' AND fecha_reclamacion IS NOT NULL") shouldBe 3
-        e.contar("MovimientoEconomico", "tipo = 'INGRESO' AND importe = 12.0") shouldBe 1
+        e.contar("MovimientoEconomico", "tipo = 'INGRESO' AND importe = 36.0") shouldBe 1
 
         rechazo(e.reclamarBeneficios.ejecutar(ComandoReclamarBeneficios(e.idPartida, null, nueva()))) shouldBe MotivoRechazo.SinBeneficios
-        e.fondos() shouldBe antes + d("12.00")
+        e.fondos() shouldBe antes + d("36.00")
         e.contar("MovimientoEconomico", "tipo = 'INGRESO'") shouldBe 1
     }
 
@@ -371,14 +345,14 @@ class Sprint5Test {
         exito(ciclo())
         val antes = e.fondos()
         rechazo(e.reclamarBeneficios.ejecutar(ComandoReclamarBeneficios(e.idPartida, d("3.00"), nueva()))) shouldBe
-            MotivoRechazo.BeneficiosCambiados(d("4.00"))
+            MotivoRechazo.BeneficiosCambiados(d("12.00"))
         e.fondos() shouldBe antes
 
-        val mismo = ComandoReclamarBeneficios(e.idPartida, d("4.00"), "reclamo-1")
+        val mismo = ComandoReclamarBeneficios(e.idPartida, d("12.00"), "reclamo-1")
         exito(e.reclamarBeneficios.ejecutar(mismo))
         val repetido = e.reclamarBeneficios.ejecutar(mismo) as Resultado.Exito
         repetido.repetido shouldBe true
-        e.fondos() shouldBe antes + d("4.00")
+        e.fondos() shouldBe antes + d("12.00")
     }
 
     // ---- T5.10 idempotencia del ciclo ----

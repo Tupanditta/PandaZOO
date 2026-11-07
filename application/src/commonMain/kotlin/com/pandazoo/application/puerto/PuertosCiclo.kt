@@ -1,5 +1,6 @@
 package com.pandazoo.application.puerto
 
+import com.pandazoo.domain.animal.ParametrosNivelRango
 import com.pandazoo.domain.economia.Dinero
 import com.pandazoo.domain.modelo.IdPartida
 
@@ -18,17 +19,17 @@ data class EstadoMotor(
     val siguiente: Int get() = (numeroUltimo ?: 0) + 1
 }
 
-/** Animal vivo y alojado tal y como entra al ciclo: la edad en días totales y la satisfacción persistida al inicio. */
+/** Animal vivo y alojado tal y como entra al ciclo: su nivel y la satisfacción persistida al inicio. */
 data class AnimalCiclo(
     val id: String,
     val idEspecie: String,
-    val edadDias: Int,
-    val edadMaximaDias: Int,
+    val nivel: Int,
+    val ciclosNivel: Int,
     val alimentacion: Int,
     val enfermo: Boolean,
     val satisfaccion: Double,
     val probabilidadEnfermedad: Double,
-    val beneficioPorCiclo: Dinero,
+    val parametros: ParametrosNivelRango,
     val ciclosDesnutricion: Int,
     val ciclosEnfermedad: Int,
 )
@@ -36,7 +37,8 @@ data class AnimalCiclo(
 /** Resultado de las etapas biológicas que se persiste de un animal que sigue vivo. */
 data class EstadoAnimalCiclo(
     val id: String,
-    val edadDias: Int,
+    val nivel: Int,
+    val ciclosNivel: Int,
     val alimentacion: Int,
     val enfermo: Boolean,
     val ciclosDesnutricion: Int,
@@ -94,7 +96,7 @@ data class AnimalCritico(
     val id: String,
     val nombre: String,
     val especie: String,
-    val edadAnios: Int,
+    val nivel: Int,
     val sinAlimento: Boolean,
     val enfermo: Boolean,
     val ciclosDesnutricion: Int,

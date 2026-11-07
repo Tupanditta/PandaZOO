@@ -13,6 +13,9 @@ import com.pandazoo.application.puerto.EstadoAnimalCiclo
 import com.pandazoo.application.puerto.RegistroAuditoria
 import com.pandazoo.application.puerto.Reloj
 import com.pandazoo.application.puerto.ResultadoAuditoria
+import com.pandazoo.domain.animal.ParametrosNivelRango
+import com.pandazoo.domain.animal.ProgresoNivel
+import com.pandazoo.domain.animal.ReglasNivel
 import com.pandazoo.domain.ciclo.CausaMuerte
 import com.pandazoo.domain.ciclo.ReglasCiclo
 import com.pandazoo.domain.ciclo.ReglasDiferido
@@ -23,22 +26,22 @@ import com.pandazoo.domain.modelo.IdPartida
 class AnimalEnCiclo(origen: AnimalCiclo, /** Estado al empezar la sesión diferida; en un ciclo en vivo es el propio origen. */ val inicioSesion: AnimalCiclo = origen) {
     val id: String = origen.id
     val idEspecie: String = origen.idEspecie
-    val edadMaximaDias: Int = origen.edadMaximaDias
     val satisfaccionInicial: Double = origen.satisfaccion
     val probabilidadEnfermedad: Double = origen.probabilidadEnfermedad
-    val beneficioPorCiclo: Dinero = origen.beneficioPorCiclo
+    val parametros: ParametrosNivelRango = origen.parametros
 
-    /** Edad al empezar el ciclo, para detectar los animales que cruzan un año completo (misiones de crecimiento). */
-    val edadPreviaDias: Int = origen.edadDias
+    /** Nivel al empezar el ciclo, para detectar los animales que suben de nivel (misiones de crecimiento). */
+    val nivelPrevio: Int = origen.nivel
 
-    var edadDias: Int = origen.edadDias
+    var nivel: Int = origen.nivel
+    var ciclosNivel: Int = origen.ciclosNivel
     var alimentacion: Int = origen.alimentacion
     var enfermo: Boolean = origen.enfermo
     var ciclosDesnutricion: Int = origen.ciclosDesnutricion
     var ciclosEnfermedad: Int = origen.ciclosEnfermedad
     var causaMuerte: CausaMuerte? = null
 
-    fun estado() = EstadoAnimalCiclo(id, edadDias, alimentacion, enfermo, ciclosDesnutricion, ciclosEnfermedad)
+    fun estado() = EstadoAnimalCiclo(id, nivel, ciclosNivel, alimentacion, enfermo, ciclosDesnutricion, ciclosEnfermedad)
 }
 
 /** Observador de etapas: los tests lo usan para comprobar el orden y que cada etapa ve el resultado de la anterior. */
@@ -52,11 +55,11 @@ fun interface EtapaCiclo {
 }
 
 object Etapas {
-    const val EDAD = "EDAD"
     const val ALIMENTACION = "ALIMENTACION"
     const val SALUD = "SALUD"
     const val CICLOS_CRITICOS = "CICLOS_CRITICOS"
     const val DEFUNCIONES = "DEFUNCIONES"
+    const val NIVEL = "NIVEL"
     const val REPRODUCCION = "REPRODUCCION"
     const val BENEFICIOS = "BENEFICIOS"
     const val MISIONES = "MISIONES"
@@ -85,13 +88,13 @@ data class CicloEjecutado(
 )
 
 /**
- * CU-11 Ejecutar ciclo (RF-14, RF-24, RNF-12). Una única transacción procesa edad, alimentación, salud, ciclos
- * críticos, defunciones, reproducción, beneficios, misiones, métricas y persistencia, en ese orden. El número de
+ * CU-11 Ejecutar ciclo (RF-14, RF-24, RF-51, RNF-12). Una única transacción procesa alimentación, salud, ciclos
+ * críticos, defunciones, nivel, reproducción, beneficios, misiones, métricas y persistencia, en ese orden. El número de
  * ciclo es la clave de idempotencia: repetirlo devuelve el resultado persistido sin repetir efectos.
  *
- * Decisión sobre el beneficio: se calcula tras las defunciones con la satisfacción persistida al inicio del ciclo
- * (la «vigente al inicio de la etapa») de los animales que siguen vivos; la satisfacción nueva se calcula después, en
- * la etapa de métricas, y alimenta el beneficio del ciclo siguiente.
+ * Decisión sobre el beneficio: se calcula tras las defunciones y la etapa de nivel, sumando por animal su beneficio
+ * base de rango por su satisfacción individual persistida al inicio del ciclo y por el multiplicador de su nivel; la
+ * satisfacción nueva se calcula después, en la etapa de métricas, y alimenta el beneficio del ciclo siguiente.
  */
 class EjecutarCiclo(
     private val ejecutor: EjecutorOperacion,
@@ -104,6 +107,7 @@ class EjecutarCiclo(
     private val traza: TrazaCiclo? = null,
     private val reproduccion: EtapaCiclo? = null,
     private val misiones: EtapaCiclo? = null,
+    private val ciclosPorNivel: Int = ReglasNivel.CICLOS_POR_NIVEL,
 ) {
     /** Ejecuta el ciclo siguiente al último confirmado. */
     fun siguiente(idPartida: IdPartida): Resultado<CicloEjecutado> {
@@ -140,11 +144,7 @@ class EjecutarCiclo(
         val diferido = c.diferido
         val vivos = ciclos.animalesVivosAlojados(idPartida).map { AnimalEnCiclo(it, diferido?.inicioSesion?.get(it.id) ?: it) }
 
-        // 3.1 Edad.
-        vivos.forEach { it.edadDias = ReglasCiclo.edadTrasCiclo(it.edadDias) }
-        traza?.etapa(Etapas.EDAD, vivos)
-
-        // 3.2 Alimentación.
+        // 3.1 Alimentación.
         vivos.forEach {
             it.alimentacion = if (diferido == null) {
                 ReglasCiclo.alimentacionTrasCiclo(it.alimentacion)
@@ -154,7 +154,7 @@ class EjecutarCiclo(
         }
         traza?.etapa(Etapas.ALIMENTACION, vivos)
 
-        // 3.3 Salud: solo se sortean los sanos, con la satisfacción persistida al inicio del ciclo.
+        // 3.2 Salud: solo se sortean los sanos, con la satisfacción persistida al inicio del ciclo.
         val nuevosEnfermos = ArrayList<AnimalEnCiclo>()
         for (a in vivos) {
             if (a.enfermo) continue
@@ -165,7 +165,7 @@ class EjecutarCiclo(
         }
         traza?.etapa(Etapas.SALUD, vivos)
 
-        // 3.4 Contadores críticos, independientes entre sí.
+        // 3.3 Contadores críticos, independientes entre sí.
         vivos.forEach {
             if (diferido == null) {
                 it.ciclosDesnutricion = ReglasCiclo.contadorDesnutricion(it.ciclosDesnutricion, it.alimentacion)
@@ -178,11 +178,10 @@ class EjecutarCiclo(
         }
         traza?.etapa(Etapas.CICLOS_CRITICOS, vivos)
 
-        // 3.5 Defunciones.
-        vivos.forEach { it.causaMuerte = ReglasCiclo.causaDeMuerte(it.edadDias, it.edadMaximaDias, it.ciclosDesnutricion, it.ciclosEnfermedad) }
+        // 3.4 Defunciones.
+        vivos.forEach { it.causaMuerte = ReglasCiclo.causaDeMuerte(it.ciclosDesnutricion, it.ciclosEnfermedad) }
         val muertos = vivos.filter { it.causaMuerte != null }
         val supervivientes = vivos.filter { it.causaMuerte == null }
-        ciclos.guardarEstados(idPartida, supervivientes.map { it.estado() })
         for (m in muertos) {
             animales.retirar(idPartida, m.id, "MUERTO")
             auditar(idPartida, c.numero, "DEFUNCION", "ANIMAL", m.id, "${m.id}:DEFUNCION", requireNotNull(m.causaMuerte).name, ahora)
@@ -192,16 +191,24 @@ class EjecutarCiclo(
         }
         traza?.etapa(Etapas.DEFUNCIONES, supervivientes)
 
+        // 3.5 Nivel (RF-51): solo suman los que siguen vivos, sanos y alimentados; el estado ya refleja los límites de RF-22 y RF-23.
+        supervivientes.forEach {
+            val sano = ReglasNivel.cicloSano(it.alimentacion, it.ciclosDesnutricion, it.ciclosEnfermedad)
+            val p = ReglasNivel.tras(ProgresoNivel(it.nivel, it.ciclosNivel), sano, it.parametros.nivelMaximo, ciclosPorNivel)
+            it.nivel = p.nivel
+            it.ciclosNivel = p.ciclosNivel
+        }
+        ciclos.guardarEstados(idPartida, supervivientes.map { it.estado() })
+        traza?.etapa(Etapas.NIVEL, supervivientes)
+
         // 3.6 Reproducción: punto de extensión del Sprint 7.
         reproduccion?.ejecutar(idPartida, c.numero, supervivientes)
         traza?.etapa(Etapas.REPRODUCCION, supervivientes)
 
-        // 3.7 Beneficios: tras las defunciones, con la satisfacción vigente al inicio de la etapa.
-        val beneficio = if (supervivientes.isEmpty()) {
-            Dinero.CERO
-        } else {
-            ReglasCiclo.beneficio(supervivientes.sumOf { it.satisfaccionInicial } / supervivientes.size, supervivientes.map { it.beneficioPorCiclo })
-        }
+        // 3.7 Beneficios: tras las defunciones y el nivel, con la satisfacción individual vigente al inicio del ciclo (RF-15).
+        val beneficio = ReglasNivel.beneficioCiclo(
+            supervivientes.map { ReglasNivel.beneficioAnimal(it.parametros, it.satisfaccionInicial, it.nivel) },
+        )
         if (beneficio > Dinero.CERO) {
             val clave = "$idPartida:BENEFICIO:${c.numero}"
             ciclos.registrarBeneficio(idPartida, c.numero, beneficio, clave, ahora)

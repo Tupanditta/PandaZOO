@@ -129,9 +129,10 @@ class BaseDatos private constructor(private val conexion: ConexionSql) : Transac
     companion object {
         /**
          * Versión 2: la partida nueva empieza con 2000 monedas. Las partidas creadas con la versión 1 reciben
-         * 1000 monedas de compensación una sola vez, al migrar (`migrarDe1a2`).
+         * 1000 monedas de compensación una sola vez, al migrar (`migrarDe1a2`). Versión 3 (Sprint N): niveles de animal en
+         * lugar de edad, beneficio y venta según nivel (`migrarDe2a3`).
          */
-        const val VERSION = 2
+        const val VERSION = 3
 
         /** Compensación única a las partidas creadas con la versión 1 (que empezaban con 1000 monedas). */
         const val COMPENSACION_V2 = 1000.0
@@ -168,6 +169,7 @@ class BaseDatos private constructor(private val conexion: ConexionSql) : Transac
         } else {
             val actual = uno("PRAGMA user_version") { it.entero(0) }
             if (actual == 1) migrarDe1a2()
+            if ((uno("PRAGMA user_version") { it.entero(0) }) == 2) migrarDe2a3()
             check((uno("PRAGMA user_version") { it.entero(0) }) == VERSION) { "Versión de base de datos no soportada" }
         }
     }
@@ -182,6 +184,123 @@ class BaseDatos private constructor(private val conexion: ConexionSql) : Transac
             )
             escribir("UPDATE Partida SET fondos = ROUND(fondos + ?, 2)", COMPENSACION_V2)
             conexion.ejecutar("PRAGMA user_version = 2")
+        }
+    }
+
+    /**
+     * Versión 3 (Sprint N): sustituye la edad por el nivel (RF-51), reescribe el beneficio y añade el valor de venta (RF-52).
+     * Una sola transacción. Las claves foráneas se desactivan durante la reconstrucción de las tablas (la orden no tiene
+     * efecto dentro de una transacción, así que va fuera) y se comprueban con `foreign_key_check` antes de confirmar.
+     */
+    internal fun migrarDe2a3() {
+        conexion.ejecutar("PRAGMA foreign_keys = OFF")
+        try {
+            ejecutar {
+                // (4) Rangos: renombra el beneficio base y añade nivel máximo, multiplicador y valores de venta (versión 1.1).
+                reconstruir(
+                    "RangoEspecie",
+                    "WITH v(id_rango, base, nmax, mult, venta, fmax) AS (VALUES (1, 12.0, 15, 3.0, 200.0, 1.5), " +
+                        "(2, 24.0, 29, 3.5, 450.0, 1.75), (3, 40.0, 41, 4.0, 900.0, 2.0), (4, 64.0, 51, 4.5, 1800.0, 2.25), " +
+                        "(5, 100.0, 61, 5.0, 4000.0, 2.5)) " +
+                        "INSERT INTO RangoEspecie_nueva (rowid, id_rango, nombre, umbral_reproduccion, probabilidad_reproduccion, " +
+                        "penalizacion_hijo_reproduccion, probabilidad_enfermedad, beneficio_base_animal_ciclo, nivel_maximo, " +
+                        "multiplicador_nivel_maximo, valor_venta_base, factor_venta_nivel_maximo) " +
+                        "SELECT r.rowid, r.id_rango, r.nombre, r.umbral_reproduccion, r.probabilidad_reproduccion, " +
+                        "r.penalizacion_hijo_reproduccion, r.probabilidad_enfermedad, v.base, v.nmax, v.mult, v.venta, v.fmax " +
+                        "FROM RangoEspecie r JOIN v ON v.id_rango = r.id_rango",
+                )
+                // (3) Especies: desaparece la edad media.
+                reconstruir(
+                    "Especie",
+                    "INSERT INTO Especie_nueva (rowid, id_especie, nombre_comun, id_rango, tope_hermanos, peso_bio, peso_soc, " +
+                        "estado_catalogo, nivel_desbloqueo, peso_pareja, peso_amigo, peso_padre, peso_madre, peso_hermanos, " +
+                        "peso_afinidad, kg_bambu_por_incremento) " +
+                        "SELECT rowid, id_especie, nombre_comun, id_rango, tope_hermanos, peso_bio, peso_soc, estado_catalogo, " +
+                        "nivel_desbloqueo, peso_pareja, peso_amigo, peso_padre, peso_madre, peso_hermanos, peso_afinidad, " +
+                        "kg_bambu_por_incremento FROM Especie",
+                )
+                // (1) y (2) Animales: sin edades y con nivel. `c` son los ciclos vividos desde el alta a los 20 años (7200 días).
+                reconstruir(
+                    "Animal",
+                    "INSERT INTO Animal_nueva (rowid, id_animal, id_partida, id_especie, id_espacio, nombre, nivel, ciclos_nivel, " +
+                        "nivel_alimentacion, estado_salud, estado_vital, ciclos_desnutricion, ciclos_enfermedad, id_pareja, " +
+                        "id_mejor_amigo, id_padre, id_madre, satisfaccion_actual) " +
+                        "SELECT a.rid, a.id_animal, a.id_partida, a.id_especie, a.id_espacio, a.nombre, " +
+                        "MIN(r.nivel_maximo, 1 + a.c / 72), CASE WHEN 1 + a.c / 72 >= r.nivel_maximo THEN 0 ELSE a.c % 72 END, " +
+                        "a.nivel_alimentacion, a.estado_salud, a.estado_vital, a.ciclos_desnutricion, a.ciclos_enfermedad, " +
+                        "a.id_pareja, a.id_mejor_amigo, a.id_padre, a.id_madre, a.satisfaccion_actual " +
+                        "FROM (SELECT rowid AS rid, *, MAX(0, edad_anios * 360 + edad_meses * 30 + edad_dias - 7200) / 6 AS c FROM Animal) a " +
+                        "JOIN Especie s ON s.id_especie = a.id_especie JOIN RangoEspecie r ON r.id_rango = s.id_rango",
+                )
+                migrarMisionesDeNivel()
+                // (6)
+                val huerfanas = leer("PRAGMA foreign_key_check") { it.texto(0) }
+                check(huerfanas.isEmpty()) { "La migración a la versión 3 dejó referencias rotas: $huerfanas" }
+                conexion.ejecutar("PRAGMA user_version = 3")
+            }
+        } finally {
+            conexion.ejecutar("PRAGMA foreign_keys = ON")
+        }
+    }
+
+    /** Crea `<tabla>_nueva` con el DDL vigente, la rellena con [copia], sustituye a la original y recrea sus índices. */
+    private fun reconstruir(tabla: String, copia: String) {
+        val ddl = EsquemaGenerado.sentencias.first { it.startsWith("CREATE TABLE $tabla ") }
+        conexion.ejecutar(ddl.replaceFirst("CREATE TABLE $tabla ", "CREATE TABLE ${tabla}_nueva "))
+        conexion.ejecutar(copia)
+        conexion.ejecutar("DROP TABLE $tabla")
+        conexion.ejecutar("ALTER TABLE ${tabla}_nueva RENAME TO $tabla")
+        EsquemaGenerado.sentencias
+            .filter { Regex("^CREATE (UNIQUE )?INDEX \\w+ ON $tabla\\(").containsMatchIn(it) }
+            .forEach { conexion.ejecutar(it) }
+    }
+
+    /**
+     * (5) Misiones: `vender_especie_edad` y `vender_edad` pasan a `vender_especie_nivel` y `vender_nivel`, y `edad_requerida` a
+     * `nivel_requerido` en las tres misiones de edad. Las instancias `PENDIENTE` vuelven a los valores base con progreso 0;
+     * las `CUMPLIDA` (y el resto) conservan estado y recompensa y solo reemplazan sus parámetros por los valores base.
+     */
+    private fun migrarMisionesDeNivel() {
+        val renombres = listOf(
+            Triple("vender_especie_edad", "vender_especie_nivel", "Vender un animal de una especie y nivel concretos"),
+            Triple("vender_edad", "vender_nivel", "Vender un animal de un nivel concreto"),
+        )
+        for ((viejo, nuevo, tipo) in renombres) {
+            val reemplazo = "REPLACE(id_instancia_mision, '/$viejo/', '/$nuevo/')"
+            escribir("UPDATE Mision SET id_mision = ?, tipo_objetivo = ? WHERE id_mision = ?", nuevo, tipo, viejo)
+            escribir("UPDATE ParametroMision SET id_mision = ? WHERE id_mision = ?", nuevo, viejo)
+            escribir("UPDATE ProgresoMision SET id_mision = ?, id_instancia_mision = $reemplazo WHERE id_mision = ?", nuevo, viejo)
+            escribir("UPDATE ParametroProgresoMision SET id_mision = ?, id_instancia_mision = $reemplazo WHERE id_mision = ?", nuevo, viejo)
+            escribir("UPDATE RecompensaMision SET id_mision = ?, id_instancia_mision = $reemplazo WHERE id_mision = ?", nuevo, viejo)
+        }
+        escribir(
+            "UPDATE Mision SET tipo_objetivo = 'Hacer subir de nivel a animales de una especie' WHERE id_mision = 'crecer_especie'",
+        )
+        // Nuevo parámetro de nivel de cada misión: base, operación y límites de la versión 1.1.
+        val niveles = listOf(Triple("crecer_especie", 3.0, 2.0), Triple("vender_especie_nivel", 4.0, 1.0), Triple("vender_nivel", 4.0, 1.0))
+        for ((mision, base, minimo) in niveles) {
+            escribir("DELETE FROM ParametroMision WHERE id_mision = ? AND nombre_parametro = 'edad_requerida'", mision)
+            escribir(
+                "INSERT INTO ParametroMision (id_mision, nombre_parametro, tipo_valor, valor_base_numero, operacion_progresion, " +
+                    "constante_progresion, valor_minimo, valor_maximo) VALUES (?, 'nivel_requerido', 'NUMERICO', ?, 'SUMAR', 1, ?, 15)",
+                mision, base, minimo,
+            )
+            // Todas las instancias pierden el parámetro de edad; las pendientes, además, vuelven a sus valores base.
+            escribir("DELETE FROM ParametroProgresoMision WHERE id_mision = ? AND nombre_parametro = 'edad_requerida'", mision)
+            escribir(
+                "DELETE FROM ParametroProgresoMision WHERE id_mision = ? AND id_instancia_mision IN " +
+                    "(SELECT id_instancia_mision FROM ProgresoMision WHERE id_mision = ? AND estado = 'PENDIENTE')",
+                mision, mision,
+            )
+            escribir("UPDATE ProgresoMision SET progreso = 0 WHERE id_mision = ? AND estado = 'PENDIENTE'", mision)
+            escribir(
+                "INSERT INTO ParametroProgresoMision (id_partida, id_instancia_mision, id_mision, nombre_parametro, valor_numero, valor_texto) " +
+                    "SELECT p.id_partida, p.id_instancia_mision, p.id_mision, m.nombre_parametro, m.valor_base_numero, m.valor_base_texto " +
+                    "FROM ProgresoMision p JOIN ParametroMision m ON m.id_mision = p.id_mision " +
+                    "WHERE p.id_mision = ? AND NOT EXISTS (SELECT 1 FROM ParametroProgresoMision q WHERE q.id_partida = p.id_partida " +
+                    "AND q.id_instancia_mision = p.id_instancia_mision AND q.nombre_parametro = m.nombre_parametro)",
+                mision,
+            )
         }
     }
 }

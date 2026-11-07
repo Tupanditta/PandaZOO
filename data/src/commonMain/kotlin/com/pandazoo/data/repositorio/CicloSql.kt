@@ -15,6 +15,7 @@ import com.pandazoo.application.puerto.SeveridadAviso
 import com.pandazoo.application.puerto.TipoAviso
 import com.pandazoo.application.puerto.VentanasRetencion
 import com.pandazoo.data.db.BaseDatos
+import com.pandazoo.domain.animal.ParametrosNivelRango
 import com.pandazoo.domain.ciclo.ReglasCiclo
 import com.pandazoo.domain.economia.Dinero
 import com.pandazoo.domain.modelo.IdPartida
@@ -37,9 +38,9 @@ class CicloSql(private val bd: BaseDatos) : CicloRepositorio {
 
     override fun animalesVivosAlojados(idPartida: IdPartida): List<AnimalCiclo> =
         bd.leer(
-            "SELECT a.id_animal, a.id_especie, a.edad_anios, a.edad_meses, a.edad_dias, a.edad_maxima_anios, a.edad_maxima_meses, " +
-                "a.edad_maxima_dias, a.nivel_alimentacion, a.estado_salud, a.satisfaccion_actual, r.probabilidad_enfermedad, " +
-                "r.beneficio_por_animal_ciclo, a.ciclos_desnutricion, a.ciclos_enfermedad " +
+            "SELECT a.id_animal, a.id_especie, a.nivel, a.ciclos_nivel, a.nivel_alimentacion, a.estado_salud, a.satisfaccion_actual, " +
+                "r.probabilidad_enfermedad, a.ciclos_desnutricion, a.ciclos_enfermedad, " +
+                "r.beneficio_base_animal_ciclo, r.nivel_maximo, r.multiplicador_nivel_maximo, r.valor_venta_base, r.factor_venta_nivel_maximo " +
                 "FROM Animal a JOIN Especie s ON s.id_especie = a.id_especie JOIN RangoEspecie r ON r.id_rango = s.id_rango " +
                 "WHERE a.id_partida = ? AND a.estado_vital = 'VIVO' AND a.id_espacio IS NOT NULL ORDER BY a.id_animal",
             idPartida,
@@ -47,24 +48,30 @@ class CicloSql(private val bd: BaseDatos) : CicloRepositorio {
             AnimalCiclo(
                 id = it.texto(0),
                 idEspecie = it.texto(1),
-                edadDias = it.entero(2) * 360 + it.entero(3) * 30 + it.entero(4),
-                edadMaximaDias = it.entero(5) * 360 + it.entero(6) * 30 + it.entero(7),
-                alimentacion = it.entero(8),
-                enfermo = it.texto(9) == "ENFERMO",
-                satisfaccion = it.decimal(10),
-                probabilidadEnfermedad = it.decimal(11),
-                beneficioPorCiclo = Dinero.desdeBd(it.decimal(12)),
-                ciclosDesnutricion = it.entero(13),
-                ciclosEnfermedad = it.entero(14),
+                nivel = it.entero(2),
+                ciclosNivel = it.entero(3),
+                alimentacion = it.entero(4),
+                enfermo = it.texto(5) == "ENFERMO",
+                satisfaccion = it.decimal(6),
+                probabilidadEnfermedad = it.decimal(7),
+                ciclosDesnutricion = it.entero(8),
+                ciclosEnfermedad = it.entero(9),
+                parametros = ParametrosNivelRango(
+                    beneficioBase = it.decimal(10),
+                    nivelMaximo = it.entero(11),
+                    multiplicadorNivelMaximo = it.decimal(12),
+                    valorVentaBase = Dinero.desdeBd(it.decimal(13)),
+                    factorVentaNivelMaximo = it.decimal(14),
+                ),
             )
         }
 
     override fun guardarEstados(idPartida: IdPartida, estados: List<EstadoAnimalCiclo>) {
         for (e in estados) {
             bd.escribir(
-                "UPDATE Animal SET edad_anios = ?, edad_meses = ?, edad_dias = ?, nivel_alimentacion = ?, estado_salud = ?, " +
+                "UPDATE Animal SET nivel = ?, ciclos_nivel = ?, nivel_alimentacion = ?, estado_salud = ?, " +
                     "ciclos_desnutricion = ?, ciclos_enfermedad = ? WHERE id_partida = ? AND id_animal = ?",
-                e.edadDias / 360, (e.edadDias % 360) / 30, e.edadDias % 30, e.alimentacion,
+                e.nivel, e.ciclosNivel, e.alimentacion,
                 if (e.enfermo) "ENFERMO" else "SANO", e.ciclosDesnutricion, e.ciclosEnfermedad, idPartida, e.id,
             )
         }
@@ -154,14 +161,14 @@ class BeneficioSql(private val bd: BaseDatos) : BeneficioRepositorio {
 class SeguimientoSql(private val bd: BaseDatos) : SeguimientoRepositorio {
     override fun criticos(idPartida: IdPartida): List<AnimalCritico> =
         bd.leer(
-            "SELECT a.id_animal, a.nombre, s.nombre_comun, a.edad_anios, a.nivel_alimentacion, a.estado_salud, " +
+            "SELECT a.id_animal, a.nombre, s.nombre_comun, a.nivel, a.nivel_alimentacion, a.estado_salud, " +
                 "a.ciclos_desnutricion, a.ciclos_enfermedad FROM Animal a JOIN Especie s ON s.id_especie = a.id_especie " +
                 "WHERE a.id_partida = ? AND a.estado_vital = 'VIVO' AND a.id_espacio IS NOT NULL " +
                 "AND (a.nivel_alimentacion = 0 OR a.estado_salud = 'ENFERMO') ORDER BY a.nombre, a.id_animal",
             idPartida,
         ) {
             AnimalCritico(
-                id = it.texto(0), nombre = it.texto(1), especie = it.texto(2), edadAnios = it.entero(3),
+                id = it.texto(0), nombre = it.texto(1), especie = it.texto(2), nivel = it.entero(3),
                 sinAlimento = it.entero(4) == 0, enfermo = it.texto(5) == "ENFERMO",
                 ciclosDesnutricion = it.entero(6), ciclosEnfermedad = it.entero(7),
             )

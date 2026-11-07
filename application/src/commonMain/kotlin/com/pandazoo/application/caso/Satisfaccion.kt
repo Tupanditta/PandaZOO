@@ -77,7 +77,7 @@ class RecalcularSatisfaccion(
 }
 
 /** Satisfacción individual de un animal vivo en el monitor. */
-data class AnimalMonitor(val nombre: String, val especie: String, val valor: Double, val edadAnios: Int = 0)
+data class AnimalMonitor(val nombre: String, val especie: String, val valor: Double, val nivel: Int = 1)
 
 data class EspacioMonitor(
     val nombre: String,
@@ -135,7 +135,7 @@ class ConsultarMonitorSatisfaccion(private val repositorio: MonitorRepositorio) 
                                         animales = when (animales) {
                                             is Resultado.Ok -> Seccion.Disponible(
                                                 animales.valor[e.id].orEmpty()
-                                                    .map { AnimalMonitor(it.nombre, it.especie, it.valor, it.edadAnios) },
+                                                    .map { AnimalMonitor(it.nombre, it.especie, it.valor, it.nivel) },
                                             )
                                             is Resultado.Fallo -> Seccion.NoDisponible("No se pudieron consultar los animales.")
                                         },

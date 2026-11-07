@@ -70,7 +70,24 @@ data class ParAfinidadCfg(
 )
 
 @Serializable
-data class ReglasCfg(val prestigio: PrestigioReglasCfg)
+data class ReglasCfg(
+    val prestigio: PrestigioReglasCfg,
+    val nivel: NivelReglasCfg,
+    val venta: VentaReglasCfg,
+)
+
+@Serializable
+data class NivelReglasCfg(
+    @SerialName("nivel_inicial") val nivelInicial: Int,
+    @SerialName("ciclos_por_nivel") val ciclosPorNivel: Int,
+    @SerialName("nivel_minimo_pareja") val nivelMinimoPareja: Int,
+)
+
+@Serializable
+data class VentaReglasCfg(
+    @SerialName("fraccion_equilibrio") val fraccionEquilibrio: Double,
+    @SerialName("factor_venta_nivel_1") val factorNivel1: Double,
+)
 
 @Serializable
 data class PrestigioReglasCfg(
@@ -179,7 +196,6 @@ data class RecompensaMisionCfg(
 
 @Serializable
 data class TablasCfg(
-    @SerialName("edad_media_especie") val edadMedia: List<EdadMediaCfg>,
     @SerialName("niveles_prestigio") val nivelesPrestigio: List<NivelPrestigioCfg>,
     @SerialName("desbloqueos_prestigio") val desbloqueos: List<DesbloqueoNivelCfg>,
     @SerialName("rangos_especie") val rangos: List<RangoCfg>,
@@ -191,12 +207,6 @@ data class TablasCfg(
     @SerialName("compatibilidad_especie_bioma") val compatibilidad: List<CompatibilidadCfg>,
     @SerialName("alimentos_por_especie") val alimentosPorEspecie: List<AlimentoEspecieCfg>,
     @SerialName("factores_mcrit_especie") val factoresMcrit: List<McritEspecieCfg>,
-)
-
-@Serializable
-data class EdadMediaCfg(
-    @SerialName("id_especie") val idEspecie: String,
-    @SerialName("edad_media_anios") val anios: Int,
 )
 
 @Serializable
@@ -222,7 +232,11 @@ data class RangoCfg(
     @SerialName("probabilidad_reproduccion") val probabilidadReproduccion: Double,
     @SerialName("penalizacion_hijo_reproduccion") val penalizacionHijo: Double,
     @SerialName("probabilidad_enfermedad") val probabilidadEnfermedad: Double,
-    @SerialName("beneficio_por_animal_ciclo") val beneficioPorAnimalCiclo: Double,
+    @SerialName("beneficio_base_animal_ciclo") val beneficioBase: Double,
+    @SerialName("nivel_maximo") val nivelMaximo: Int,
+    @SerialName("multiplicador_nivel_maximo") val multiplicadorNivelMaximo: Double,
+    @SerialName("valor_venta_base") val valorVentaBase: Double,
+    @SerialName("factor_venta_nivel_maximo") val factorVentaNivelMaximo: Double,
 )
 
 @Serializable

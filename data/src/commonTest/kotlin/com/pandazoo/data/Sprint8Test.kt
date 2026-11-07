@@ -239,7 +239,7 @@ class Sprint8Test {
     @Test
     fun `T8_7 cierre forzado en cada etapa del ciclo conserva el ultimo estado consistente y se completa en menos de 3 s`() {
         val etapas = listOf(
-            Etapas.EDAD, Etapas.ALIMENTACION, Etapas.SALUD, Etapas.CICLOS_CRITICOS, Etapas.DEFUNCIONES,
+            Etapas.ALIMENTACION, Etapas.SALUD, Etapas.CICLOS_CRITICOS, Etapas.DEFUNCIONES, Etapas.NIVEL,
             Etapas.REPRODUCCION, Etapas.BENEFICIOS, Etapas.MISIONES, Etapas.METRICAS, Etapas.PERSISTENCIA,
         )
         for (fallo in etapas) {
@@ -253,7 +253,7 @@ class Sprint8Test {
             val defectuoso = EjecutarCiclo(
                 e.ejecutor, e.ciclos, e.animales, e.auditoria, e.recalcular, e.azar, e.reloj,
                 traza = { etapa, _ ->
-                    if (etapa == Etapas.EDAD) enCiclo++
+                    if (etapa == Etapas.ALIMENTACION) enCiclo++
                     if (etapa == fallo && enCiclo == 2) { visitas++; error("cierre forzado en $fallo") }
                 },
                 reproduccion = EtapaReproduccion(e.reproduccion, e.auditoria, e.azar, e.reloj),

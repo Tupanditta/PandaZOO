@@ -1,7 +1,8 @@
 package com.pandazoo.application.puerto
 
 import com.pandazoo.domain.modelo.Espacio
-import com.pandazoo.domain.animal.Edad
+import com.pandazoo.domain.animal.ParametrosNivelRango
+import com.pandazoo.domain.animal.ReglasNivel
 import com.pandazoo.domain.economia.Dinero
 import com.pandazoo.domain.modelo.Existencia
 import com.pandazoo.domain.modelo.Habitat
@@ -155,7 +156,7 @@ data class HabitatBasico(val id: String, val nombre: String)
 
 data class EspacioBasico(val id: String, val idHabitat: String, val nombre: String)
 
-data class AnimalActivo(val idEspacio: String, val nombre: String, val especie: String, val valor: Double, val edadAnios: Int = 0)
+data class AnimalActivo(val idEspacio: String, val nombre: String, val especie: String, val valor: Double, val nivel: Int = 1)
 
 /** Lecturas del monitor (CU-17). Todas son de solo lectura sobre valores ya persistidos. */
 interface MonitorRepositorio {
@@ -186,7 +187,6 @@ data class EspecieTienda(
     val estado: EstadoTienda,
     /** Coste ordinario fijo del rango (`CosteRango`). */
     val coste: Dinero,
-    val edadMediaAnios: Int,
 )
 
 /** Animal con lo necesario para validar vínculos, traslados y ventas. */
@@ -196,7 +196,9 @@ data class AnimalResumen(
     val especie: String,
     val nombre: String,
     val idEspacio: String?,
-    val edadAnios: Int,
+    val nivel: Int,
+    val ciclosNivel: Int,
+    val parametros: ParametrosNivelRango,
     val alimentacion: Int,
     val enfermo: Boolean,
     val vivo: Boolean,
@@ -216,8 +218,9 @@ data class AnimalFicha(
     val idEspacio: String?,
     val nombreEspacio: String?,
     val nombreHabitat: String?,
-    val edad: Edad,
-    val edadMaxima: Edad,
+    val nivel: Int,
+    val ciclosNivel: Int,
+    val parametros: ParametrosNivelRango,
     val alimentacion: Int,
     val enfermo: Boolean,
     val satisfaccion: Double,
@@ -234,13 +237,10 @@ data class NuevoAnimal(
     val idEspecie: String,
     val idEspacio: String,
     val nombre: String,
-    val edadMaxima: Edad,
     val habilidades: List<String>,
     val rasgos: List<String>,
     val idPareja: String?,
     val idMejorAmigo: String?,
-    /** 20 años para un animal comprado (CU-01) y 0 para una cría (CU-10). */
-    val edadInicialAnios: Int = 20,
     val idPadre: String? = null,
     val idMadre: String? = null,
 )
@@ -302,3 +302,11 @@ interface CuidadoRepositorio {
 }
 
 data class EspacioConHabitat(val espacio: Espacio, val nombreHabitat: String)
+
+/** Importe que acreditaría la venta del animal ahora, según su nivel y su rango (RF-52). */
+fun AnimalResumen.valorVenta(): Dinero = ReglasNivel.valorVenta(parametros, nivel)
+
+fun AnimalFicha.valorVenta(): Dinero = ReglasNivel.valorVenta(parametros, nivel)
+
+/** Nivel en el que la venta devuelve exactamente el valor base (ni pérdida ni ganancia). */
+fun ParametrosNivelRango.nivelEquilibrio(): Int = ReglasNivel.nivelEquilibrio(nivelMaximo)

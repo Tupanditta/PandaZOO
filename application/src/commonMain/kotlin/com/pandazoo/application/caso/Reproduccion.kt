@@ -17,7 +17,6 @@ import com.pandazoo.application.puerto.ResultadoAuditoria
 import com.pandazoo.application.puerto.GeneradorId
 import com.pandazoo.application.puerto.ZooRepositorio
 import com.pandazoo.domain.animal.CatalogoFicha
-import com.pandazoo.domain.animal.ReglasAnimal
 import com.pandazoo.domain.modelo.EstadoEntidad
 import com.pandazoo.domain.modelo.IdPartida
 import com.pandazoo.domain.reproduccion.ReglasReproduccion
@@ -114,8 +113,8 @@ data class ComandoAceptarReproduccion(
 data class CriaRegistrada(val idAnimal: String, val idEspacio: String)
 
 /**
- * CU-10 Aceptar reproducción (RF-18, RES-08). Alta atómica de la cría con 0 años, alimentación 100 %, sana, progenitores
- * por identificador (menor padre, mayor madre), edad máxima como en cualquier alta y satisfacción calculada tras
+ * CU-10 Aceptar reproducción (RF-18, RF-51, RES-08). Alta atómica de la cría de nivel 1, alimentación 100 %, sana, progenitores
+ * por identificador (menor padre, mayor madre) y satisfacción calculada tras
  * completar la ficha. La concepción pasa a `CONFIRMADA` y el aviso a `ACEPTADA`. Es idempotente y definitiva.
  */
 class AceptarReproduccion(
@@ -125,7 +124,6 @@ class AceptarReproduccion(
     private val animales: AnimalRepositorio,
     private val zoo: ZooRepositorio,
     private val catalogo: CatalogoFicha,
-    private val azar: Azar,
     private val ids: GeneradorId,
     private val recalculo: RecalcularSatisfaccion,
 ) {
@@ -162,7 +160,6 @@ class AceptarReproduccion(
         c.ficha.idMejorAmigo?.let { id ->
             Vinculos.validarAmigo(animales.animal(c.idPartida, id), null, espacio)?.let { return Resultado.Rechazado(it) }
         }
-        val especie = animales.especieTienda(c.idPartida, padre.idEspecie) ?: return Resultado.Rechazado(MotivoRechazo.EspecieInexistente)
 
         val (idPadre, idMadre) = ReglasReproduccion.progenitores(concepcion.idA, concepcion.idB)
         val idCria = ids.nuevo()
@@ -173,12 +170,10 @@ class AceptarReproduccion(
                 idEspecie = padre.idEspecie,
                 idEspacio = espacio,
                 nombre = nombre,
-                edadMaxima = ReglasAnimal.edadMaxima(especie.edadMediaAnios, ReglasAnimal.factorEdad(azar.siguienteDouble())),
                 habilidades = c.ficha.habilidades,
                 rasgos = c.ficha.rasgos,
                 idPareja = null,
                 idMejorAmigo = c.ficha.idMejorAmigo,
-                edadInicialAnios = 0,
                 idPadre = idPadre,
                 idMadre = idMadre,
             ),

@@ -1,5 +1,5 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "estado": "COMPLETO",
   "descripcion": "Configuracion funcional completa del juego: especies, pesos, afinidades, compatibilidades, costes, consumos, rangos, prestigio, desbloqueos, misiones, recompensas y retencion. Fuente unica de cada dato; los valores son de diseno y se pueden reajustar sin cambiar reglas. Los campos de ejecucion (progreso, estados, claves) viven en BBDD, no aqui.",
   "especies": [
@@ -2403,11 +2403,25 @@
       }
     },
     "beneficio": {
-      "formula": "B_ciclo = redondear_centesimo_medio_arriba( S_global * SUMA_sobre_animales_vivos_alojados( beneficio_por_animal_ciclo[rango(especie)] ) )",
-      "escala_S_global": "0..1 sin redondear",
+      "formula": "B_ciclo = redondear_centesimo_medio_arriba( SUMA_sobre_animales_vivos_alojados( b_i ) ) con b_i = beneficio_base_animal_ciclo[rango(especie)] * S_i * M_nivel(n_i)",
+      "formula_multiplicador_nivel": "M_nivel(n) = 1 + (multiplicador_nivel_maximo[rango] - 1) * (n - 1) / (nivel_maximo[rango] - 1)",
+      "escala_S_i": "0..1 sin redondear; Animal.satisfaccion_actual persistida al inicio del ciclo",
+      "nivel_usado": "nivel del animal tras la etapa de nivel del mismo ciclo",
+      "redondeo": "b_i no se redondea; solo se redondea la suma B_ciclo al centesimo, medios hacia arriba",
       "sin_animales_vivos": 0.0,
-      "fuente_importes": "tablas.rangos_especie[].beneficio_por_animal_ciclo",
-      "nota": "Se genera una vez por ciclo confirmado, tras defunciones y con la satisfaccion global vigente al inicio de la etapa de beneficios; no hay multiplicadores adicionales por especie exclusiva."
+      "fuente_importes": "tablas.rangos_especie[].beneficio_base_animal_ciclo",
+      "fuente_niveles": "tablas.rangos_especie[].nivel_maximo y tablas.rangos_especie[].multiplicador_nivel_maximo",
+      "nota": "Se genera una vez por ciclo confirmado, tras defunciones y tras la etapa de nivel. M_nivel(1) = 1 y M_nivel(nivel_maximo) = multiplicador_nivel_maximo; es lineal entre ambos. S_global no interviene en el beneficio (solo en el prestigio). No hay multiplicadores adicionales por especie exclusiva."
+    },
+    "venta": {
+      "formula": "V = redondear_centesimo_medio_arriba( valor_venta_base[rango] * F_venta(n) )",
+      "formula_factor": "F_venta(n) = factor_venta_nivel_1 + (1 - factor_venta_nivel_1) * (n - 1) / (n_eq - 1) si n <= n_eq; F_venta(n) = 1 + (factor_venta_nivel_maximo[rango] - 1) * (n - n_eq) / (nivel_maximo[rango] - n_eq) si n > n_eq",
+      "nivel_equilibrio": "n_eq = redondear_medio_arriba(fraccion_equilibrio * nivel_maximo[rango])",
+      "fraccion_equilibrio": 0.6667,
+      "factor_venta_nivel_1": 0.05,
+      "fuente_importes": "tablas.rangos_especie[].valor_venta_base y tablas.rangos_especie[].factor_venta_nivel_maximo",
+      "validacion": "0 < factor_venta_nivel_1 < 1; 0.5 < fraccion_equilibrio < 1; por rango 2 <= n_eq < nivel_maximo y factor_venta_nivel_maximo > 1; en los rangos con coste de compra mayor que 0, valor_venta_base = coste de compra (punto de equilibrio exacto); valor_venta_base y factor_venta_nivel_maximo no decrecen con el rango",
+      "nota": "F_venta(1) = factor_venta_nivel_1, F_venta(n_eq) = 1 y F_venta(nivel_maximo) = factor_venta_nivel_maximo; es lineal a tramos. En n_eq la venta devuelve el coste de compra (ni perdida ni ganancia). Las especies exclusivas (rango 5, coste 0) usan valor_venta_base como valor de referencia: toda la venta es ganancia."
     },
     "salud": {
       "formula_enfermar": "probabilidad = probabilidad_enfermedad[rango(especie)] * (1 - satisfaccion_actual)",
@@ -2421,16 +2435,18 @@
       "minimo": 0,
       "nota": "Cada ciclo ordinario baja la alimentacion 20 puntos porcentuales sin bajar de 0. En recuperacion offline se aplican los limites de RF-22."
     },
-    "edad": {
-      "dias_por_ciclo": 6,
-      "dias_por_mes": 30,
-      "meses_por_anio": 12,
-      "dias_por_anio": 360,
-      "edad_inicial_compra_anios": 20,
-      "edad_minima_pareja_anios": 16,
-      "longevidad": "dias_maximos = redondear_medio_arriba(edad_media_anios * 360 * factor_aleatorio) con factor uniforme en [0.90, 1.10]; anios = dias div 360; meses = (dias mod 360) div 30; dias = dias mod 30",
-      "defuncion_por_longevidad": "edad_total_dias >= edad_maxima_total_dias tras incrementar la edad del ciclo",
-      "nota": "La edad y la edad maxima se almacenan normalizadas: meses 0..11 y dias 0..29."
+    "nivel": {
+      "nivel_inicial": 1,
+      "nivel_inicial_aplica_a": "compra, recompensa gratuita y cria",
+      "ciclos_por_nivel": 72,
+      "condicion_ciclo_sano": "animal VIVO que, tras las etapas de alimentacion, salud, ciclos criticos y defunciones del ciclo, sigue vivo, tiene alimentacion mayor que 0 y esta SANO (equivale a ciclos_desnutricion = 0 y ciclos_enfermedad = 0)",
+      "progreso": "cada ciclo sano suma 1 a Animal.ciclos_nivel; al llegar a ciclos_por_nivel el nivel sube 1 y ciclos_nivel vuelve a 0. Un ciclo no sano no suma ni resta",
+      "en_el_tope": "si nivel = nivel_maximo del rango, el nivel y ciclos_nivel no cambian (ciclos_nivel = 0)",
+      "nunca_disminuye": true,
+      "nivel_minimo_pareja": 4,
+      "limite_por_rango": "tablas.rangos_especie[].nivel_maximo",
+      "validacion": "nivel_inicial >= 1; ciclos_por_nivel >= 1; 1 <= nivel_minimo_pareja <= menor nivel_maximo entre los rangos; por rango nivel_maximo >= 2 y multiplicador_nivel_maximo >= 1.00",
+      "nota": "Con 10 minutos por ciclo, ciclos_por_nivel = 72 son 12 horas por nivel. El animal no tiene edad ni muere por vejez: solo muere por 3 ciclos criticos continuos. El nivel no es editable por el usuario (RES-03). No debe confundirse con el nivel de alimentacion ni con el nivel de prestigio."
     },
     "ciclos_criticos": {
       "limite_defuncion": 3,
@@ -2518,12 +2534,12 @@
       {
         "id_mision": "crecer_especie",
         "estado_mision": "ACTIVA",
-        "tipo_objetivo": "Hacer crecer animales de una especie",
+        "tipo_objetivo": "Hacer subir de nivel a animales de una especie",
         "naturaleza_progreso": "ACUMULATIVO",
         "parametros_base": {
           "id_especie": "nutria",
           "cantidad_animales": 1,
-          "edad_requerida": 24
+          "nivel_requerido": 3
         },
         "progresion_parametros": {
           "cantidad_animales": {
@@ -2532,15 +2548,15 @@
             "minimo": 1,
             "maximo": 20
           },
-          "edad_requerida": {
+          "nivel_requerido": {
             "operacion": "SUMAR",
-            "constante": 4,
-            "minimo": 1,
-            "maximo": 36
+            "constante": 1,
+            "minimo": 2,
+            "maximo": 15
           }
         },
         "progreso": {
-          "unidad": "animales de la especie que cruzan la edad requerida (años completos) durante un ciclo posterior a la creación de la instancia",
+          "unidad": "animales de la especie que alcanzan el nivel requerido (pasan de un nivel menor a uno mayor o igual) durante un ciclo posterior a la creación de la instancia",
           "objetivo": "cantidad_animales"
         },
         "condicion_cumplimiento": "progreso >= cantidad_animales",
@@ -2676,24 +2692,24 @@
         }
       },
       {
-        "id_mision": "vender_especie_edad",
+        "id_mision": "vender_especie_nivel",
         "estado_mision": "ACTIVA",
-        "tipo_objetivo": "Vender un animal de una especie y edad concretas",
+        "tipo_objetivo": "Vender un animal de una especie y nivel concretos",
         "naturaleza_progreso": "ACUMULATIVO",
         "parametros_base": {
           "id_especie": "erizo",
-          "edad_requerida": 22
+          "nivel_requerido": 4
         },
         "progresion_parametros": {
-          "edad_requerida": {
+          "nivel_requerido": {
             "operacion": "SUMAR",
-            "constante": 2,
+            "constante": 1,
             "minimo": 1,
-            "maximo": 36
+            "maximo": 15
           }
         },
         "progreso": {
-          "unidad": "ventas confirmadas de un animal de la especie con edad en años completos >= edad_requerida desde la creación de la instancia",
+          "unidad": "ventas confirmadas de un animal de la especie con nivel >= nivel_requerido desde la creación de la instancia",
           "objetivo": 1
         },
         "condicion_cumplimiento": "progreso >= 1",
@@ -2705,23 +2721,23 @@
         }
       },
       {
-        "id_mision": "vender_edad",
+        "id_mision": "vender_nivel",
         "estado_mision": "ACTIVA",
-        "tipo_objetivo": "Vender un animal de una edad concreta",
+        "tipo_objetivo": "Vender un animal de un nivel concreto",
         "naturaleza_progreso": "ACUMULATIVO",
         "parametros_base": {
-          "edad_requerida": 22
+          "nivel_requerido": 4
         },
         "progresion_parametros": {
-          "edad_requerida": {
+          "nivel_requerido": {
             "operacion": "SUMAR",
-            "constante": 2,
+            "constante": 1,
             "minimo": 1,
-            "maximo": 36
+            "maximo": 15
           }
         },
         "progreso": {
-          "unidad": "ventas confirmadas de un animal con edad en años completos >= edad_requerida desde la creación de la instancia",
+          "unidad": "ventas confirmadas de un animal con nivel >= nivel_requerido desde la creación de la instancia",
           "objetivo": 1
         },
         "condicion_cumplimiento": "progreso >= 1",
@@ -2886,62 +2902,6 @@
     "habitats_nota": "Un hábitat por bioma, precargado en cada partida como entidad de solo lectura (RES-05). El id_habitat de este catálogo es el código estable (Habitat.codigo)."
   },
   "tablas": {
-    "edad_media_especie": [
-      {"id_especie": "leon", "edad_media_anios": 50},
-      {"id_especie": "jirafa", "edad_media_anios": 55},
-      {"id_especie": "cebra", "edad_media_anios": 50},
-      {"id_especie": "suricata", "edad_media_anios": 40},
-      {"id_especie": "capibara", "edad_media_anios": 40},
-      {"id_especie": "canguro", "edad_media_anios": 45},
-      {"id_especie": "pinguino", "edad_media_anios": 50},
-      {"id_especie": "flamenco", "edad_media_anios": 60},
-      {"id_especie": "cocodrilo", "edad_media_anios": 75},
-      {"id_especie": "delfin", "edad_media_anios": 60},
-      {"id_especie": "rinoceronte", "edad_media_anios": 70},
-      {"id_especie": "nutria", "edad_media_anios": 40},
-      {"id_especie": "foca", "edad_media_anios": 55},
-      {"id_especie": "pantera", "edad_media_anios": 50},
-      {"id_especie": "gorila", "edad_media_anios": 60},
-      {"id_especie": "mono", "edad_media_anios": 50},
-      {"id_especie": "chimpance", "edad_media_anios": 60},
-      {"id_especie": "reno", "edad_media_anios": 40},
-      {"id_especie": "elefante", "edad_media_anios": 80},
-      {"id_especie": "hipopotamo", "edad_media_anios": 65},
-      {"id_especie": "oso_pardo", "edad_media_anios": 55},
-      {"id_especie": "oso_polar", "edad_media_anios": 50},
-      {"id_especie": "cisne", "edad_media_anios": 55},
-      {"id_especie": "tigre", "edad_media_anios": 50},
-      {"id_especie": "leopardo", "edad_media_anios": 50},
-      {"id_especie": "alce", "edad_media_anios": 45},
-      {"id_especie": "tortuga", "edad_media_anios": 90},
-      {"id_especie": "lemur", "edad_media_anios": 50},
-      {"id_especie": "lince_iberico", "edad_media_anios": 45},
-      {"id_especie": "antilope", "edad_media_anios": 40},
-      {"id_especie": "tucan", "edad_media_anios": 55},
-      {"id_especie": "erizo", "edad_media_anios": 40},
-      {"id_especie": "koala", "edad_media_anios": 45},
-      {"id_especie": "lobo", "edad_media_anios": 45},
-      {"id_especie": "zarigueya", "edad_media_anios": 40},
-      {"id_especie": "bufalo", "edad_media_anios": 45},
-      {"id_especie": "nu", "edad_media_anios": 45},
-      {"id_especie": "guepardo", "edad_media_anios": 45},
-      {"id_especie": "panda", "edad_media_anios": 60},
-      {"id_especie": "leopardo_de_las_nieves", "edad_media_anios": 55},
-      {"id_especie": "titi_leon_dorado", "edad_media_anios": 50},
-      {"id_especie": "tigre_de_bengala", "edad_media_anios": 55},
-      {"id_especie": "alce_leucistico", "edad_media_anios": 50},
-      {"id_especie": "jaguar", "edad_media_anios": 55},
-      {"id_especie": "ballena_azul", "edad_media_anios": 90},
-      {"id_especie": "pangolin", "edad_media_anios": 45},
-      {"id_especie": "rinoceronte_blanco", "edad_media_anios": 75}
-    ],
-    "formula_longevidad": {
-      "operacion": "edad_media_especie * factor_aleatorio",
-      "factor_minimo": 0.9,
-      "factor_maximo": 1.1,
-      "momento_calculo": "alta o compra",
-      "incremento_por_ciclo_dias": 6
-    },
     "simulacion_offline": {
       "duracion_ciclo_segundos": 600,
       "remanente_unidad": "segundos",
@@ -3080,11 +3040,11 @@
       }
     ],
     "rangos_especie": [
-      {"id_rango": 1, "nombre": "Común", "umbral_reproduccion": 0.6, "probabilidad_reproduccion": 0.04, "penalizacion_hijo_reproduccion": 0.01, "probabilidad_enfermedad": 0.01, "beneficio_por_animal_ciclo": 4.0},
-      {"id_rango": 2, "nombre": "Poco común", "umbral_reproduccion": 0.65, "probabilidad_reproduccion": 0.03, "penalizacion_hijo_reproduccion": 0.008, "probabilidad_enfermedad": 0.01, "beneficio_por_animal_ciclo": 8.0},
-      {"id_rango": 3, "nombre": "Raro", "umbral_reproduccion": 0.7, "probabilidad_reproduccion": 0.02, "penalizacion_hijo_reproduccion": 0.006, "probabilidad_enfermedad": 0.015, "beneficio_por_animal_ciclo": 14.0},
-      {"id_rango": 4, "nombre": "Épico", "umbral_reproduccion": 0.75, "probabilidad_reproduccion": 0.015, "penalizacion_hijo_reproduccion": 0.005, "probabilidad_enfermedad": 0.015, "beneficio_por_animal_ciclo": 22.0},
-      {"id_rango": 5, "nombre": "Exclusivo", "umbral_reproduccion": 0.8, "probabilidad_reproduccion": 0.01, "penalizacion_hijo_reproduccion": 0.004, "probabilidad_enfermedad": 0.02, "beneficio_por_animal_ciclo": 35.0}
+      {"id_rango": 1, "nombre": "Común", "umbral_reproduccion": 0.6, "probabilidad_reproduccion": 0.04, "penalizacion_hijo_reproduccion": 0.01, "probabilidad_enfermedad": 0.01, "beneficio_base_animal_ciclo": 12.0, "nivel_maximo": 15, "multiplicador_nivel_maximo": 3.0, "valor_venta_base": 200.0, "factor_venta_nivel_maximo": 1.5},
+      {"id_rango": 2, "nombre": "Poco común", "umbral_reproduccion": 0.65, "probabilidad_reproduccion": 0.03, "penalizacion_hijo_reproduccion": 0.008, "probabilidad_enfermedad": 0.01, "beneficio_base_animal_ciclo": 24.0, "nivel_maximo": 29, "multiplicador_nivel_maximo": 3.5, "valor_venta_base": 450.0, "factor_venta_nivel_maximo": 1.75},
+      {"id_rango": 3, "nombre": "Raro", "umbral_reproduccion": 0.7, "probabilidad_reproduccion": 0.02, "penalizacion_hijo_reproduccion": 0.006, "probabilidad_enfermedad": 0.015, "beneficio_base_animal_ciclo": 40.0, "nivel_maximo": 41, "multiplicador_nivel_maximo": 4.0, "valor_venta_base": 900.0, "factor_venta_nivel_maximo": 2.0},
+      {"id_rango": 4, "nombre": "Épico", "umbral_reproduccion": 0.75, "probabilidad_reproduccion": 0.015, "penalizacion_hijo_reproduccion": 0.005, "probabilidad_enfermedad": 0.015, "beneficio_base_animal_ciclo": 64.0, "nivel_maximo": 51, "multiplicador_nivel_maximo": 4.5, "valor_venta_base": 1800.0, "factor_venta_nivel_maximo": 2.25},
+      {"id_rango": 5, "nombre": "Exclusivo", "umbral_reproduccion": 0.8, "probabilidad_reproduccion": 0.01, "penalizacion_hijo_reproduccion": 0.004, "probabilidad_enfermedad": 0.02, "beneficio_base_animal_ciclo": 100.0, "nivel_maximo": 61, "multiplicador_nivel_maximo": 5.0, "valor_venta_base": 4000.0, "factor_venta_nivel_maximo": 2.5}
     ],
     "consumo_medico_rango": [
       {"id_rango": 1, "id_insumo": "insumo_medico", "cantidad_unidades": 1},
@@ -4343,6 +4303,7 @@
         }
       }
     ],
+    "rangos_especie_nota": "beneficio_base_animal_ciclo es el beneficio de un animal de nivel 1 con satisfaccion 1.00 en un ciclo. nivel_maximo es el tope de nivel del rango (nivel inicial 1; cada ciclos_por_nivel = 72 ciclos sanos suben 1 nivel). multiplicador_nivel_maximo es el valor de M_nivel en el tope; M_nivel es lineal desde 1 en el nivel 1. Tiempo hasta el tope con 10 minutos por ciclo: 7, 14, 20, 25 y 30 dias segun el rango. valor_venta_base es el valor de venta en el nivel de equilibrio (igual al coste de compra en los rangos 1 a 4; valor de referencia en el rango 5). factor_venta_nivel_maximo es el multiplicador de la venta en el tope (reglas_de_calculo.venta).",
     "costes_rangos_nota": "El rango 5 (exclusivo) cuesta 0.00: solo se adquiere la unidad concedida por recompensa; la tienda ordinaria no lo ofrece (RES-09).",
     "compatibilidad_regla_de_generacion": "Bioma primario 1.00; secundario 0.75; incompatible por clima 0.20 (frio en calido, calido en frio, acuatico en tierra); resto 0.40. Los valores listados son los vigentes.",
     "factores_mcrit_regla_de_generacion": "m_alimentacion(n) = 1 - (1 - curva(n)) * severidad; severidad 0.8 robusta, 1.0 normal, 1.2 fragil; m_enfermedad ENFERMO 0.70 / 0.60 / 0.50 respectivamente.",

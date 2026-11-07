@@ -109,18 +109,18 @@ class Sprint5UiTest {
 
             onNodeWithContentDescription("Ver beneficios").performClick()
             esperar("Reclamar beneficios")
-            esperar("🪙 4.00", subcadena = true)
+            esperar("🪙 12.00", subcadena = true)
             pulsar("Reclamar beneficios")
             esperar("Confirmar reclamación")
-            esperar("Se acreditarán 🪙 4.00", subcadena = true)
+            esperar("Se acreditarán 🪙 12.00", subcadena = true)
             sinIdentificadoresTecnicos(c)
             onNodeWithText("Cancelar").performClick()
             fondos(c) shouldBe antes
 
             pulsar("Reclamar beneficios")
             onNodeWithText("Confirmar reclamación").performClick()
-            esperar("Has reclamado 🪙 4.00", subcadena = true)
-            fondos(c) shouldBe antes + Dinero.desdeDecimal(4.0)
+            esperar("Has reclamado 🪙 12.00", subcadena = true)
+            fondos(c) shouldBe antes + Dinero.desdeDecimal(12.0)
             esperar("No hay beneficios pendientes de reclamar.")
             onNodeWithText("Reclamar beneficios").performScrollTo().assertIsNotEnabled()
             esperar("Ciclo 1", subcadena = true)
