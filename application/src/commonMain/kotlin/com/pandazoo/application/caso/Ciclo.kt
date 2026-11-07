@@ -15,11 +15,12 @@ import com.pandazoo.application.puerto.Reloj
 import com.pandazoo.application.puerto.ResultadoAuditoria
 import com.pandazoo.domain.ciclo.CausaMuerte
 import com.pandazoo.domain.ciclo.ReglasCiclo
+import com.pandazoo.domain.ciclo.ReglasDiferido
 import com.pandazoo.domain.economia.Dinero
 import com.pandazoo.domain.modelo.IdPartida
 
 /** Estado mutable de un animal mientras se procesan las etapas del ciclo; las etapas se ven unas a otras (RF-14). */
-class AnimalEnCiclo(origen: AnimalCiclo) {
+class AnimalEnCiclo(origen: AnimalCiclo, /** Estado al empezar la sesión diferida; en un ciclo en vivo es el propio origen. */ val inicioSesion: AnimalCiclo = origen) {
     val id: String = origen.id
     val idEspecie: String = origen.idEspecie
     val edadMaximaDias: Int = origen.edadMaximaDias
@@ -60,7 +61,17 @@ object Etapas {
     const val PERSISTENCIA = "PERSISTENCIA"
 }
 
-data class ComandoEjecutarCiclo(val idPartida: IdPartida, val numero: Int)
+/**
+ * Contexto de un ciclo procesado en diferido (CU-12). Las restricciones de RF-22 y RF-23 se miden contra el estado de
+ * cada animal al empezar la sesión.
+ *
+ * @property inicioSesion estado de los animales vivos y alojados antes del primer ciclo diferido, por identificador.
+ * @property instante instante virtual en que termina este ciclo (segundos Unix): es la marca de actividad que queda
+ * persistida, de modo que una interrupción reanuda desde ese punto sin perder ni regalar tiempo.
+ */
+class ContextoDiferido(val inicioSesion: Map<String, AnimalCiclo>, val instante: Long)
+
+data class ComandoEjecutarCiclo(val idPartida: IdPartida, val numero: Int, val diferido: ContextoDiferido? = null)
 
 data class CicloEjecutado(
     val numero: Int,
@@ -123,14 +134,21 @@ class EjecutarCiclo(
         if (c.numero != estado.siguiente) return Resultado.Rechazado(MotivoRechazo.CicloFueraDeOrden(estado.siguiente))
         val ahora = reloj.ahoraSegundos()
 
-        val vivos = ciclos.animalesVivosAlojados(idPartida).map(::AnimalEnCiclo)
+        val diferido = c.diferido
+        val vivos = ciclos.animalesVivosAlojados(idPartida).map { AnimalEnCiclo(it, diferido?.inicioSesion?.get(it.id) ?: it) }
 
         // 3.1 Edad.
         vivos.forEach { it.edadDias = ReglasCiclo.edadTrasCiclo(it.edadDias) }
         traza?.etapa(Etapas.EDAD, vivos)
 
         // 3.2 Alimentación.
-        vivos.forEach { it.alimentacion = ReglasCiclo.alimentacionTrasCiclo(it.alimentacion) }
+        vivos.forEach {
+            it.alimentacion = if (diferido == null) {
+                ReglasCiclo.alimentacionTrasCiclo(it.alimentacion)
+            } else {
+                ReglasDiferido.alimentacionTrasCiclo(it.alimentacion, it.inicioSesion.alimentacion) // RF-22
+            }
+        }
         traza?.etapa(Etapas.ALIMENTACION, vivos)
 
         // 3.3 Salud: solo se sortean los sanos, con la satisfacción persistida al inicio del ciclo.
@@ -146,8 +164,14 @@ class EjecutarCiclo(
 
         // 3.4 Contadores críticos, independientes entre sí.
         vivos.forEach {
-            it.ciclosDesnutricion = ReglasCiclo.contadorDesnutricion(it.ciclosDesnutricion, it.alimentacion)
-            it.ciclosEnfermedad = ReglasCiclo.contadorEnfermedad(it.ciclosEnfermedad, it.enfermo)
+            if (diferido == null) {
+                it.ciclosDesnutricion = ReglasCiclo.contadorDesnutricion(it.ciclosDesnutricion, it.alimentacion)
+                it.ciclosEnfermedad = ReglasCiclo.contadorEnfermedad(it.ciclosEnfermedad, it.enfermo)
+            } else {
+                val ini = it.inicioSesion
+                it.ciclosDesnutricion = ReglasDiferido.contadorDesnutricion(it.ciclosDesnutricion, ini.ciclosDesnutricion, it.alimentacion)
+                it.ciclosEnfermedad = ReglasDiferido.contadorEnfermedad(it.ciclosEnfermedad, ini.ciclosEnfermedad, it.enfermo, ini.enfermo) // RF-23
+            }
         }
         traza?.etapa(Etapas.CICLOS_CRITICOS, vivos)
 
@@ -192,8 +216,9 @@ class EjecutarCiclo(
         traza?.etapa(Etapas.METRICAS, supervivientes)
 
         // 3.10 Persistencia del ciclo y del temporizador.
-        ciclos.registrarCiclo(idPartida, c.numero, ahora, ahora)
-        ciclos.actualizarEstadoMotor(idPartida, c.numero, ahora, ReglasCiclo.DURACION_CICLO_SEGUNDOS)
+        val instante = diferido?.instante ?: ahora
+        ciclos.registrarCiclo(idPartida, c.numero, instante, instante)
+        ciclos.actualizarEstadoMotor(idPartida, c.numero, instante, ReglasCiclo.DURACION_CICLO_SEGUNDOS)
         traza?.etapa(Etapas.PERSISTENCIA, supervivientes)
 
         return Resultado.Exito(CicloEjecutado(c.numero, supervivientes.size, muertos.size, nuevosEnfermos.count { it.causaMuerte == null }, beneficio))

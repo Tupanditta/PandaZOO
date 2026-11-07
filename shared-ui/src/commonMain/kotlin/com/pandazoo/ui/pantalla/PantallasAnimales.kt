@@ -447,3 +447,57 @@ fun PantallaReubicar(animal: Ref, alVolver: () -> Unit) {
         )
     }
 }
+
+/** CU-10: concepción notificada y ficha de la cría. La acción se deshabilita, con su motivo, si ya no puede aceptarse. */
+@Composable
+fun PantallaRegistrarCria(aviso: Ref, alVolver: () -> Unit) {
+    val c = LocalContenedor.current
+    val vm: CriaViewModel = viewModel(key = "cria-${aviso.valor}", factory = fabrica { CriaViewModel(c, aviso) })
+    val detalle by vm.detalle.collectAsState()
+    val companeros by vm.companeros.collectAsState()
+    val mensaje by vm.mensaje.collectAsState()
+    val registrada by vm.registrada.collectAsState()
+    var nombre by rememberSaveable { mutableStateOf("") }
+    var habilidades by remember { mutableStateOf(emptySet<String>()) }
+    var rasgos by remember { mutableStateOf(emptySet<String>()) }
+    var amigo by remember { mutableStateOf<Ref?>(null) }
+    LaunchedEffect(registrada) { if (registrada) alVolver() }
+
+    fun alternar(set: Set<String>, v: String) = if (v in set) set - v else set + v
+
+    Marco("Registrar cría", alVolver) { pad ->
+        Column(Modifier.padding(pad).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            val d = detalle
+            if (d == null) {
+                AvisoUi("Esta cría ya no está disponible.", TipoAviso.ADVERTENCIA)
+                return@Column
+            }
+            Ficha(filete = MaterialTheme.colorScheme.secondary) {
+                Fila("Especie", d.especie)
+                Fila("Progenitores", "${d.nombreA} y ${d.nombreB}")
+                Fila("Espacio", d.nombreEspacio ?: "Sin espacio")
+            }
+            d.motivoDeshabilitada?.let { AvisoUi(Textos.motivo(it), TipoAviso.ADVERTENCIA) }
+            Text("Ficha técnica de la cría", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(
+                value = nombre,
+                onValueChange = { nombre = it },
+                label = { Text("Nombre de la cría") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text("Habilidades sociales (elige 2)", style = MaterialTheme.typography.labelLarge)
+            Etiquetas(vm.habilidades, habilidades, ReglasAnimal.HABILIDADES_POR_FICHA) { habilidades = alternar(habilidades, it) }
+            Text("Rasgos de personalidad (elige 2)", style = MaterialTheme.typography.labelLarge)
+            Etiquetas(vm.rasgos, rasgos, ReglasAnimal.RASGOS_POR_FICHA) { rasgos = alternar(rasgos, it) }
+            Elegir("Mejor amigo", "Sin mejor amigo", companeros, amigo) { amigo = it }
+            BotonPrincipal(
+                "Confirmar registro",
+                { vm.registrar(nombre, habilidades, rasgos, amigo) },
+                enabled = d.habilitada && nombre.isNotBlank() &&
+                    habilidades.size == ReglasAnimal.HABILIDADES_POR_FICHA && rasgos.size == ReglasAnimal.RASGOS_POR_FICHA,
+            )
+            MensajeUi(mensaje)
+        }
+    }
+}

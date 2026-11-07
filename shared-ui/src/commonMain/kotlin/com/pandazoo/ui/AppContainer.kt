@@ -10,7 +10,16 @@ import com.pandazoo.application.ciclo.MotorCiclos
 import com.pandazoo.application.error.Resultado
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.pandazoo.application.caso.ProcesarDiferido
+import com.pandazoo.application.caso.ResumenDiferido
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlin.time.TimeSource
 import com.pandazoo.application.caso.ConsultarBeneficios
 import com.pandazoo.application.caso.ConsultarHistorialAvisos
@@ -23,6 +32,10 @@ import com.pandazoo.data.repositorio.BeneficioSql
 import com.pandazoo.data.repositorio.CicloSql
 import com.pandazoo.data.repositorio.RetencionSql
 import com.pandazoo.data.repositorio.SeguimientoSql
+import com.pandazoo.application.caso.AceptarReproduccion
+import com.pandazoo.application.caso.ConsultarReproduccion
+import com.pandazoo.application.caso.EtapaReproduccion
+import com.pandazoo.data.repositorio.ReproduccionSql
 import com.pandazoo.application.caso.AdquirirAnimal
 import com.pandazoo.application.caso.AdquirirEspacio
 import com.pandazoo.application.caso.ConsultarAnimales
@@ -32,6 +45,8 @@ import com.pandazoo.application.caso.EditarFicha
 import com.pandazoo.application.caso.ReubicarAnimal
 import com.pandazoo.application.caso.VenderAnimal
 import com.pandazoo.application.puerto.Azar
+import com.pandazoo.application.puerto.NuevoAnimal
+import com.pandazoo.domain.animal.ReglasAnimal
 import com.pandazoo.data.repositorio.AnimalSql
 import com.pandazoo.data.tiempo.AzarSistema
 import com.pandazoo.domain.animal.CatalogoFicha
@@ -55,6 +70,7 @@ import com.pandazoo.application.puerto.Reloj
 import com.pandazoo.data.config.CargadorConfiguracion
 import com.pandazoo.data.db.BaseDatos
 import com.pandazoo.data.depuracion.DatosDePrueba
+import com.pandazoo.data.depuracion.ResumenCarga
 import com.pandazoo.data.inicial.InicializadorPartida
 import com.pandazoo.data.repositorio.AuditoriaSql
 import com.pandazoo.data.repositorio.CatalogoSql
@@ -121,27 +137,79 @@ class AppContainer(
     private val ciclos = CicloSql(bd)
     private val beneficios = BeneficioSql(bd)
     private val auditoria = AuditoriaSql(bd)
-    val ejecutarCiclo = EjecutarCiclo(ejecutor, ciclos, animales, auditoria, recalcularSatisfaccion, azar, reloj)
+    private val reproduccion = ReproduccionSql(bd)
+    val ejecutarCiclo = EjecutarCiclo(
+        ejecutor, ciclos, animales, auditoria, recalcularSatisfaccion, azar, reloj,
+        reproduccion = EtapaReproduccion(reproduccion, auditoria, azar, reloj),
+    )
     val reclamarBeneficios = ReclamarBeneficios(ejecutor, economia, beneficios, ciclos, reloj)
     val consultarBeneficios = ConsultarBeneficios(beneficios, economia)
     val consultarSeguimiento = ConsultarSeguimientoCritico(SeguimientoSql(bd))
     private val avisosRepo = AvisoSql(bd)
     val consultarAvisos = ConsultarHistorialAvisos(avisosRepo)
     val abrirAviso = AbrirAviso(ejecutor, avisosRepo, ciclos)
+
+    // Sprint 7: reproducción.
+    val aceptarReproduccion = AceptarReproduccion(ejecutor, reproduccion, ciclos, animales, zoo, catalogoFicha, azar, ids, recalcularSatisfaccion)
+    val consultarReproduccion = ConsultarReproduccion(reproduccion, ciclos, animales, zoo)
     private val purgarRetencion = PurgarRetencion(bd, RetencionSql(bd), ciclos, cfg.retencion)
 
     private val marcaMonotonica = TimeSource.Monotonic.markNow()
 
     /** Temporizador del ciclo (RF-24). Se inicia al pasar a primer plano y se detiene al pasar a segundo plano. */
+    private val ambito = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     val motor = MotorCiclos(
-        scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        scope = ambito,
         idPartida = idPartida,
         ciclos = ciclos,
         ejecutarCiclo = ejecutarCiclo,
         purga = purgarRetencion,
         monotonico = { marcaMonotonica.elapsedNow().inWholeMilliseconds },
         dispatcher = Dispatchers.Default,
+        reloj = reloj,
     )
+
+    // Sprint 8: simulación en diferido (CU-12).
+    val procesarDiferido = ProcesarDiferido(bd, ciclos, ejecutarCiclo, auditoria, purgarRetencion, reloj, cfg.retencion.maxCiclosOffline)
+
+    private val _ultimoDiferido = MutableStateFlow<ResumenDiferido?>(null)
+
+    /** Resultado de la última recuperación diferida que procesó ciclos; la interfaz puede mostrarlo una vez. */
+    val ultimoDiferido: StateFlow<ResumenDiferido?> get() = _ultimoDiferido
+
+    private var reanudacion: Job? = null
+
+    /**
+     * Paso a primer plano (arranque en frío o regreso con el proceso vivo): primero resuelve el tiempo ausente con
+     * CU-12 y solo después arranca el temporizador, para que ambos no ejecuten el mismo ciclo (RNF-12).
+     */
+    fun alPrimerPlano() {
+        if (reanudacion?.isActive == true) return
+        reanudacion = ambito.launch {
+            try {
+                val r = withContext(Dispatchers.Default) { procesarDiferido.ejecutar(idPartida, cancelado = { !isActive }) }
+                if (r is Resultado.Exito && r.valor.ciclosProcesados > 0) _ultimoDiferido.value = r.valor
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Recuperación revertida: queda el último estado consistente y el temporizador sigue con su remanente.
+            }
+            ensureActive()
+            motor.iniciar()
+        }
+    }
+
+    /** Paso a segundo plano: detiene la recuperación en curso y guarda remanente y marca de actividad. */
+    fun alSegundoPlano() {
+        reanudacion?.cancel()
+        reanudacion = null
+        motor.detener()
+    }
+
+    fun descartarResumenDiferido() {
+        _ultimoDiferido.value = null
+    }
 
     /** Solo en modo de depuración: ejecuta el siguiente ciclo sin esperar (adelanta el temporizador). */
     fun adelantarCiclo(): Boolean {
@@ -157,6 +225,44 @@ class AppContainer(
             val resumen = datosDePrueba.cargaReferencia(idPartida)
             if (resumen != null) recalcularSatisfaccion.alConsolidar(idPartida, AlcanceRecalculo.Parque)
             resumen != null
+        }
+    }
+
+    /**
+     * Solo en modo de depuración: añade un panda gratis a la partida activa, en el primer espacio con cupo.
+     * Devuelve `false` si no hay espacio con cupo o la especie no existe.
+     */
+    fun anadirPanda(): Boolean {
+        check(depuracion) { "Añadir un panda directo solo existe en modo de depuración" }
+        return bd.ejecutar {
+            val especie = animales.especieTienda(idPartida, "panda") ?: return@ejecutar false
+            val espacio = zoo.espaciosConCupo(idPartida).firstOrNull()?.espacio ?: return@ejecutar false
+            animales.crear(
+                idPartida,
+                NuevoAnimal(
+                    id = ids.nuevo(),
+                    idEspecie = "panda",
+                    idEspacio = espacio.id,
+                    nombre = "Panda",
+                    edadMaxima = ReglasAnimal.edadMaxima(especie.edadMediaAnios, 1.0),
+                    habilidades = catalogoFicha.habilidades.take(ReglasAnimal.HABILIDADES_POR_FICHA).map { it.id },
+                    rasgos = catalogoFicha.rasgos.take(ReglasAnimal.RASGOS_POR_FICHA).map { it.id },
+                    idPareja = null,
+                    idMejorAmigo = null,
+                ),
+            )
+            recalcularSatisfaccion.alConsolidar(idPartida, AlcanceRecalculo.Espacios(setOf(espacio.id)))
+            true
+        }
+    }
+
+    /** Solo en modo de depuración: borra la carga de referencia (no toca animales ni espacios del usuario). */
+    fun eliminarCargaDePrueba(): ResumenCarga {
+        check(depuracion) { "El generador de datos de prueba solo existe en modo de depuración" }
+        return bd.ejecutar {
+            val resumen = datosDePrueba.eliminarCargaReferencia(idPartida)
+            recalcularSatisfaccion.alConsolidar(idPartida, AlcanceRecalculo.Parque)
+            resumen
         }
     }
 

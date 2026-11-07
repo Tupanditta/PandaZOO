@@ -10,6 +10,7 @@ import com.pandazoo.application.caso.ConsultarBeneficios
 import com.pandazoo.application.caso.ConsultarHistorialAvisos
 import com.pandazoo.application.caso.ConsultarSeguimientoCritico
 import com.pandazoo.application.caso.EjecutarCiclo
+import com.pandazoo.application.caso.ProcesarDiferido
 import com.pandazoo.application.caso.PurgarRetencion
 import com.pandazoo.application.caso.ReclamarBeneficios
 import com.pandazoo.data.repositorio.AvisoSql
@@ -17,6 +18,10 @@ import com.pandazoo.data.repositorio.BeneficioSql
 import com.pandazoo.data.repositorio.CicloSql
 import com.pandazoo.data.repositorio.RetencionSql
 import com.pandazoo.data.repositorio.SeguimientoSql
+import com.pandazoo.application.caso.AceptarReproduccion
+import com.pandazoo.application.caso.ConsultarReproduccion
+import com.pandazoo.application.caso.EtapaReproduccion
+import com.pandazoo.data.repositorio.ReproduccionSql
 import com.pandazoo.application.caso.AdquirirAnimal
 import com.pandazoo.application.caso.AdquirirEspacio
 import com.pandazoo.application.caso.ConsultarAnimales
@@ -111,14 +116,26 @@ class Entorno(val cfg: ConfiguracionJuego = configuracionBase, valorAzar: Double
     // Sprint 5: ciclo de simulación, beneficios y avisos.
     val ciclos = CicloSql(bd)
     val beneficios = BeneficioSql(bd)
-    val ejecutarCiclo = EjecutarCiclo(ejecutor, ciclos, animales, auditoria, recalcular, azar, reloj)
+    val reproduccion = ReproduccionSql(bd)
+    val ejecutarCiclo = EjecutarCiclo(
+        ejecutor, ciclos, animales, auditoria, recalcular, azar, reloj,
+        reproduccion = EtapaReproduccion(reproduccion, auditoria, azar, reloj),
+    )
     val reclamarBeneficios = ReclamarBeneficios(ejecutor, economia, beneficios, ciclos, reloj)
     val consultarBeneficios = ConsultarBeneficios(beneficios, economia)
     val consultarSeguimiento = ConsultarSeguimientoCritico(SeguimientoSql(bd))
     val avisos = AvisoSql(bd)
     val consultarAvisos = ConsultarHistorialAvisos(avisos)
     val abrirAviso = AbrirAviso(ejecutor, avisos, ciclos)
+
+    // Sprint 7: reproducción.
+    val aceptarReproduccion = AceptarReproduccion(ejecutor, reproduccion, ciclos, animales, zoo, catalogoFicha, azar, ids, recalcular)
+    val consultarReproduccion = ConsultarReproduccion(reproduccion, ciclos, animales, zoo)
     val purgarRetencion = PurgarRetencion(bd, RetencionSql(bd), ciclos, cfg.retencion)
+
+    // Sprint 8: simulación en diferido.
+    fun procesarDiferido(maxCiclos: Int = cfg.retencion.maxCiclosOffline, ciclo: EjecutarCiclo = ejecutarCiclo) =
+        ProcesarDiferido(bd, ciclos, ciclo, auditoria, purgarRetencion, reloj, maxCiclos)
 
     /** Id técnico de un hábitat por su código de catálogo. */
     fun habitat(codigo: String): String = "$idPartida/$codigo"

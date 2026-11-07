@@ -64,10 +64,10 @@ class AnimalSql(private val bd: BaseDatos) : AnimalRepositorio {
         bd.escribir(
             "INSERT INTO Animal (id_animal, id_partida, id_especie, id_espacio, nombre, edad_anios, edad_meses, edad_dias, " +
                 "edad_maxima_anios, edad_maxima_meses, edad_maxima_dias, nivel_alimentacion, estado_salud, estado_vital, " +
-                "id_pareja, id_mejor_amigo, satisfaccion_actual) " +
-                "VALUES (?, ?, ?, ?, ?, 20, 0, 0, ?, ?, ?, 100, 'SANO', 'VIVO', ?, ?, 0)",
-            nuevo.id, idPartida, nuevo.idEspecie, nuevo.idEspacio, nuevo.nombre, m.anios, m.meses, m.dias,
-            nuevo.idPareja, nuevo.idMejorAmigo,
+                "id_pareja, id_mejor_amigo, id_padre, id_madre, satisfaccion_actual) " +
+                "VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, 100, 'SANO', 'VIVO', ?, ?, ?, ?, 0)",
+            nuevo.id, idPartida, nuevo.idEspecie, nuevo.idEspacio, nuevo.nombre, nuevo.edadInicialAnios, m.anios, m.meses, m.dias,
+            nuevo.idPareja, nuevo.idMejorAmigo, nuevo.idPadre, nuevo.idMadre,
         )
         guardarFicha(nuevo.id, nuevo.habilidades, nuevo.rasgos)
         if (nuevo.idPareja != null) {

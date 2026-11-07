@@ -101,6 +101,32 @@ class DatosDePrueba(private val bd: BaseDatos, private val ids: GeneradorId) {
         }
     }
 
+    /**
+     * Borra la carga de referencia sin tocar lo creado por el usuario: solo animales llamados "Ejemplar N" y
+     * espacios llamados "Espacio de prueba N" que, tras borrar esos animales, queden vacíos. Los animales de
+     * usuario que descendían de uno borrado conservan su ficha sin padre/madre. Devuelve lo eliminado.
+     */
+    fun eliminarCargaReferencia(idPartida: IdPartida): ResumenCarga = bd.ejecutar {
+        val animalesPrueba = "SELECT id_animal FROM Animal WHERE id_partida = ? AND nombre GLOB 'Ejemplar [0-9]*'"
+        val animales = bd.leer("SELECT COUNT(*) FROM Animal WHERE id_partida = ? AND nombre GLOB 'Ejemplar [0-9]*'", idPartida) { it.entero(0) }.firstOrNull() ?: 0
+        bd.escribir("DELETE FROM RasgoPersonalidad WHERE id_animal IN ($animalesPrueba)", idPartida)
+        bd.escribir("DELETE FROM HabilidadSocial WHERE id_animal IN ($animalesPrueba)", idPartida)
+        bd.escribir("DELETE FROM ReproduccionCiclo WHERE id_partida = ? AND (id_animal_a IN ($animalesPrueba) OR id_animal_b IN ($animalesPrueba))", idPartida, idPartida, idPartida)
+        bd.escribir("DELETE FROM Notificacion WHERE id_partida = ? AND id_entidad IN ($animalesPrueba)", idPartida, idPartida)
+        for (columna in listOf("id_pareja", "id_mejor_amigo", "id_padre", "id_madre")) {
+            bd.escribir("UPDATE Animal SET $columna = NULL WHERE id_partida = ? AND $columna IN ($animalesPrueba)", idPartida, idPartida)
+        }
+        bd.escribir("DELETE FROM Animal WHERE id_partida = ? AND nombre GLOB 'Ejemplar [0-9]*'", idPartida)
+
+        val vacios = "SELECT id_espacio FROM Espacio WHERE id_partida = ? AND nombre GLOB 'Espacio de prueba [0-9]*' " +
+            "AND NOT EXISTS (SELECT 1 FROM Animal a WHERE a.id_partida = Espacio.id_partida AND a.id_espacio = Espacio.id_espacio)"
+        val espacios = bd.leer("SELECT COUNT(*) FROM ($vacios)", idPartida) { it.entero(0) }.firstOrNull() ?: 0
+        bd.escribir("DELETE FROM MetricaSatisfaccion WHERE id_partida = ? AND id_espacio IN ($vacios)", idPartida, idPartida)
+        bd.escribir("DELETE FROM Notificacion WHERE id_partida = ? AND id_entidad IN ($vacios)", idPartida, idPartida)
+        bd.escribir("DELETE FROM Espacio WHERE id_partida = ? AND id_espacio IN ($vacios)", idPartida, idPartida)
+        ResumenCarga(espacios, animales)
+    }
+
     companion object {
         const val ESPACIOS = 50
     }

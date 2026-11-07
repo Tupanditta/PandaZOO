@@ -26,6 +26,7 @@ import com.pandazoo.ui.pantalla.PantallaComprarAnimal
 import com.pandazoo.ui.pantalla.PantallaEditarFicha
 import com.pandazoo.ui.pantalla.PantallaFichaAnimal
 import com.pandazoo.ui.pantalla.PantallaReubicar
+import com.pandazoo.ui.pantalla.PantallaRegistrarCria
 import com.pandazoo.ui.pantalla.PantallaTiendaAnimales
 import com.pandazoo.ui.pantalla.Ref
 
@@ -46,6 +47,7 @@ private const val ANIMALES = "animales/{ref}"
 private const val FICHA = "ficha/{ref}"
 private const val EDITAR = "editar/{ref}"
 private const val REUBICAR = "reubicar/{ref}"
+private const val CRIA = "cria/{ref}"
 
 /** Codifica una referencia opaca para usarla como segmento de ruta (los identificadores técnicos pueden llevar `/`). */
 internal fun codificar(valor: String): String = valor.replace("%", "%25").replace("/", "%2F")
@@ -115,9 +117,16 @@ fun PandaZooNavegacion() {
             val ref = Ref(decodificar(entrada.arguments!!.read { getString("ref") }))
             PantallaReubicar(ref, alVolver = { nav.popBackStack() })
         }
+        composable(CRIA, arg) { entrada ->
+            val ref = Ref(decodificar(entrada.arguments!!.read { getString("ref") }))
+            PantallaRegistrarCria(ref, alVolver = { nav.popBackStack() })
+        }
         composable(BENEFICIOS) { PantallaBeneficios(alVolver = { nav.popBackStack() }) }
         composable(MISIONES) { PantallaMisiones() }
-        composable(NOTIFICACIONES) { PantallaNotificaciones(alSeguimiento = { nav.navigate(CRITICO) { launchSingleTop = true } }) }
+        composable(NOTIFICACIONES) { PantallaNotificaciones(
+                alSeguimiento = { nav.navigate(CRITICO) { launchSingleTop = true } },
+                alRegistrarCria = { nav.navigate("cria/${codificar(it.valor)}") },
+            ) }
         composable(CRITICO) {
             PantallaSeguimientoCritico(
                 alVolver = { nav.popBackStack() },

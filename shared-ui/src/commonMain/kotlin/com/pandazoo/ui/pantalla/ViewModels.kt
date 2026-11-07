@@ -15,6 +15,8 @@ import com.pandazoo.domain.modelo.OpcionCapacidad
 import com.pandazoo.domain.modelo.Recurso
 import com.pandazoo.domain.modelo.TipoRecurso
 import com.pandazoo.application.caso.ComandoAbrirAviso
+import com.pandazoo.application.caso.ComandoAceptarReproduccion
+import com.pandazoo.application.caso.DetalleReproduccion
 import com.pandazoo.application.caso.ComandoReclamarBeneficios
 import com.pandazoo.application.caso.ComandoAdquirirAnimal
 import com.pandazoo.application.puerto.SeveridadAviso
@@ -195,6 +197,19 @@ class SeguimientoViewModel(c: AppContainer) : BaseViewModel(c) {
 }
 
 class HabitatsViewModel(c: AppContainer) : BaseViewModel(c) {
+    /** Solo modo de depuración: elimina espacios y animales de prueba, conserva los del usuario. */
+    fun eliminarDatosDePrueba() {
+        viewModelScope.launch {
+            val texto = try {
+                val r = withContext(Dispatchers.Default) { c.eliminarCargaDePrueba() }
+                "Eliminados ${r.animales} animales y ${r.espacios} espacios de prueba."
+            } catch (e: Exception) {
+                Textos.ERROR_TECNICO
+            }
+            mensaje.value = Mensaje(texto, true)
+        }
+    }
+
     val habitats: StateFlow<List<HabitatUi>> = observar(emptyList()) {
         c.consultarZoo.habitats(c.idPartida).map(Textos::habitat)
     }
@@ -204,6 +219,19 @@ class HabitatsViewModel(c: AppContainer) : BaseViewModel(c) {
         viewModelScope.launch {
             val texto = try {
                 if (withContext(Dispatchers.Default) { c.adelantarCiclo() }) "Ciclo ejecutado." else "No se pudo ejecutar el ciclo."
+            } catch (e: Exception) {
+                Textos.ERROR_TECNICO
+            }
+            mensaje.value = Mensaje(texto, true)
+        }
+    }
+
+    /** Solo modo de depuración: añade un panda a la partida activa. */
+    fun anadirPanda() {
+        viewModelScope.launch {
+            val texto = try {
+                if (withContext(Dispatchers.Default) { c.anadirPanda() }) "Panda añadido."
+                else "No hay espacio con cupo para el panda."
             } catch (e: Exception) {
                 Textos.ERROR_TECNICO
             }
@@ -626,3 +654,36 @@ class ReubicarViewModel(c: AppContainer, private val animal: Ref) : BaseViewMode
 /** Crea ViewModels con el contenedor de dependencias; los argumentos de navegación son referencias opacas. */
 inline fun <reified VM : ViewModel> fabrica(crossinline crear: () -> VM): ViewModelProvider.Factory =
     viewModelFactory { initializer { crear() } }
+
+/** CU-10: detalle de la concepción y registro de la cría con su ficha. */
+class CriaViewModel(c: AppContainer, private val aviso: Ref) : BaseViewModel(c) {
+    private val id: Long? = aviso.valor.toLongOrNull()
+
+    val detalle: StateFlow<DetalleReproduccion?> = observar<DetalleReproduccion?>(null) {
+        id?.let { c.consultarReproduccion.ejecutar(c.idPartida, it) }
+    }
+
+    /** Animales del espacio de los progenitores: candidatos a mejor amigo de la cría. */
+    val companeros: StateFlow<List<CandidatoUi>> = observar(emptyList()) {
+        val espacio = id?.let { c.consultarReproduccion.ejecutar(c.idPartida, it) }?.idEspacio
+        if (espacio == null) emptyList() else c.consultarAnimales.animalesDe(c.idPartida, espacio).let(Textos::candidatos)
+    }
+
+    val habilidades: List<OpcionUi> = opciones(c.catalogoFicha.habilidades)
+    val rasgos: List<OpcionUi> = opciones(c.catalogoFicha.rasgos)
+    val registrada = MutableStateFlow(false)
+
+    fun registrar(nombre: String, habilidades: Set<String>, rasgos: Set<String>, amigo: Ref?) {
+        val idAviso = id ?: return
+        val comando = ComandoAceptarReproduccion(
+            idPartida = c.idPartida,
+            idNotificacion = idAviso,
+            ficha = FichaNueva(nombre, habilidades.toList(), rasgos.toList(), null, amigo?.valor),
+            idSolicitud = solicitud,
+        )
+        ejecutar({ c.aceptarReproduccion.ejecutar(comando) }) {
+            registrada.value = true
+            "Cría registrada."
+        }
+    }
+}

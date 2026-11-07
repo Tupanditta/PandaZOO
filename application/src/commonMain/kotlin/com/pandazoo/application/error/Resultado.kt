@@ -110,6 +110,12 @@ sealed class MotivoRechazo(val codigo: String) {
     /** El importe pendiente cambió entre la vista previa y la confirmación (CU-08, 4.a). */
     data class BeneficiosCambiados(val vigente: Dinero) : MotivoRechazo("BENEFICIOS_CAMBIADOS")
 
+    /** La concepción expiró, ya se aceptó o su aviso ya no está abierto (CU-10, 2.a y 4.b). */
+    data object ConcepcionNoVigente : MotivoRechazo("CONCEPCION_NO_VIGENTE")
+
+    /** Algún progenitor murió, se vendió, cambió de espacio o dejó de ser pareja (regla 5.3). */
+    data object ProgenitoresNoValidos : MotivoRechazo("PROGENITORES_NO_VALIDOS")
+
     data object AvisoInexistente : MotivoRechazo("AVISO_INEXISTENTE")
 
     data object ConflictoIdempotencia : MotivoRechazo("CONFLICTO_IDEMPOTENCIA")

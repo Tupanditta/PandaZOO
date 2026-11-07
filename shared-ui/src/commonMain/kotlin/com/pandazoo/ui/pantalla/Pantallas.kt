@@ -293,7 +293,7 @@ fun PantallaMisiones() {
 
 /** CU-21: historial de avisos con severidad, estado y fecha; abrir uno pendiente lo marca como visto. */
 @Composable
-fun PantallaNotificaciones(alSeguimiento: () -> Unit = {}) {
+fun PantallaNotificaciones(alSeguimiento: () -> Unit = {}, alRegistrarCria: (Ref) -> Unit = {}) {
     val c = LocalContenedor.current
     val vm: AvisosViewModel = viewModel(factory = fabrica { AvisosViewModel(c) })
     val avisos by vm.avisos.collectAsState()
@@ -330,11 +330,13 @@ fun PantallaNotificaciones(alSeguimiento: () -> Unit = {}) {
             confirmButton = {
                 if (a.critico) {
                     TextButton(onClick = { vm.cerrarDetalle(); alSeguimiento() }) { Text("Ver seguimiento") }
+                } else if (a.reproduccion) {
+                    TextButton(onClick = { vm.cerrarDetalle(); alRegistrarCria(Ref(a.id.toString())) }) { Text("Registrar cría") }
                 } else {
                     TextButton(onClick = vm::cerrarDetalle) { Text("Cerrar") }
                 }
             },
-            dismissButton = { if (a.critico) TextButton(onClick = vm::cerrarDetalle) { Text("Cerrar") } },
+            dismissButton = { if (a.critico || a.reproduccion) TextButton(onClick = vm::cerrarDetalle) { Text("Cerrar") } },
         )
     }
 }
@@ -455,6 +457,12 @@ fun PantallaHabitats(alHabitat: (Ref) -> Unit) {
                 item {
                     OutlinedButton(onClick = vm::generarDatosDePrueba, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                         Text("Generar datos de prueba (depuración)")
+                    }
+                    OutlinedButton(onClick = vm::eliminarDatosDePrueba, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        Text("Eliminar datos de prueba (depuración)")
+                    }
+                    OutlinedButton(onClick = vm::anadirPanda, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        Text("Añadir panda (depuración)")
                     }
                     OutlinedButton(onClick = vm::adelantarCiclo, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                         Text("Adelantar ciclo (depuración)")

@@ -4,6 +4,7 @@ import com.pandazoo.application.caso.EjecutarCiclo
 import com.pandazoo.application.error.Resultado
 import com.pandazoo.application.caso.PurgarRetencion
 import com.pandazoo.application.puerto.CicloRepositorio
+import com.pandazoo.application.puerto.Reloj
 import com.pandazoo.domain.ciclo.ReglasCiclo
 import com.pandazoo.domain.modelo.IdPartida
 import kotlin.concurrent.Volatile
@@ -25,7 +26,7 @@ fun interface RelojMonotonico {
  * primer plano espera el remanente persistido, ejecuta el ciclo y vuelve a empezar con 600 s. Al pasar a segundo
  * plano ([detener]) guarda el remanente, para continuar donde corresponde en el siguiente [iniciar].
  *
- * No hay servicio en segundo plano (D7): el tiempo con la app cerrada lo resuelve CU-12 en el Sprint 8.
+ * No hay servicio en segundo plano (D7): el tiempo con la app cerrada lo resuelve CU-12 (`ProcesarDiferido`).
  */
 class MotorCiclos(
     private val scope: CoroutineScope,
@@ -35,6 +36,7 @@ class MotorCiclos(
     private val purga: PurgarRetencion,
     private val monotonico: RelojMonotonico,
     private val dispatcher: CoroutineDispatcher,
+    private val reloj: Reloj,
     private val alTerminarCiclo: () -> Unit = {},
 ) {
     private var tarea: Job? = null
@@ -61,7 +63,8 @@ class MotorCiclos(
         val espera = esperaSegundos
         if (espera > 0) {
             val transcurridos = ((monotonico.ahoraMs() - inicioEsperaMs) / 1000).toInt()
-            ciclos.guardarRemanente(idPartida, (espera - transcurridos).coerceIn(0, ReglasCiclo.DURACION_CICLO_SEGUNDOS))
+            // Remanente y marca de actividad juntos: CU-12 mide la ausencia desde esa marca (regla 5.2).
+            ciclos.guardarRemanente(idPartida, (espera - transcurridos).coerceIn(0, ReglasCiclo.DURACION_CICLO_SEGUNDOS), reloj.ahoraSegundos())
             esperaSegundos = 0
         }
     }

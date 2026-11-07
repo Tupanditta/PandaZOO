@@ -9,6 +9,11 @@ data class EstadoMotor(
     val remanenteSegundos: Int,
     val partidaActiva: Boolean,
     val simulacionActiva: Boolean,
+    /**
+     * Marca de última actividad en segundos desde la época Unix (regla de reloj 5.2): se escribe en cada ciclo
+     * confirmado, al pasar a segundo plano y al terminar una recuperación diferida. Es `instante_ultimo_ciclo`.
+     */
+    val marcaActividad: Long? = null,
 ) {
     val siguiente: Int get() = (numeroUltimo ?: 0) + 1
 }
@@ -53,8 +58,11 @@ interface CicloRepositorio {
     /** Fija el último ciclo, su instante y el remanente del temporizador. */
     fun actualizarEstadoMotor(idPartida: IdPartida, numero: Int, instante: Long, remanenteSegundos: Int)
 
-    /** Persiste solo el remanente (al pasar a segundo plano). */
-    fun guardarRemanente(idPartida: IdPartida, segundos: Int)
+    /**
+     * Persiste el remanente y, si se indica, la marca de última actividad en la misma sentencia (regla 5.2, punto 1).
+     * Sin `marca` la marca anterior no cambia.
+     */
+    fun guardarRemanente(idPartida: IdPartida, segundos: Int, marca: Long? = null)
 
     fun registrarBeneficio(idPartida: IdPartida, numeroCiclo: Int, importe: Dinero, clave: String, fecha: Long)
 

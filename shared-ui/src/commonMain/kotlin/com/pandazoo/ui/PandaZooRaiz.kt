@@ -49,11 +49,11 @@ fun PandaZooRaiz(
         } else {
             // Un único temporizador ligado al fin de ciclo: corre en primer plano y guarda el remanente al salir (RF-24).
             LifecycleResumeEffect(c) {
-                c.motor.iniciar()
-                onPauseOrDispose { c.motor.detener() }
+                c.alPrimerPlano()
+                onPauseOrDispose { c.alSegundoPlano() }
             }
             DisposableEffect(c) {
-                val baja = registrarVisibilidad { visible -> if (visible) c.motor.iniciar() else c.motor.detener() }
+                val baja = registrarVisibilidad { visible -> if (visible) c.alPrimerPlano() else c.alSegundoPlano() }
                 onDispose(baja)
             }
             CompositionLocalProvider(LocalContenedor provides c) { PandaZooNavegacion() }

@@ -515,6 +515,7 @@ class Sprint5Test {
                 purga = e.purgarRetencion,
                 monotonico = { testScheduler.currentTime },
                 dispatcher = despachador,
+                reloj = e.reloj,
             )
 
             val primero = motor()

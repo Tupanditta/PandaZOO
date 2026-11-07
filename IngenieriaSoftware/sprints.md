@@ -407,6 +407,19 @@ Hitos de revisión sugeridos:
 
 **Criterio de hecho:** parejas válidas se reproducen y el usuario registra a la descendencia. Demo en dispositivo con azar controlado.
 
+**Estado: implementado (verificado en Windows/JVM, web y compilación Android; iOS sin verificar; demo en dispositivo pendiente).** `./gradlew check :androidApp:assembleDebug` correcto. T7.1 a T7.10 cubiertos: reglas puras en `domain` (`ReproduccionTest`), etapa del ciclo, CU-10 y regla 5.3 con base de datos real en `data` (`Sprint7Test`) y flujo de pantalla en `shared-ui` (`Sprint7UiTest`). Decisiones de interpretación:
+
+- Una pareja es evaluable si es recíproca, de la misma especie, con ambos vivos y alojados en el mismo espacio (misma condición que la regla 5.3). La edad mínima de 16 años solo se exige al crear el vínculo (CU-05), no en cada ciclo.
+- Un sorteo por pareja evaluable que llega al umbral, en orden de identificadores, con el mismo `Azar` del ciclo. Se usa la satisfacción persistida al inicio del ciclo, como el beneficio.
+- Una pareja con una concepción `CONCEBIDA` abierta no se vuelve a evaluar hasta que se acepte o expire. Así no se acumulan ofertas para la misma pareja.
+- Ventana: concibe en el ciclo `N`, disponible desde `N+1`, `ciclo_expiracion = N+3`. Es aceptable mientras el último ciclo confirmado no supere `N+3`; al confirmarse un ciclo mayor, la etapa de reproducción la pasa a `EXPIRADA` y su aviso a `DESCARTADA` (con `ciclo_cierre` = ese ciclo). La expiración se ejecuta antes de evaluar nuevas parejas, de modo que una pareja puede volver a concebir en el mismo ciclo en que caduca su oferta anterior.
+- Hijos vivos comunes: animales `VIVO` cuyo `id_padre` e `id_madre` son los dos progenitores, estén alojados o no; los vendidos o muertos no cuentan.
+- CU-10: `id_padre` es el progenitor de identificador menor e `id_madre` el mayor. Los hermanos no se guardan: salen de compartir padre y madre. La cría no puede tener pareja al nacer; solo se admite mejor amigo del mismo espacio. Los espacios a recalcular incluyen los de los hermanos alojados en otros espacios.
+- Una aceptación rechazada no cambia nada, salvo la auditoría del rechazo. La caducidad la registra la etapa del ciclo (no la aceptación rechazada).
+- Auditoría nueva: `CONCEPCION` (entidad `REPRODUCCION`, origen `CICLO_PERIODICO`) y `REPRODUCCION_CONFIRMADA` (entidad `REPRODUCCION`, origen `CU-10`).
+- No se implementa el rechazo explícito de una concepción (`RECHAZADA`): CU-10 no lo define como flujo; la oferta solo termina aceptándose o caducando.
+- Interfaz: el aviso operativo muestra los nombres de la pareja y su especie; abrirlo ofrece «Registrar cría», que lleva al formulario (nombre, dos habilidades, dos rasgos y mejor amigo opcional). Con la aceptación deshabilitada se muestra el motivo.
+
 ---
 
 ### Sprint 8 — Simulación en diferido y recuperación
@@ -435,6 +448,17 @@ Hitos de revisión sugeridos:
 - T8.10 CU-12 se ejecuta también al volver a primer plano con el proceso vivo, con el mismo resultado que un arranque en frío. Un cambio de hora con la app abierta no altera el ciclo en vivo (reloj monótono).
 
 **Criterio de hecho:** cerrar y reabrir la app produce estados coherentes, sin trampas ni duplicados. Demo con el reloj de test.
+
+**Estado: implementado (verificado en Windows/JVM, web y compilación Android; iOS sin verificar; demo en dispositivo pendiente).** `./gradlew check :androidApp:assembleDebug` correcto. T8.1 a T8.10 cubiertos: plan de ciclos y límites offline en `domain` (`DiferidoTest`) y CU-12 con base de datos real, reloj y azar fijos en `data` (`Sprint8Test`). Decisiones de interpretación:
+
+- Marca de última actividad: no hay columna nueva ni migración; se usa `EstadoSimulacion.instante_ultimo_ciclo`. Se escribe en cada ciclo confirmado, al pasar a segundo plano (junto con el remanente, en la misma sentencia) y al terminar una recuperación.
+- Cada ciclo vencido es una transacción de CU-11 con su propio número. Su marca es el instante virtual en que termina (`marca + R + k·600`) y deja el remanente en 600; así un cierre inesperado a mitad conserva el último ciclo confirmado y la siguiente apertura reanuda desde ahí, sin perder ni regalar tiempo. Una transacción final fija remanente y marca con la hora actual y registra un único `RECUPERACION_DIFERIDA` (clave `id_partida:RECUPERACION_DIFERIDA:último_ciclo`); la purga va después, en su propia transacción.
+- Hambruna offline (RF-22), medida contra el estado del animal al empezar la sesión: desde 100, 80 o 60 baja como mucho a 40; desde 40, 20 o 0, a 0. Solo se computa un ciclo mortal por sesión (el contador de desnutrición sube como máximo 1).
+- Enfermedad offline (RF-23): el animal que enferma en la sesión computa un solo ciclo enfermo; el que ya estaba enfermo, como máximo dos adicionales. El sorteo de un animal se detiene al enfermar, como en el ciclo ordinario.
+- Salto de reloj hacia atrás y marca mayor que `ahora` son el mismo caso: `E = 0`, ningún ciclo, `R` intacto, marca reescrita y auditoría `RELOJ_ANOMALO`. Una marca ausente reinicializa la marca sin auditar (flujo 2.b). Con la simulación en pausa el tiempo ausente no cuenta y solo se renueva la marca.
+- CU-12 corre en cada paso a primer plano (`AppContainer.alPrimerPlano`) antes de arrancar el temporizador, para que ambos no ejecuten el mismo ciclo. `alSegundoPlano` cancela la recuperación en curso entre ciclos y guarda remanente y marca.
+- Desviaciones respecto a CU-12 7: la satisfacción y las métricas se escriben en cada ciclo, no solo al final (el resultado final es el mismo; escribir solo al final exige un recálculo en memoria). No se usa el estado `RECUPERACION` de `EstadoSimulacion`: la recuperación es reanudable por construcción. Tras un cierre a mitad de recuperación, los límites de RF-22 y RF-23 se miden desde el estado ya confirmado al reabrir.
+- Pendiente: no hay aviso en pantalla del resumen de la ausencia; `AppContainer.ultimoDiferido` lo expone para cuando se diseñe.
 
 ---
 

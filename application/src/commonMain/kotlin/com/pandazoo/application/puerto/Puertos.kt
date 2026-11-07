@@ -239,6 +239,10 @@ data class NuevoAnimal(
     val rasgos: List<String>,
     val idPareja: String?,
     val idMejorAmigo: String?,
+    /** 20 años para un animal comprado (CU-01) y 0 para una cría (CU-10). */
+    val edadInicialAnios: Int = 20,
+    val idPadre: String? = null,
+    val idMadre: String? = null,
 )
 
 interface AnimalRepositorio {

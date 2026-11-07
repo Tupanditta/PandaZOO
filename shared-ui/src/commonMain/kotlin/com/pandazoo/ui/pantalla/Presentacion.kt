@@ -78,6 +78,8 @@ data class AvisoItemUi(
     val tono: TipoAviso,
     val critico: Boolean,
     val pendiente: Boolean,
+    /** Aviso de reproducción aún aceptable desde la lista: abre el formulario de la cría. */
+    val reproduccion: Boolean = false,
 )
 
 /** Fila del seguimiento crítico (CU-18). */
@@ -346,6 +348,9 @@ object Textos {
             MotivoRechazo.SinBeneficios -> "No hay beneficios pendientes de reclamar."
             is MotivoRechazo.BeneficiosCambiados ->
                 "Los beneficios pendientes han cambiado: ahora son ${dinero(m.vigente)}. Revísalos y confirma de nuevo."
+            MotivoRechazo.ConcepcionNoVigente -> "La cría ya no se puede registrar: la oferta caducó o ya se aceptó."
+            MotivoRechazo.ProgenitoresNoValidos ->
+                "Los progenitores ya no cumplen las condiciones: deben seguir vivos, ser pareja y estar en el mismo espacio."
             MotivoRechazo.AvisoInexistente -> "El aviso ya no existe."
             MotivoRechazo.ConflictoIdempotencia -> "La solicitud ya se registró con otro contenido. Inténtalo de nuevo."
             MotivoRechazo.PartidaInexistente -> "No hay una partida disponible."
@@ -492,6 +497,7 @@ object Textos {
             tono = tono,
             critico = a.tipo.name == "CRITICA",
             pendiente = a.estado == "PENDIENTE",
+            reproduccion = a.codigo == "REPRODUCCION_DISPONIBLE" && (a.estado == "PENDIENTE" || a.estado == "VISTA"),
         )
     }
 

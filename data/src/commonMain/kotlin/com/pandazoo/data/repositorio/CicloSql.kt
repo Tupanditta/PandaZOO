@@ -22,7 +22,7 @@ import com.pandazoo.domain.modelo.IdPartida
 class CicloSql(private val bd: BaseDatos) : CicloRepositorio {
     override fun estadoMotor(idPartida: IdPartida): EstadoMotor? =
         bd.uno(
-            "SELECT e.numero_ciclo_ultimo, e.remanente_temporizador, e.estado, p.estado FROM EstadoSimulacion e " +
+            "SELECT e.numero_ciclo_ultimo, e.remanente_temporizador, e.estado, p.estado, e.instante_ultimo_ciclo FROM EstadoSimulacion e " +
                 "JOIN Partida p ON p.id_partida = e.id_partida WHERE e.id_partida = ?",
             idPartida,
         ) {
@@ -31,6 +31,7 @@ class CicloSql(private val bd: BaseDatos) : CicloRepositorio {
                 remanenteSegundos = it.entero(1),
                 partidaActiva = it.texto(3) == "ACTIVA",
                 simulacionActiva = it.texto(2) == "ACTIVO",
+                marcaActividad = if (it.esNulo(4)) null else it.largo(4),
             )
         }
 
@@ -83,10 +84,11 @@ class CicloSql(private val bd: BaseDatos) : CicloRepositorio {
         )
     }
 
-    override fun guardarRemanente(idPartida: IdPartida, segundos: Int) {
+    override fun guardarRemanente(idPartida: IdPartida, segundos: Int, marca: Long?) {
         bd.escribir(
-            "UPDATE EstadoSimulacion SET remanente_temporizador = ? WHERE id_partida = ?",
-            segundos.coerceIn(0, ReglasCiclo.DURACION_CICLO_SEGUNDOS), idPartida,
+            "UPDATE EstadoSimulacion SET remanente_temporizador = ?, instante_ultimo_ciclo = COALESCE(?, instante_ultimo_ciclo) " +
+                "WHERE id_partida = ?",
+            segundos.coerceIn(0, ReglasCiclo.DURACION_CICLO_SEGUNDOS), marca, idPartida,
         )
     }
 
@@ -194,7 +196,7 @@ class AvisoSql(private val bd: BaseDatos) : AvisoRepositorio {
             "PRESTIGIO_ASCENSO" -> "Has alcanzado el nivel de prestigio ${idEntidad ?: ""}.".replace(" .", ".")
             "ESPECIE_DESBLOQUEADA" -> "Nueva especie disponible: ${f.textoONulo(14) ?: "una especie"}."
             "HABITAT_DESBLOQUEADO" -> "Nuevo hábitat disponible: ${(f.textoONulo(15) ?: "un hábitat").removePrefix("Hábitat ").trim()}."
-            "REPRODUCCION_DISPONIBLE" -> "Una pareja puede tener una cría."
+            "REPRODUCCION_DISPONIBLE" -> textoReproduccion(f)
             else -> codigo
         }
         return Aviso(
@@ -208,6 +210,17 @@ class AvisoSql(private val bd: BaseDatos) : AvisoRepositorio {
             numeroCiclo = f.entero(8),
             idAnimal = if (codigo == "ALERTA_SALUD") idEntidad else null,
         )
+    }
+
+    private fun textoReproduccion(f: com.pandazoo.data.db.Fila): String {
+        val a = f.textoONulo(16)
+        val b = f.textoONulo(17)
+        val especie = f.textoONulo(18) ?: "una especie"
+        return if (a != null && b != null) {
+            "$a y $b ($especie) esperan una cría. Puedes registrarla desde este aviso."
+        } else {
+            "Una pareja de $especie espera una cría."
+        }
     }
 
     private fun textoAlerta(f: com.pandazoo.data.db.Fila): String {
@@ -227,11 +240,17 @@ class AvisoSql(private val bd: BaseDatos) : AvisoRepositorio {
     private companion object {
         const val SELECT =
             "SELECT n.id_notificacion, n.tipo, n.severidad, n.estado, n.codigo, n.entidad, n.id_entidad, n.fecha, n.numero_ciclo, " +
-                "a.nombre, a.estado_vital, a.ciclos_desnutricion, a.ciclos_enfermedad, a.nivel_alimentacion, s.nombre_comun, h.nombre " +
+                "a.nombre, a.estado_vital, a.ciclos_desnutricion, a.ciclos_enfermedad, a.nivel_alimentacion, s.nombre_comun, h.nombre, " +
+                "pa.nombre, pb.nombre, ps.nombre_comun " +
                 "FROM Notificacion n " +
                 "LEFT JOIN Animal a ON n.codigo = 'ALERTA_SALUD' AND a.id_partida = n.id_partida AND a.id_animal = n.id_entidad " +
                 "LEFT JOIN Especie s ON n.codigo = 'ESPECIE_DESBLOQUEADA' AND s.id_especie = n.id_entidad " +
-                "LEFT JOIN Habitat h ON n.codigo = 'HABITAT_DESBLOQUEADO' AND h.id_partida = n.id_partida AND h.id_habitat = n.id_entidad"
+                "LEFT JOIN Habitat h ON n.codigo = 'HABITAT_DESBLOQUEADO' AND h.id_partida = n.id_partida AND h.id_habitat = n.id_entidad " +
+                "LEFT JOIN ReproduccionCiclo rc ON n.codigo = 'REPRODUCCION_DISPONIBLE' AND rc.id_partida = n.id_partida " +
+                "AND n.id_entidad = rc.numero_ciclo || ':' || rc.id_animal_a || ':' || rc.id_animal_b " +
+                "LEFT JOIN Animal pa ON pa.id_partida = rc.id_partida AND pa.id_animal = rc.id_animal_a " +
+                "LEFT JOIN Animal pb ON pb.id_partida = rc.id_partida AND pb.id_animal = rc.id_animal_b " +
+                "LEFT JOIN Especie ps ON ps.id_especie = pa.id_especie"
     }
 }
 
