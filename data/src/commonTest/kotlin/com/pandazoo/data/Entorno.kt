@@ -5,6 +5,12 @@ import com.pandazoo.application.caso.AlimentarEspacio
 import com.pandazoo.application.caso.ConsultarCuidado
 import com.pandazoo.application.caso.TratarAnimal
 import com.pandazoo.data.repositorio.CuidadoSql
+import com.pandazoo.application.caso.ActualizarMisiones
+import com.pandazoo.application.caso.ConsultarMisiones
+import com.pandazoo.application.caso.EtapaMisiones
+import com.pandazoo.application.caso.ReclamarRecompensa
+import com.pandazoo.data.repositorio.MisionSql
+import com.pandazoo.domain.mision.EspecieElegible
 import com.pandazoo.application.caso.AbrirAviso
 import com.pandazoo.application.caso.ConsultarBeneficios
 import com.pandazoo.application.caso.ConsultarHistorialAvisos
@@ -88,19 +94,21 @@ class Entorno(val cfg: ConfiguracionJuego = configuracionBase, valorAzar: Double
     val regla = ReglaSatisfaccion(cfg)
     val reglasPrestigio = ReglasPrestigio(cfg.tablas.nivelesPrestigio, cfg.tablas.desbloqueos)
     val recalcularPrestigio = RecalcularPrestigio(PrestigioSql(bd), reglasPrestigio, auditoria, bd, reloj)
-    val recalcular = RecalcularSatisfaccion(SatisfaccionSql(bd), regla, bd, reloj, recalcularPrestigio)
+    val misionesRepo = MisionSql(bd)
+    val seguimientoMisiones = ActualizarMisiones(misionesRepo)
+    val recalcular = RecalcularSatisfaccion(SatisfaccionSql(bd), regla, bd, reloj, recalcularPrestigio, seguimientoMisiones)
     val consultarPrestigio = ConsultarPrestigio(PanelPrestigioSql(bd), reglasPrestigio)
     val configurarEspacio = ConfigurarEspacio(ejecutor, zoo, recalcular)
 
     // Sprint 3: gestión de especímenes.
     val animales = AnimalSql(bd)
     val catalogoFicha = cfg.catalogoFicha()
-    val adquirirAnimal = AdquirirAnimal(ejecutor, economia, zoo, animales, catalogoFicha, azar, ids, reloj, recalcular)
+    val adquirirAnimal = AdquirirAnimal(ejecutor, economia, zoo, animales, catalogoFicha, azar, ids, reloj, recalcular, misionesRepo, seguimientoMisiones)
     val editarFicha = EditarFicha(ejecutor, animales, catalogoFicha, recalcular)
     val reubicarAnimal = ReubicarAnimal(ejecutor, zoo, animales, recalcular)
-    val venderAnimal = VenderAnimal(ejecutor, economia, zoo, animales, reloj, recalcular)
+    val venderAnimal = VenderAnimal(ejecutor, economia, zoo, animales, reloj, recalcular, seguimientoMisiones)
     val darDeBajaEspacio = DarDeBajaEspacio(ejecutor, zoo)
-    val consultarTiendaAnimales = ConsultarTiendaAnimales(animales, economia)
+    val consultarTiendaAnimales = ConsultarTiendaAnimales(animales, economia, misionesRepo)
     val consultarAnimales = ConsultarAnimales(animales, zoo)
 
     // Sprint 4: cuidado animal.
@@ -120,6 +128,7 @@ class Entorno(val cfg: ConfiguracionJuego = configuracionBase, valorAzar: Double
     val ejecutarCiclo = EjecutarCiclo(
         ejecutor, ciclos, animales, auditoria, recalcular, azar, reloj,
         reproduccion = EtapaReproduccion(reproduccion, auditoria, azar, reloj),
+        misiones = EtapaMisiones(seguimientoMisiones),
     )
     val reclamarBeneficios = ReclamarBeneficios(ejecutor, economia, beneficios, ciclos, reloj)
     val consultarBeneficios = ConsultarBeneficios(beneficios, economia)
@@ -132,6 +141,13 @@ class Entorno(val cfg: ConfiguracionJuego = configuracionBase, valorAzar: Double
     val aceptarReproduccion = AceptarReproduccion(ejecutor, reproduccion, ciclos, animales, zoo, catalogoFicha, azar, ids, recalcular)
     val consultarReproduccion = ConsultarReproduccion(reproduccion, ciclos, animales, zoo)
     val purgarRetencion = PurgarRetencion(bd, RetencionSql(bd), ciclos, cfg.retencion)
+
+    // Sprint 9: misiones y recompensas.
+    val reclamarRecompensa = ReclamarRecompensa(
+        ejecutor, misionesRepo, economia, inventario, ciclos, seguimientoMisiones, azar, reloj,
+        cfg.recompensasAnimales.especies.map { EspecieElegible(it.idEspecie, it.probabilidad) },
+    )
+    val consultarMisiones = ConsultarMisiones(misionesRepo)
 
     // Sprint 8: simulación en diferido.
     fun procesarDiferido(maxCiclos: Int = cfg.retencion.maxCiclosOffline, ciclo: EjecutarCiclo = ejecutarCiclo) =

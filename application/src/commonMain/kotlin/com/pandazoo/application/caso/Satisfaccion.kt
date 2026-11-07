@@ -38,6 +38,8 @@ class RecalcularSatisfaccion(
     private val reloj: Reloj,
     /** Prestigio: se evalúa en el mismo evento y la misma transacción, justo después de persistir las métricas (RF-35). */
     private val prestigio: RecalcularPrestigio? = null,
+    /** Misiones dinámicas: se evalúan en el mismo evento y transacción, tras el prestigio (`EspecificacionMisiones.md`, 4.1). */
+    private val misiones: ActualizarMisiones? = null,
 ) {
     var invocaciones: Int = 0
         private set
@@ -69,6 +71,7 @@ class RecalcularSatisfaccion(
             val medias = Medias.calcular(valores)
             repositorio.reemplazarMetricas(idPartida, medias, reloj.ahoraSegundos())
             prestigio?.alConsolidar(idPartida, numeroCiclo)
+            misiones?.evaluarDinamicas(idPartida)
         }
     }
 }

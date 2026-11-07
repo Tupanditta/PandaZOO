@@ -28,6 +28,9 @@ class AnimalEnCiclo(origen: AnimalCiclo, /** Estado al empezar la sesión diferi
     val probabilidadEnfermedad: Double = origen.probabilidadEnfermedad
     val beneficioPorCiclo: Dinero = origen.beneficioPorCiclo
 
+    /** Edad al empezar el ciclo, para detectar los animales que cruzan un año completo (misiones de crecimiento). */
+    val edadPreviaDias: Int = origen.edadDias
+
     var edadDias: Int = origen.edadDias
     var alimentacion: Int = origen.alimentacion
     var enfermo: Boolean = origen.enfermo

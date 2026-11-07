@@ -5,6 +5,12 @@ import com.pandazoo.application.caso.AlimentarEspacio
 import com.pandazoo.application.caso.ConsultarCuidado
 import com.pandazoo.application.caso.TratarAnimal
 import com.pandazoo.data.repositorio.CuidadoSql
+import com.pandazoo.application.caso.ActualizarMisiones
+import com.pandazoo.application.caso.ConsultarMisiones
+import com.pandazoo.application.caso.EtapaMisiones
+import com.pandazoo.application.caso.ReclamarRecompensa
+import com.pandazoo.data.repositorio.MisionSql
+import com.pandazoo.domain.mision.EspecieElegible
 import com.pandazoo.application.caso.AbrirAviso
 import com.pandazoo.application.ciclo.MotorCiclos
 import com.pandazoo.application.error.Resultado
@@ -110,19 +116,21 @@ class AppContainer(
     /** Orquestador de satisfacción: solo lo invocan las mutaciones y los ciclos, nunca la navegación (RF-44). */
     private val reglasPrestigio = ReglasPrestigio(cfg.tablas.nivelesPrestigio, cfg.tablas.desbloqueos)
     val recalcularPrestigio = RecalcularPrestigio(PrestigioSql(bd), reglasPrestigio, AuditoriaSql(bd), bd, reloj)
-    val recalcularSatisfaccion = RecalcularSatisfaccion(SatisfaccionSql(bd), ReglaSatisfaccion(cfg), bd, reloj, recalcularPrestigio)
+    private val misionesRepo = MisionSql(bd)
+    private val seguimientoMisiones = ActualizarMisiones(misionesRepo)
+    val recalcularSatisfaccion = RecalcularSatisfaccion(SatisfaccionSql(bd), ReglaSatisfaccion(cfg), bd, reloj, recalcularPrestigio, seguimientoMisiones)
     val consultarPrestigio = ConsultarPrestigio(PanelPrestigioSql(bd), reglasPrestigio)
     val configurarEspacio = ConfigurarEspacio(ejecutor, zoo, recalcularSatisfaccion)
 
     // Sprint 3: gestión de especímenes.
     private val animales = AnimalSql(bd)
     val catalogoFicha: CatalogoFicha = cfg.catalogoFicha()
-    val adquirirAnimal = AdquirirAnimal(ejecutor, economia, zoo, animales, catalogoFicha, azar, ids, reloj, recalcularSatisfaccion)
+    val adquirirAnimal = AdquirirAnimal(ejecutor, economia, zoo, animales, catalogoFicha, azar, ids, reloj, recalcularSatisfaccion, misionesRepo, seguimientoMisiones)
     val editarFicha = EditarFicha(ejecutor, animales, catalogoFicha, recalcularSatisfaccion)
     val reubicarAnimal = ReubicarAnimal(ejecutor, zoo, animales, recalcularSatisfaccion)
-    val venderAnimal = VenderAnimal(ejecutor, economia, zoo, animales, reloj, recalcularSatisfaccion)
+    val venderAnimal = VenderAnimal(ejecutor, economia, zoo, animales, reloj, recalcularSatisfaccion, seguimientoMisiones)
     val darDeBajaEspacio = DarDeBajaEspacio(ejecutor, zoo)
-    val consultarTiendaAnimales = ConsultarTiendaAnimales(animales, economia)
+    val consultarTiendaAnimales = ConsultarTiendaAnimales(animales, economia, misionesRepo)
     val consultarAnimales = ConsultarAnimales(animales, zoo)
 
     // Sprint 4: cuidado animal.
@@ -141,6 +149,7 @@ class AppContainer(
     val ejecutarCiclo = EjecutarCiclo(
         ejecutor, ciclos, animales, auditoria, recalcularSatisfaccion, azar, reloj,
         reproduccion = EtapaReproduccion(reproduccion, auditoria, azar, reloj),
+        misiones = EtapaMisiones(seguimientoMisiones),
     )
     val reclamarBeneficios = ReclamarBeneficios(ejecutor, economia, beneficios, ciclos, reloj)
     val consultarBeneficios = ConsultarBeneficios(beneficios, economia)
@@ -148,6 +157,13 @@ class AppContainer(
     private val avisosRepo = AvisoSql(bd)
     val consultarAvisos = ConsultarHistorialAvisos(avisosRepo)
     val abrirAviso = AbrirAviso(ejecutor, avisosRepo, ciclos)
+
+    // Sprint 9: misiones y recompensas.
+    val reclamarRecompensa = ReclamarRecompensa(
+        ejecutor, misionesRepo, economia, inventario, ciclos, seguimientoMisiones, azar, reloj,
+        cfg.recompensasAnimales.especies.map { EspecieElegible(it.idEspecie, it.probabilidad) },
+    )
+    val consultarMisiones = ConsultarMisiones(misionesRepo)
 
     // Sprint 7: reproducción.
     val aceptarReproduccion = AceptarReproduccion(ejecutor, reproduccion, ciclos, animales, zoo, catalogoFicha, azar, ids, recalcularSatisfaccion)

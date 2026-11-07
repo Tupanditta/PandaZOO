@@ -18,6 +18,8 @@ class Fila internal constructor(private val s: SentenciaSql) {
 
     fun decimal(i: Int): Double = s.getDouble(i)
 
+    fun decimalONulo(i: Int): Double? = if (s.isNull(i)) null else s.getDouble(i)
+
     fun esNulo(i: Int): Boolean = s.isNull(i)
 }
 

@@ -12,7 +12,11 @@ import com.pandazoo.application.error.MotivoRechazo
 import com.pandazoo.application.caso.ConsultarBeneficios
 import com.pandazoo.application.caso.RegistroCritico
 import com.pandazoo.application.puerto.Aviso
+import com.pandazoo.application.caso.MisionVista
 import com.pandazoo.application.caso.OfertaAnimal
+import com.pandazoo.application.caso.RecompensaReclamada
+import com.pandazoo.application.caso.RecompensaVista
+import com.pandazoo.application.puerto.TipoRecompensa
 import com.pandazoo.application.puerto.AnimalFicha
 import com.pandazoo.application.puerto.AnimalResumen
 import com.pandazoo.application.puerto.EspacioConHabitat
@@ -115,6 +119,16 @@ data class EspacioMonitorUi(
 )
 
 data class AnimalMonitorUi(val etiqueta: String, val valor: String)
+
+/** Misión vigente con su progreso y recompensa ya formateados; `ref` es opaca y solo sirve para reclamar. */
+data class MisionUi(
+    val ref: Ref,
+    val descripcion: String,
+    val progreso: String,
+    val recompensa: String,
+    val cumplida: Boolean,
+    val reclamable: Boolean,
+)
 
 /** Especie en la tienda de animales. `seleccionable` es falso si está bloqueada, es exclusiva o el saldo no alcanza. */
 data class OfertaAnimalUi(
@@ -352,12 +366,47 @@ object Textos {
             MotivoRechazo.ProgenitoresNoValidos ->
                 "Los progenitores ya no cumplen las condiciones: deben seguir vivos, ser pareja y estar en el mismo espacio."
             MotivoRechazo.AvisoInexistente -> "El aviso ya no existe."
+            MotivoRechazo.MisionInexistente -> "Esa misión ya no está vigente: su recompensa ya se reclamó."
+            MotivoRechazo.MisionNoCumplida -> "La misión aún no está cumplida."
+            MotivoRechazo.RecompensaNoValida -> "No se puede determinar la recompensa de esta misión; no se ha acreditado nada."
+            MotivoRechazo.ProgresionInvalida -> "No se puede calcular la siguiente misión; la recompensa sigue pendiente."
             MotivoRechazo.ConflictoIdempotencia -> "La solicitud ya se registró con otro contenido. Inténtalo de nuevo."
             MotivoRechazo.PartidaInexistente -> "No hay una partida disponible."
         }
 
+    fun mision(m: MisionVista) = MisionUi(
+        ref = Ref(m.idInstancia),
+        descripcion = m.descripcion,
+        progreso = m.progresoTexto,
+        recompensa = recompensa(m.recompensa),
+        cumplida = m.cumplida,
+        reclamable = m.reclamable,
+    )
+
+    fun recompensa(r: RecompensaVista): String = when (r.tipo) {
+        TipoRecompensa.FONDOS -> dinero(Dinero.desdeDecimal(r.cantidad))
+        TipoRecompensa.ALIMENTO, TipoRecompensa.INSUMO -> "${r.cantidad.toLong()} × ${r.nombreItem ?: "recurso"}"
+        TipoRecompensa.ESPECIE -> "Un animal exclusivo aleatorio, gratis"
+    }
+
+    fun recompensaReclamada(r: RecompensaReclamada): String {
+        val premio = when (r.tipo) {
+            TipoRecompensa.FONDOS -> "Has recibido ${dinero(Dinero.desdeDecimal(r.cantidad))}."
+            TipoRecompensa.ALIMENTO, TipoRecompensa.INSUMO -> "Has recibido ${r.cantidad.toLong()} × ${r.nombreItem ?: "recurso"}."
+            TipoRecompensa.ESPECIE -> "Te ha tocado ${r.nombreEspecie ?: "un animal"}: puedes comprarlo gratis en la tienda de animales."
+        }
+        return if (r.agotada) "$premio Esta misión ya no volverá a aparecer." else "$premio La misión se ha renovado con un nuevo objetivo."
+    }
+
     fun ofertaAnimal(o: OfertaAnimal): OfertaAnimalUi {
         val e = o.especie
+        if (o.gratuita) {
+            return OfertaAnimalUi(
+                ref = Ref(e.id), nombre = e.nombre, rango = e.rango, coste = "Gratis",
+                estado = "Gratis · concedido por misión", detalle = "${e.rango} · Gratis · concedido por misión",
+                seleccionable = true, bloqueada = false,
+            )
+        }
         val estado = when (e.estado) {
             EstadoTienda.COMERCIAL -> if (o.asequible) "Disponible" else "Saldo insuficiente"
             EstadoTienda.BLOQUEADA -> "Bloqueada"

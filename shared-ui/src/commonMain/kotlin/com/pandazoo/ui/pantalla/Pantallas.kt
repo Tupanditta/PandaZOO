@@ -286,9 +286,41 @@ internal fun PantallaVacia(texto: String) {
     }
 }
 
+/** CU-20: una misión vigente por tipo; la cumplida muestra la acción explícita de reclamar (CU-15). */
 @Composable
 fun PantallaMisiones() {
-    Marco("Misiones", null, Seccion3.MISIONES) { pad -> Box(Modifier.padding(pad)) { PantallaVacia("Las misiones llegarán en un próximo sprint.") } }
+    val c = LocalContenedor.current
+    val vm: MisionesViewModel = viewModel(factory = fabrica { MisionesViewModel(c) })
+    val misiones by vm.misiones.collectAsState()
+    val confirmando by vm.confirmando.collectAsState()
+    val mensaje by vm.mensaje.collectAsState()
+    Marco("Misiones", null, Seccion3.MISIONES) { pad ->
+        Column(Modifier.padding(pad).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            MensajeUi(mensaje)
+            if (misiones.isEmpty()) {
+                Text("No hay misiones que mostrar.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            misiones.forEach { m ->
+                Ficha(filete = if (m.cumplida) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary) {
+                    Text(m.descripcion, style = MaterialTheme.typography.titleMedium)
+                    Fila("Progreso", if (m.cumplida) "Cumplida · ${m.progreso}" else m.progreso)
+                    Fila("Recompensa", m.recompensa)
+                    if (m.reclamable) {
+                        BotonPrincipal("Reclamar recompensa", { vm.pedirReclamar(m) })
+                    }
+                }
+            }
+        }
+    }
+    confirmando?.let {
+        AlertDialog(
+            onDismissRequest = vm::cancelar,
+            title = { Text("Reclamar recompensa") },
+            text = { Text("Recibirás: ${it.recompensa}. La misión se renovará con un nuevo objetivo. La reclamación no se puede deshacer.") },
+            confirmButton = { TextButton(onClick = vm::reclamar) { Text("Confirmar reclamación") } },
+            dismissButton = { TextButton(onClick = vm::cancelar) { Text("Cancelar") } },
+        )
+    }
 }
 
 /** CU-21: historial de avisos con severidad, estado y fecha; abrir uno pendiente lo marca como visto. */

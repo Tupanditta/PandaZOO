@@ -16,6 +16,7 @@ import com.pandazoo.application.puerto.GeneradorId
 import com.pandazoo.application.puerto.NuevoAnimal
 import com.pandazoo.application.puerto.Reloj
 import com.pandazoo.application.puerto.TipoMovimiento
+import com.pandazoo.application.puerto.UnidadesGratuitas
 import com.pandazoo.application.puerto.ZooRepositorio
 import com.pandazoo.domain.animal.CatalogoFicha
 import com.pandazoo.domain.animal.ReglasAnimal
@@ -98,6 +99,9 @@ class AdquirirAnimal(
     private val ids: GeneradorId,
     private val reloj: Reloj,
     private val recalculo: RecalcularSatisfaccion,
+    /** Unidades de coste cero concedidas por recompensas (RF-38): si hay una de la especie, se compra gratis y se consume. */
+    private val unidades: UnidadesGratuitas? = null,
+    private val misiones: ActualizarMisiones? = null,
 ) {
     fun ejecutar(c: ComandoAdquirirAnimal): Resultado<AnimalAdquirido> {
         val f = c.ficha
@@ -121,10 +125,14 @@ class AdquirirAnimal(
 
     private fun comprar(c: ComandoAdquirirAnimal): Resultado<AnimalAdquirido> {
         val especie = animales.especieTienda(c.idPartida, c.idEspecie) ?: return rechazo(MotivoRechazo.EspecieInexistente)
-        when (especie.estado) {
-            EstadoTienda.BLOQUEADA -> return rechazo(MotivoRechazo.EspecieBloqueada)
-            EstadoTienda.EXCLUSIVA -> return rechazo(MotivoRechazo.EspecieExclusiva)
-            EstadoTienda.COMERCIAL -> Unit
+        // La unidad concedida por una recompensa tiene prioridad sobre el estado de catálogo: coste cero y una sola compra.
+        val gratuita = unidades?.especiesConUnidad(c.idPartida)?.contains(c.idEspecie) == true
+        if (!gratuita) {
+            when (especie.estado) {
+                EstadoTienda.BLOQUEADA -> return rechazo(MotivoRechazo.EspecieBloqueada)
+                EstadoTienda.EXCLUSIVA -> return rechazo(MotivoRechazo.EspecieExclusiva)
+                EstadoTienda.COMERCIAL -> Unit
+            }
         }
         val espacio = zoo.espacio(c.idPartida, c.idEspacio) ?: return rechazo(MotivoRechazo.EspacioInexistente)
         if (espacio.estado != EstadoEntidad.ACTIVO) return rechazo(MotivoRechazo.EspacioInactivo)
@@ -144,7 +152,7 @@ class AdquirirAnimal(
         }
 
         val saldo = economia.fondos(c.idPartida)
-        val coste = especie.coste
+        val coste = if (gratuita) Dinero.CERO else especie.coste
         if (saldo < coste) return rechazo(MotivoRechazo.SaldoInsuficiente(coste, saldo))
 
         val idAnimal = ids.nuevo()
@@ -165,6 +173,8 @@ class AdquirirAnimal(
             ),
         )
         economia.registrarMovimiento(c.idPartida, TipoMovimiento.COMPRA, coste, "CU-01", 0, reloj.ahoraSegundos())
+        if (gratuita) check(unidades?.consumirUnidad(c.idPartida, c.idEspecie) == true) { "La unidad gratuita ya no está disponible" }
+        misiones?.alComprar(c.idPartida, c.idEspecie)
         // La satisfacción se calcula con la ficha ya completa (RF-01), dentro de la misma transacción.
         recalculo.alConsolidar(c.idPartida, AlcanceRecalculo.Espacios(setOf(c.idEspacio)))
         return Resultado.Exito(AnimalAdquirido(idAnimal, coste, saldo - coste))
@@ -319,6 +329,7 @@ class VenderAnimal(
     private val animales: AnimalRepositorio,
     private val reloj: Reloj,
     private val recalculo: RecalcularSatisfaccion,
+    private val misiones: ActualizarMisiones? = null,
 ) {
     fun ejecutar(c: ComandoVenderAnimal): Resultado<AnimalVendido> {
         val op = Operacion(
@@ -352,6 +363,7 @@ class VenderAnimal(
         }
         animales.retirar(c.idPartida, c.idAnimal, ESTADO_VENDIDO)
         economia.registrarMovimiento(c.idPartida, TipoMovimiento.VENTA, Dinero.CERO, "CU-06", 0, reloj.ahoraSegundos())
+        misiones?.alVender(c.idPartida, animal.idEspecie, animal.edadAnios)
         recalculo.alConsolidar(c.idPartida, AlcanceRecalculo.Espacios(afectados))
         val vacio = (zoo.espacio(c.idPartida, origen)?.ocupacion ?: 0) == 0
         return Resultado.Exito(AnimalVendido(c.idAnimal, origen, vacio))
@@ -400,16 +412,22 @@ class DarDeBajaEspacio(
 
 // ---------------------------------------------------------------------------------------------------- Consultas
 
-data class OfertaAnimal(val especie: EspecieTienda, val asequible: Boolean)
+/** `gratuita`: una recompensa de misión concedió una unidad de coste cero de esta especie (RF-38). */
+data class OfertaAnimal(val especie: EspecieTienda, val asequible: Boolean, val gratuita: Boolean = false)
 
 /** Tienda de animales (CU-01, paso 2): todas las especies con su estado; solo las comerciales desbloqueadas se compran. */
 class ConsultarTiendaAnimales(
     private val animales: AnimalRepositorio,
     private val economia: EconomiaRepositorio,
+    private val unidades: UnidadesGratuitas? = null,
 ) {
     fun ejecutar(idPartida: IdPartida): List<OfertaAnimal> {
         val saldo = economia.fondos(idPartida)
-        return animales.especiesTienda(idPartida).map { OfertaAnimal(it, it.estado == EstadoTienda.COMERCIAL && saldo >= it.coste) }
+        val gratuitas = unidades?.especiesConUnidad(idPartida).orEmpty()
+        return animales.especiesTienda(idPartida).map {
+            val gratis = it.id in gratuitas
+            OfertaAnimal(it, gratis || (it.estado == EstadoTienda.COMERCIAL && saldo >= it.coste), gratis)
+        }
     }
 }
 

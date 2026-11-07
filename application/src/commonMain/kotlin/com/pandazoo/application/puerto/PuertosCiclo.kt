@@ -147,4 +147,5 @@ data class VentanasRetencion(
     val beneficiosCerrados: Int,
     val ciclos: Int,
     val idempotencia: Int,
+    val recompensasCerradas: Int,
 )

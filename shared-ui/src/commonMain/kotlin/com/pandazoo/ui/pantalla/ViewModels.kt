@@ -18,6 +18,7 @@ import com.pandazoo.application.caso.ComandoAbrirAviso
 import com.pandazoo.application.caso.ComandoAceptarReproduccion
 import com.pandazoo.application.caso.DetalleReproduccion
 import com.pandazoo.application.caso.ComandoReclamarBeneficios
+import com.pandazoo.application.caso.ComandoReclamarRecompensa
 import com.pandazoo.application.caso.ComandoAdquirirAnimal
 import com.pandazoo.application.puerto.SeveridadAviso
 import com.pandazoo.domain.economia.Dinero
@@ -336,6 +337,31 @@ class ConfigurarEspacioViewModel(c: AppContainer, private val espacio: Ref) : Ba
 }
 
 /** CU-01, paso 2: especies de la tienda con su estado. Solo lectura. */
+/** CU-20 y CU-15: misiones vigentes con su progreso persistido y reclamación con confirmación previa. */
+class MisionesViewModel(c: AppContainer) : BaseViewModel(c) {
+    val misiones: StateFlow<List<MisionUi>> = observar(emptyList()) {
+        c.consultarMisiones.ejecutar(c.idPartida).map(Textos::mision)
+    }
+
+    /** Misión cuya recompensa se va a reclamar; hasta confirmar no se acredita nada (CU-15, 3.a). */
+    val confirmando = MutableStateFlow<MisionUi?>(null)
+
+    fun pedirReclamar(m: MisionUi) {
+        descartarMensaje()
+        confirmando.value = m
+    }
+
+    fun cancelar() {
+        confirmando.value = null
+    }
+
+    fun reclamar() {
+        val m = confirmando.value ?: return
+        confirmando.value = null
+        ejecutar({ c.reclamarRecompensa.ejecutar(ComandoReclamarRecompensa(c.idPartida, m.ref.valor)) }, Textos::recompensaReclamada)
+    }
+}
+
 class TiendaAnimalesViewModel(c: AppContainer) : BaseViewModel(c) {
     val ofertas: StateFlow<List<OfertaAnimalUi>> = observar(emptyList()) {
         c.consultarTiendaAnimales.ejecutar(c.idPartida).map(Textos::ofertaAnimal)

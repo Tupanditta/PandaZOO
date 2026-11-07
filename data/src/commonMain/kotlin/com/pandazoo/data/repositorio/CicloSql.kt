@@ -277,6 +277,11 @@ class RetencionSql(private val bd: BaseDatos) : RetencionRepositorio {
             "DELETE FROM CicloSimulacion WHERE id_partida = ? AND estado IN ('CONFIRMADO', 'REVERTIDO') AND numero < ?",
             idPartida, numeroCiclo - retencion.ciclos,
         )
+        // Una unidad gratuita pendiente (`unidad_pendiente = 1`) nunca se purga: solo las recompensas ya cerradas.
+        borrar(
+            "DELETE FROM RecompensaMision WHERE id_partida = ? AND estado IN ('RECLAMADA', 'ANULADA') AND unidad_pendiente = 0 AND numero_ciclo < ?",
+            idPartida, numeroCiclo - retencion.recompensasCerradas,
+        )
         // Avisos: los PENDIENTE nunca se purgan; los cerrados salen por antigüedad de cierre o por exceso de filas.
         borrar(
             "DELETE FROM Notificacion WHERE id_partida = ? AND estado <> 'PENDIENTE' AND ciclo_cierre IS NOT NULL AND ciclo_cierre < ?",

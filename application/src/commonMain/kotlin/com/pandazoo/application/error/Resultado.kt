@@ -118,6 +118,17 @@ sealed class MotivoRechazo(val codigo: String) {
 
     data object AvisoInexistente : MotivoRechazo("AVISO_INEXISTENTE")
 
+    /** La instancia no existe o ya se reclamó y fue sustituida por la siguiente (CU-15, 4.a). */
+    data object MisionInexistente : MotivoRechazo("MISION_INEXISTENTE")
+
+    data object MisionNoCumplida : MotivoRechazo("MISION_NO_CUMPLIDA")
+
+    /** Tipo, contenido o cantidad de la recompensa sin definir o no válido (CU-15, 4.b). */
+    data object RecompensaNoValida : MotivoRechazo("RECOMPENSA_NO_VALIDA")
+
+    /** Falta la operación o la constante de progresión, o el resultado no es válido (CU-15, 4.c). */
+    data object ProgresionInvalida : MotivoRechazo("PROGRESION_INVALIDA")
+
     data object ConflictoIdempotencia : MotivoRechazo("CONFLICTO_IDEMPOTENCIA")
 
     data object PartidaInexistente : MotivoRechazo("PARTIDA_INEXISTENTE")

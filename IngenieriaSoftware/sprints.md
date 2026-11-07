@@ -491,6 +491,19 @@ Hitos de revisión sugeridos:
 
 **Criterio de hecho:** el bucle completo de juego (comprar, cuidar, simular, progresar, recompensar) funciona. Demo en dispositivo.
 
+**Estado: implementado (verificado en Windows/JVM, web y compilación Android; iOS sin verificar; demo en dispositivo pendiente).** `./gradlew check :androidApp:assembleDebug` correcto. T9.1 a T9.10 cubiertos: reglas puras en `domain` (`MisionTest`), misiones, reclamación, unidad gratuita y rendimiento con base de datos real en `data` (`Sprint9Test`) y pantalla en `shared-ui` (`Sprint9UiTest`). Decisiones de interpretación:
+
+- Las instancias de la semilla ya existían (`ProgresoMision`, una por tipo); este sprint solo las evalúa y las sustituye. Objetivo de cada tipo: el parámetro indicado en `ReglasMision` (las dos misiones de venta valen `1`).
+- Eventos: compra (CU-01) y venta (CU-06) actualizan los contadores acumulativos en su propia transacción; la etapa de misiones del ciclo cuenta a los animales que cruzan la edad requerida (años completos, `edad_previa/360 < requerida ≤ edad/360`) y solo ve a los supervivientes del ciclo, así que un animal que muere en el mismo ciclo en que cruzaría la edad no cuenta. Las misiones dinámicas se evalúan al final de cada recálculo de satisfacción (`RecalcularSatisfaccion`), es decir, en cada mutación y en cada ciclo, tras el prestigio.
+- Una instancia `CUMPLIDA` no vuelve a `PENDIENTE` aunque el valor dinámico baje; el progreso mostrado se queda en el último valor evaluado hasta que se reclama.
+- Familia: «hermanos» son los animales vivos con el mismo padre **o** la misma madre (EspecificacionMisiones 3.9); no hace falta que estén alojados. Padre y madre del animal evaluado deben estar vivos y alojados.
+- CU-15: valida instancia, contenido y progresión antes de escribir (un rechazo no cambia nada). La clave de idempotencia es la instancia (`id_partida:RECOMPENSA_RECLAMADA:id_instancia`), así que repetir la reclamación devuelve el resultado persistido; con la clave ya purgada, la instancia sustituida se rechaza como `MisionInexistente`. Todo parámetro numérico sin operación y constante se rechaza como `ProgresionInvalida`; fuera de `[mínimo, máximo]` la instancia pasa a `AGOTADA` y no se vuelve a crear.
+- La aritmética de progresión es exacta a seis decimales para `SUMAR` y `RESTAR`; el parámetro `satisfaccion_minima` se redondea al centésimo y el resto al entero (medios hacia arriba).
+- Animal aleatorio: sorteo con el `Azar` del contenedor sobre los tramos acumulados de `recompensas_animales_aleatorios`, persistido en `RecompensaMision.id_especie_seleccionada` con `unidad_pendiente = 1`. La especie se desbloquea con origen `RECOMPENSA` y emite el aviso informativo `ESPECIE_DESBLOQUEADA` (sin duplicar).
+- Unidad gratuita: una unidad pendiente tiene prioridad sobre el estado de catálogo; la compra cuesta 0, sigue el flujo de CU-01 (ficha, aforo, satisfacción) y consume la unidad en la misma transacción. Un rechazo de la compra no la consume. Cuenta como compra para las misiones de compra de esa especie.
+- Retención: las recompensas cerradas (`unidad_pendiente = 0`) se purgan tras `retencion.recompensa_mision_cerrada` ciclos; una unidad pendiente nunca se purga.
+- Interfaz: la pestaña Misiones lista una misión por tipo (las agotadas no se muestran) con descripción, progreso y recompensa; la cumplida ofrece «Reclamar recompensa» con confirmación. La tienda de animales muestra la unidad concedida como «Gratis».
+
 ---
 
 ### Sprint 10 — Endurecimiento y aceptación
