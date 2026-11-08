@@ -18,7 +18,8 @@ kotlin {
         minSdk = 26
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
     }
-    js { nodejs() }
+    // Mocha corta cada test a los 2 s; las simulaciones largas (cientos de ciclos) tardan más en JavaScript.
+    js { nodejs { testTask { useMocha { timeout = "20s" } } } }
 
     // `androidx.sqlite` no existe para JavaScript: Android y JVM comparten el SQLite empaquetado (`sqliteMain`) y la
     // web usa sql.js (`jsMain`). Ambos implementan la misma interfaz `ConexionSql` de `commonMain`.

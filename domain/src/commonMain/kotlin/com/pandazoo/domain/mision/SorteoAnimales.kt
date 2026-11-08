@@ -52,10 +52,10 @@ class SorteoAnimales(private val porRango: Map<Int, List<EspecieElegible>>, priv
     }
 
     companion object {
-        /** Especies comerciales de los rangos 2 a 4 (peso uniforme) y exclusivas con su lista de recompensas. */
+        /** Especies comerciales de los rangos 1 a 4 (peso uniforme) y exclusivas con su lista de recompensas. */
         fun desde(cfg: ConfiguracionJuego): SorteoAnimales {
             val mapa = HashMap<Int, List<EspecieElegible>>()
-            for (r in 2..4) {
+            for (r in 1..4) {
                 mapa[r] = cfg.especies.filter { it.categoria == "COMERCIAL" && it.idRango == r }.map { EspecieElegible(it.id, 1) }
             }
             mapa[5] = cfg.recompensasAnimales.especies.map { EspecieElegible(it.idEspecie, it.probabilidad) }

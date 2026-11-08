@@ -112,7 +112,7 @@ class MejorasAvisosMisionesTest {
         e.bd.escribir("UPDATE Animal SET satisfaccion_actual = 0.5 WHERE id_animal = ?", b)
 
         val h = e.consultarDesgloseBeneficios.ejecutar(e.idPartida).single()
-        h.importe.toString() shouldBe "9.00" // rango 1: base 6,00 · (1,0 + 0,5)
-        h.espacios.single().animales.map { it.importe.toString() } shouldBe listOf("6.00", "3.00")
+        h.importe.toString() shouldBe "3.60" // rango 1: base 2,40 · (1,0 + 0,5)
+        h.espacios.single().animales.map { it.importe.toString() } shouldBe listOf("2.40", "1.20")
     }
 }

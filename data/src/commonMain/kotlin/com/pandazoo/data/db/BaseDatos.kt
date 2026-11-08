@@ -141,8 +141,14 @@ class BaseDatos private constructor(private val conexion: ConexionSql) : Transac
          * (`migrarDe8a9`). Versión 10: mejor amigo recíproco (`migrarDe9a10`).
          * Versión 11: cada espacio guarda lo que costó, para devolverlo al venderlo (`migrarDe10a11`).
          * Versión 12: espacios de 25 y 30 animales (`migrarDe11a12`).
+         * Versión 13: animales ×5 de coste y venta, reproducción por factores según hijos vivos con tope de cinco
+         * (`migrarDe12a13`). Versión 14: afinidad intermedia (0,5) entre animales de la misma especie (`migrarDe13a14`).
+         * Versión 15: tabla `RegaloSemanal` y origen `SEMANAL` de las unidades gratuitas (`migrarDe14a15`).
+         * Versión 16: se quitan los mejores amigos que son familiares (`migrarDe15a16`).
+         * Versión 17: el panda tiene compatibilidad 1,0 con todos los hábitats (`migrarDe16a17`).
+         * Versión 18: el beneficio base por animal y ciclo baja un 60 % (`migrarDe17a18`).
          */
-        const val VERSION = 12
+        const val VERSION = 18
 
         /** Compensación única a las partidas creadas con la versión 1 (que empezaban con 1000 monedas). */
         const val COMPENSACION_V2 = 1000.0
@@ -193,6 +199,12 @@ class BaseDatos private constructor(private val conexion: ConexionSql) : Transac
             if (hasta >= 10 && (uno("PRAGMA user_version") { it.entero(0) }) == 9) migrarDe9a10()
             if (hasta >= 11 && (uno("PRAGMA user_version") { it.entero(0) }) == 10) migrarDe10a11()
             if (hasta >= 12 && (uno("PRAGMA user_version") { it.entero(0) }) == 11) migrarDe11a12()
+            if (hasta >= 13 && (uno("PRAGMA user_version") { it.entero(0) }) == 12) migrarDe12a13()
+            if (hasta >= 14 && (uno("PRAGMA user_version") { it.entero(0) }) == 13) migrarDe13a14()
+            if (hasta >= 15 && (uno("PRAGMA user_version") { it.entero(0) }) == 14) migrarDe14a15()
+            if (hasta >= 16 && (uno("PRAGMA user_version") { it.entero(0) }) == 15) migrarDe15a16()
+            if (hasta >= 17 && (uno("PRAGMA user_version") { it.entero(0) }) == 16) migrarDe16a17()
+            if (hasta >= 18 && (uno("PRAGMA user_version") { it.entero(0) }) == 17) migrarDe17a18()
             check((uno("PRAGMA user_version") { it.entero(0) }) == hasta) { "Versión de base de datos no soportada" }
         }
     }
@@ -396,6 +408,109 @@ class BaseDatos private constructor(private val conexion: ConexionSql) : Transac
             conexion.ejecutar("INSERT OR IGNORE INTO CosteEspacio (capacidad_max, importe) VALUES (25, 1105.0)")
             conexion.ejecutar("INSERT OR IGNORE INTO CosteEspacio (capacidad_max, importe) VALUES (30, 1300.0)")
             conexion.ejecutar("PRAGMA user_version = 12")
+        }
+    }
+
+    /**
+     * Versión 13: el coste de compra y la venta base de los rangos 1 a 4 se multiplican por 5 (200, 800, 2250 y 3500), la probabilidad
+     * de reproducción baja y la penalización lineal por hijo se sustituye por factores según los hijos vivos (máximo cinco).
+     * Valores de `valores_y_pesos.json`. Las partidas conservan todo lo demás.
+     */
+    internal fun migrarDe12a13() {
+        ejecutar {
+            // El esquema vigente ya trae la columna (una base creada nueva y marcada con una versión antigua en los tests).
+            val tiene = leer("PRAGMA table_info(RangoEspecie)") { it.texto(1) }.contains("factores_hijos")
+            if (!tiene) conexion.ejecutar("ALTER TABLE RangoEspecie ADD COLUMN factores_hijos TEXT NOT NULL DEFAULT '1;1;1;1;1;0'")
+            val rangos = listOf(
+                Triple(1, "0.03", "1;0.125;0.0625;0.04;0.01;0"),
+                Triple(2, "0.0225", "1;0.105;0.04425;0.018;0.003;0"),
+                Triple(3, "0.015", "1;0.0885;0.0375;0.017;0.001;0"),
+                Triple(4, "0.011", "1;0.07425;0.03;0.015;0.001;0"),
+                Triple(5, "0.0075", "1;0.0625;0.025;0.013;0.001;0"),
+            )
+            rangos.forEach { (id, probabilidad, factores) ->
+                conexion.ejecutar(
+                    "UPDATE RangoEspecie SET probabilidad_reproduccion = $probabilidad, penalizacion_hijo_reproduccion = 0, " +
+                        "factores_hijos = '$factores' WHERE id_rango = $id",
+                )
+            }
+            listOf(1 to 200.0, 2 to 800.0, 3 to 2250.0, 4 to 3500.0).forEach { (id, importe) ->
+                conexion.ejecutar("UPDATE CosteRango SET importe = $importe WHERE id_rango = $id")
+                conexion.ejecutar("UPDATE RangoEspecie SET valor_venta_base = $importe WHERE id_rango = $id")
+            }
+            conexion.ejecutar("PRAGMA user_version = 13")
+        }
+    }
+
+    /**
+     * Versión 14: la afinidad entre animales de la misma especie (la diagonal de la matriz) pasa a ser intermedia, `0.5`.
+     * La regla de satisfacción lee la matriz del JSON; esta tabla solo conserva el catálogo.
+     */
+    internal fun migrarDe13a14() {
+        ejecutar {
+            conexion.ejecutar("UPDATE AfinidadEspecies SET coeficiente = 0.5 WHERE id_especie_a = id_especie_b")
+            conexion.ejecutar("PRAGMA user_version = 14")
+        }
+    }
+
+    /**
+     * Versión 15: regalos semanales. Crea `RegaloSemanal` (un identificador por regalo y día, único por partida) y amplía el
+     * origen de `UnidadGratuita` con `SEMANAL`, lo que exige reconstruir la tabla. Las unidades existentes se conservan.
+     */
+    internal fun migrarDe14a15() {
+        ejecutar {
+            reconstruir(
+                "UnidadGratuita",
+                "INSERT INTO UnidadGratuita_nueva (id_unidad, id_partida, id_especie, origen, unidad_pendiente, fecha) " +
+                    "SELECT id_unidad, id_partida, id_especie, origen, unidad_pendiente, fecha FROM UnidadGratuita",
+            )
+            if (leer("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'RegaloSemanal'") { it.texto(0) }.isEmpty()) {
+                conexion.ejecutar(EsquemaGenerado.sentencias.first { it.startsWith("CREATE TABLE RegaloSemanal ") })
+            }
+            conexion.ejecutar("PRAGMA user_version = 15")
+        }
+    }
+
+    /**
+     * Versión 16: un familiar (pareja, padre, madre, hijo o hermano) no puede ser mejor amigo. Se quita el mejor amigo de los animales
+     * cuyo amigo es familiar suyo; como la amistad es recíproca y el parentesco simétrico, se quita en los dos extremos.
+     */
+    internal fun migrarDe15a16() {
+        ejecutar {
+            conexion.ejecutar(
+                "UPDATE Animal SET id_mejor_amigo = NULL WHERE id_mejor_amigo IS NOT NULL AND EXISTS (SELECT 1 FROM Animal y " +
+                    "WHERE y.id_partida = Animal.id_partida AND y.id_animal = Animal.id_mejor_amigo AND (" +
+                    "Animal.id_pareja = y.id_animal OR y.id_pareja = Animal.id_animal OR Animal.id_padre = y.id_animal OR " +
+                    "Animal.id_madre = y.id_animal OR y.id_padre = Animal.id_animal OR y.id_madre = Animal.id_animal OR " +
+                    "(Animal.id_padre IS NOT NULL AND (Animal.id_padre = y.id_padre OR Animal.id_padre = y.id_madre)) OR " +
+                    "(Animal.id_madre IS NOT NULL AND (Animal.id_madre = y.id_padre OR Animal.id_madre = y.id_madre))))",
+            )
+            conexion.ejecutar("PRAGMA user_version = 16")
+        }
+    }
+
+    /**
+     * Versión 17: el panda se encuentra a gusto en cualquier hábitat. Su factor de compatibilidad pasa a `1.0` en todos
+     * (la regla de satisfacción lee la configuración del JSON; esta tabla conserva el catálogo).
+     */
+    internal fun migrarDe16a17() {
+        ejecutar {
+            conexion.ejecutar("UPDATE CompatibilidadBioma SET factor_bioma = 1.0 WHERE id_especie = 'panda'")
+            conexion.ejecutar("PRAGMA user_version = 17")
+        }
+    }
+
+    /**
+     * Versión 18: el beneficio base de un animal de nivel 1 con satisfacción 1 baja un 60 % en todos los rangos
+     * (`6, 12, 20, 32, 50` pasan a `2.4, 4.8, 8, 12.8, 20`, valores de `valores_y_pesos.json`). Los beneficios ya
+     * generados y pendientes de reclamar no cambian.
+     */
+    internal fun migrarDe17a18() {
+        ejecutar {
+            listOf(1 to 2.4, 2 to 4.8, 3 to 8.0, 4 to 12.8, 5 to 20.0).forEach { (id, base) ->
+                conexion.ejecutar("UPDATE RangoEspecie SET beneficio_base_animal_ciclo = $base WHERE id_rango = $id")
+            }
+            conexion.ejecutar("PRAGMA user_version = 18")
         }
     }
 

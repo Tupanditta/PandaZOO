@@ -266,6 +266,12 @@ Cambios en el DDL vigente (`data/schema/esquema.sql`):
 | 10 | Mejor amigo recíproco (sección 3) |
 | 11 | `Espacio.coste_pagado`: los espacios existentes reciben el precio actual de su capacidad como mejor aproximación, porque no se conservaba cuánto costó cada uno |
 | 12 | Se añaden las capacidades de 25 y 30 animales a `CosteEspacio` |
+| 13 | Animales más caros y reproducción más difícil (sección 12): coste y venta base ×5 en los rangos 1 a 4, probabilidad de reproducción reducida y columna `RangoEspecie.factores_hijos` |
+| 14 | La diagonal de `AfinidadEspecies` pasa a `0.5` (sección 14) |
+| 15 | Regalos semanales (sección 16): tabla `RegaloSemanal` y origen `SEMANAL` en `UnidadGratuita` |
+| 16 | Se quitan los mejores amigos que son familiares (sección 17) |
+| 17 | El panda tiene compatibilidad `1.0` con todos los hábitats (sección 19) |
+| 18 | El beneficio base por animal y ciclo baja un 60 % (sección 20) |
 
 El motor de pruebas puede abrir una base migrando solo hasta una versión intermedia, para probar las migraciones anteriores al reinicio de la versión 9.
 
@@ -290,3 +296,130 @@ Estas constantes no están en `valores_y_pesos.json`. Aquí es donde se document
 | Duración de un aviso de severidad media | `3` ciclos | `RetencionSql` |
 | Duración de un aviso de severidad baja | `1` ciclo | `RetencionSql` |
 | Rangos sorteables en bienvenida y prestigio | `2` a `5` (los de bienvenida comunes y poco comunes son fijos: rangos `1` y `2`) | Validador y `InicializadorPartida` |
+
+## 12. Precios de los animales y reproducción (versión 13)
+
+Se cambia el balance para que formar familias sea posible pero lento y para que comprar animales sea más caro.
+
+| Dato | Antes | Ahora |
+|---|---|---|
+| Coste de compra, rangos 1 a 4 | `40`, `160`, `450`, `700` | `200`, `800`, `2250`, `3500` (×5) |
+| `valor_venta_base`, rangos 1 a 4 | igual al coste | igual al coste nuevo (el validador lo exige); rango 5 sigue en `4000` |
+| Nivel mínimo para formar pareja | `4` | `1` (sin mínimo práctico) |
+| Probabilidad base de reproducción por ciclo (rangos 1 a 5) | `4 %`, `3 %`, `2 %`, `1,5 %`, `1 %` | `3 %`, `2,25 %`, `1,5 %`, `1,1 %`, `0,75 %` |
+| Efecto de los hijos vivos | `p − penalización × hijos` | `p × factor(hijos vivos)` con la tabla `factores_hijos` |
+| Máximo de hijos vivos comunes | sin tope | 5 (el factor con 5 hijos es 0) |
+
+Factores por rango según los hijos vivos comunes (0, 1, 2, 3, 4 y 5): rango 1 `1; 0,125; 0,0625; 0,04; 0,01; 0`, rango 2 `1; 0,105; 0,04425; 0,018; 0,003; 0`, rango 3 `1; 0,0885; 0,0375; 0,017; 0,001; 0`, rango 4 `1; 0,07425; 0,03; 0,015; 0,001; 0` y rango 5 `1; 0,0625; 0,025; 0,013; 0,001; 0`.
+
+La columna `penalizacion_hijo_reproduccion` queda en desuso con valor `0`. Los beneficios no cambian, así que la amortización se alarga (nota `tablas.costes_rangos_nota`). La migración 12 a 13 fija estos valores en las partidas existentes. No se añade ninguna forma de subir de nivel con dinero.
+
+## 13. Afinidad con los familiares
+
+`C_afinidad` es la media de afinidad con **todos** los demás animales vivos del espacio. Antes excluía a la pareja, el padre, la madre, los hermanos y los hijos (solo contaba a los no familiares, y el mejor amigo). Ahora los familiares cuentan como cualquier otro animal; los de la misma especie aportan el valor diagonal de la matriz de afinidad. Un animal sin otros en el espacio sigue teniendo `C_afinidad = 0`. No cambia ningún dato de configuración ni el esquema, así que no hace falta migración; la satisfacción se recalcula con la regla nueva en el siguiente evento.
+
+## 14. Afinidad entre animales de la misma especie y familiar (versión 14)
+
+Se sustituye la regla de la sección 13 para que en un espacio convenga tener familias o especies distintas:
+
+| Pareja de animales en el espacio | Afinidad |
+|---|---|
+| Familiares (pareja, hijos, padres y hermanos) | `0.8` (`matriz_afinidad.afinidad_familiar`), además de lo que suman `C_pareja`, `C_hermanos`, `C_padre` y `C_madre` |
+| Misma especie, sin parentesco | `0.5` (la diagonal de la matriz, antes `0.9`, `0.7` o `0.4` según la sociabilidad) |
+| Especies distintas | el valor de la matriz (`0.1` a `0.9`) |
+
+El mejor amigo no es familiar. La migración 13 a 14 pone la diagonal de `AfinidadEspecies` a `0.5`; la regla lee la matriz del JSON.
+
+**Satisfacción máxima.** Con alimentación 100 %, sano, el mejor hábitat, pareja, amigo, padre, madre y hermanos hasta el tope, la satisfacción máxima de una especie es `(w_bio + w_soc · (1 − w_afinidad · (1 − A)))`, con `A` la mayor afinidad posible con quien comparte espacio (`max(0.8, mayor afinidad con otra especie)`, que es `0.9`). Sale entre 96,7 % y 97,2 % según la especie, así que ningún animal llega al 100 %.
+
+## 15. Satisfacción exigida por el prestigio
+
+**Tope real de satisfacción.** Con alimentación 100 %, sano, el mejor hábitat y todos los vínculos, un animal solo llega a entre 96,7 % y 97,2 % según la especie (sección 14): ninguna afinidad llega a 1,0.
+
+**Prestigio.** El umbral de satisfacción del nivel 100 baja de `1.00` a `0.95`. Los niveles 1 a 60 no cambian (el 60 exige `0.8857`); del 61 al 100 la curva conserva su forma cóncava, pero va de `0.8857` a `0.95` (nivel 70: `0.9138`, antes `0.9357`; nivel 80: `0.9339`, antes `0.9714`; nivel 90: `0.946`, antes `0.9929`). Los umbrales de animales no cambian. Los niveles impares siguen compartiendo la satisfacción del par anterior. La tabla sale del JSON, así que no hace falta migración.
+
+**Misiones.** Las misiones de satisfacción mínima no cambian: de `0.60` a `0.95`, en pasos de `0.05`.
+
+## 16. Regalos semanales (versión 15)
+
+Como el regalo de bienvenida (sección 1), pero cada semana: los **lunes** y los **viernes** el jugador recibe una unidad gratuita de un animal sorteado.
+
+| Día | Exclusivo | Épico | Raro | Poco común | Común |
+|---|---|---|---|---|---|
+| Lunes (`dia_semana` 1) | 5 % | 20 % | 35 % | 40 % | — |
+| Viernes (`dia_semana` 5) | 5 % | 10 % | 20 % | 30 % | 35 % |
+
+- Las tablas y los días están en `regalos_semanales` del JSON (`dia_semana` ISO: 1 lunes … 7 domingo). El validador exige que cada tabla sume `100` con rangos distintos del 1 al 5 y que no haya dos regalos el mismo día.
+- Primero se sortea el rango y después la especie dentro del rango (uniforme en los rangos 1 a 4; en el 5, las probabilidades de `recompensas_animales_aleatorios.especies`). El prestigio no interviene.
+- El día es el de la hora local del dispositivo. Se comprueba cada vez que la aplicación pasa a primer plano. Si no se abre el juego ese día, el regalo se pierde: no se acumulan.
+- **Identificador y unicidad.** Cada regalo tiene un identificador propio, `id_regalo:fecha` (por ejemplo `lunes:2026-11-09`). Se guarda en la tabla `RegaloSemanal` con clave primaria `(id_partida, id_regalo)`, por lo que no puede concederse dos veces; además se comprueba antes y dentro de la transacción, y la operación se audita como `REGALO_SEMANAL` con ese identificador como clave de idempotencia. La purga conserva los 20 regalos más recientes.
+- Es una unidad gratuita como las demás (`UnidadGratuita` con origen `SEMANAL`): se compra en la tienda de animales con coste `0` y no desbloquea la especie.
+- La interfaz muestra el animal en una ventana de premio, con la tabla de probabilidades del día, después de la ventana de bienvenida si la hay.
+- Migración 14 a 15: crea `RegaloSemanal` y reconstruye `UnidadGratuita` para admitir el origen `SEMANAL`, conservando las unidades existentes.
+
+## 17. Mejor amigo y tratamiento médico (versión 16)
+
+**Un familiar no puede ser mejor amigo.** Son familiares de un animal su pareja, sus padres, sus hijos y quienes comparten padre o madre con él (los medio hermanos también). Se rechaza con `AMIGO_FAMILIAR` en:
+
+- la compra (CU-01): la pareja elegida en la misma compra no puede ser el mejor amigo;
+- la edición de la ficha (CU-05): ni el mejor amigo nuevo puede ser un familiar, ni la pareja nueva el mejor amigo;
+- el registro de la cría (CU-10): ni sus progenitores ni sus hermanos (los hijos de alguno de ellos).
+
+Las listas de candidatos de la interfaz ya no los ofrecen. La migración 15 a 16 quita, en los dos extremos, los mejores amigos que ya eran familiares.
+
+**Tratamiento médico según el nivel.** Igual que el bambú (sección 4.1), las unidades de medicina de un tratamiento crecen un 5 % por cada nivel por encima del 1, redondeadas hacia arriba: `unidades = ⌈ unidades_base × (19 + nivel) / 20 ⌉`, con `unidades_base` la de `tablas.consumo_medico_rango` (1 a 5). Ejemplo, rango 3 (base 3): nivel 1, 3 unidades; nivel 10, 5; nivel 30, 8; nivel 41, 9. Vale para el tratamiento (CU-09) y para su ventana de confirmación. Las probabilidades de enfermar no cambian.
+
+El bambú ya crecía con el nivel desde la sección 4.1.
+
+## 18. Amigos, parejas y divorcio
+
+Complementa la sección 17.
+
+| Cambio de vínculo | Resultado |
+|---|---|
+| Dos mejores amigos pasan a ser pareja | Permitido. Al elegirse como pareja, la amistad termina en los dos. Cada uno queda libre para elegir otro mejor amigo en la misma edición. |
+| Una pareja pasa a ser mejores amigos | **No permitido** (`AMIGO_FAMILIAR`): la pareja es familiar. Hay que divorciarse antes, en una edición aparte. |
+| Pasar de una pareja a otra | No directamente: primero hay que divorciarse. La edición de la ficha rechaza cualquier cambio de una pareja existente (`DIVORCIO_REQUERIDO`). |
+| Quitar la pareja (divorcio, CU-24) | Solo con el botón de divorcio de la ficha. Los dos quedan sin pareja. Los **hijos comunes** (los que tienen a ambos como padre y madre, vivos o no) pasan a no tener padre ni madre y, por tanto, tampoco hermanos por esa vía. Los hijos de cualquiera de los dos con otra pareja no cambian. No se borra ningún animal. |
+| Tras el divorcio | Cada uno puede elegir una pareja distinta, o ser mejores amigos entre sí (ya no son familiares). |
+
+- El divorcio es la única operación que borra `id_padre` e `id_madre`. Se recalcula la satisfacción de los espacios afectados, incluidos los de los hijos.
+- La ficha avisa de las consecuencias junto al selector de pareja.
+- **En la compra.** El mejor amigo y la pareja se pueden elegir al comprar si hay animales válidos: el amigo, cualquier animal del espacio sin mejor amigo; la pareja, un animal de la misma especie del espacio sin pareja. Si no hay ninguno, el selector no aparece. No se puede elegir al mismo animal como pareja y como amigo.
+
+### 18.1. Divorcio en la interfaz (CU-24)
+
+- La ficha de un animal **con pareja** muestra el botón «Divorcio»; sin pareja no aparece.
+- Al pulsarlo sale una ventana flotante que explica las consecuencias (los hijos comunes dejan de ser sus hijos y quedan sin padres ni hermanos, no se borra ningún animal, después se puede elegir otra pareja o ser mejores amigos, no se puede deshacer) con los botones «Acepto» y «Cancelar». Si no se acepta (cancelar o tocar fuera) no se realiza nada.
+- Al aceptar se ejecuta el divorcio (`DivorciarAnimal`, auditoría `DIVORCIO`, idempotente) y sale una ventana con «Ánimo My Sheila ❤» que se cierra tocando fuera de ella.
+- **Editar ficha** de un animal con pareja muestra quién es su pareja pero no ofrece cambiarla ni quitarla. Sin pareja, el selector funciona como antes.
+- Otros motivos de rechazo: `SIN_PAREJA` (el animal no tiene pareja) y `ANIMAL_INEXISTENTE`/`ANIMAL_NO_VIVO`.
+
+## 19. El panda luce toques de diamante
+
+El panda sigue siendo un animal exclusivo (rango 5, misma tabla de sorteo, mismo flujo de unidad gratuita, mismo valor), pero se distingue del resto de exclusivos con un aspecto de diamante en lugar del dorado:
+
+- Contorno de degradado hielo, blanco y lila; resplandor y fondo azul hielo (en tema claro y oscuro).
+- Facetas claras en diagonal y cuatro pequeñas estrellas de destellos sobre la ficha.
+- Nombre en degradado azul con resplandor y un rombo «◆» a su lado; en la ventana de premio, «Animal exclusivo · diamante».
+- Se aplica en la tienda, la compra, la lista de animales de un espacio, la ficha del animal y las ventanas de premio (bienvenida, regalo semanal y recompensa de misión).
+
+Es solo presentación: la especie se reconoce por su identificador (`Textos.ESPECIE_DIAMANTE`, `panda`) y no cambia ningún dato de configuración ni el esquema. `AnimalFicha` y `RecompensaReclamada` llevan ahora `idEspecie` para poder decidirlo. En los tests de JavaScript, Mocha usa un límite de 20 s por test (antes 2 s), porque las simulaciones de cientos de ciclos se acercaban al límite.
+
+**Ajustes posteriores.** El azul del diamante es algo más oscuro que al principio (filete `#1F84AE` en tema claro y `#5FC1E4` en oscuro, con el degradado del contorno y el nombre oscurecidos en la misma proporción). Ese mismo aspecto sale cuando el panda es el resultado de un sorteo: en la ventana de premio de un animal aleatorio (bienvenida, regalo semanal o recompensa de misión) el panda se revela con el tono de diamante tras pulsar «¡SUERTE!».
+
+**Compatibilidad con los hábitats (versión 17).** El panda tiene `factor_bioma = 1.0` en los cinco biomas (antes `1.0` solo en el bosque templado y `0.4` en el resto), así que `P_hab` nunca le resta satisfacción. Es un cambio de `tablas.compatibilidad_especie_bioma`; la migración 16 a 17 actualiza el catálogo guardado de la partida. Con esto, el panda es la especie cuyo tope de satisfacción no depende del hábitat.
+
+## 20. Beneficios un 60 % más bajos (versión 18)
+
+`beneficio_base_animal_ciclo` (el beneficio de un animal de nivel 1 con satisfacción 1) se multiplica por `0,4`:
+
+| Rango | Antes | Ahora |
+|---|---|---|
+| 1 Común | 6 | **2,4** |
+| 2 Poco común | 12 | **4,8** |
+| 3 Raro | 20 | **8** |
+| 4 Épico | 32 | **12,8** |
+| 5 Exclusivo | 50 | **20** |
+
+La fórmula, el multiplicador por nivel y la satisfacción no cambian: todo beneficio (por animal, espacio, hábitat y ciclo) baja un 60 %. Los precios de compra y venta no cambian, así que la compra tarda más en amortizarse. Sin contar el bambú, con `S_i = 0,5`: 154, 293, 467 y 460 ciclos (1,1 a 3,2 días) en los rangos 1 a 4; contando el peor caso de bambú, 924, 1008, 855 y 888 ciclos (5,9 a 7 días). La migración 17 a 18 actualiza `RangoEspecie`; los beneficios ya generados y pendientes no se tocan.

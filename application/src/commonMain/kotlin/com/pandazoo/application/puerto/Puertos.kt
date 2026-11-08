@@ -17,6 +17,9 @@ import kotlinx.coroutines.flow.Flow
 /** Reloj de pared en segundos desde la época Unix. El dominio nunca consulta el reloj del sistema. */
 interface Reloj {
     fun ahoraSegundos(): Long
+
+    /** Diferencia en segundos entre la hora local del dispositivo y UTC en este instante; 0 si no se conoce. */
+    fun desplazamientoLocalSegundos(): Int = 0
 }
 
 /** Azar uniforme en `[0,1)`; los tests lo sustituyen por una secuencia fija. */
@@ -244,6 +247,7 @@ data class AnimalFicha(
     val nombreMejorAmigo: String?,
     val habilidades: List<String>,
     val rasgos: List<String>,
+    val idEspecie: String = "",
 )
 
 data class NuevoAnimal(
@@ -280,12 +284,24 @@ interface AnimalRepositorio {
     /** Fija la pareja de ambos extremos de forma recíproca; `null` libera también a la pareja anterior. */
     fun fijarPareja(idPartida: IdPartida, idAnimal: String, idPareja: String?)
 
+    /**
+     * Divorcio: quita la pareja de ambos y deja a los hijos comunes sin padre ni madre (y, por tanto, sin hermanos por esa
+     * vía). Es la única operación que borra `id_padre` e `id_madre` de un animal.
+     */
+    fun divorciar(idPartida: IdPartida, idAnimal: String, idPareja: String)
+
     fun fijarMejorAmigo(idPartida: IdPartida, idAnimal: String, idAmigo: String?)
 
     fun mover(idPartida: IdPartida, idAnimal: String, idEspacio: String)
 
     /** Baja lógica (`VENDIDO` o `MUERTO`): sin espacio, sin vínculos mutables y sin rasgos ni habilidades. Conserva la genealogía. */
     fun retirar(idPartida: IdPartida, idAnimal: String, estadoVital: String)
+
+    /** Familiares de un animal (vivos o no): su pareja, sus padres, sus hijos y quienes comparten padre o madre con él. */
+    fun familiares(idPartida: IdPartida, idAnimal: String): Set<String>
+
+    /** Familiares de una cría que aún no existe: sus progenitores y todo animal que sea hijo de alguno de ellos (sus hermanos). */
+    fun familiaresDeCria(idPartida: IdPartida, idPadre: String, idMadre: String): Set<String>
 
     /** Espacios de animales vivos alojados cuya satisfacción depende de este animal (vínculos y familia). */
     fun espaciosRelacionados(idPartida: IdPartida, idAnimal: String): Set<String>

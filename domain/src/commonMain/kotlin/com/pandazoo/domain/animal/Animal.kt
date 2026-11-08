@@ -55,6 +55,12 @@ object ReglasCuidado {
     fun kilosPorRacion(kgPorIncremento: Int, nivelAnimal: Int = 1): Int =
         (kgPorIncremento * (VEINTAVOS_BASE - 1 + nivelAnimal.coerceAtLeast(1)) + VEINTAVOS_BASE - 1) / VEINTAVOS_BASE
 
+    /**
+     * Unidades de medicina de un tratamiento: la cantidad base del rango crece con el nivel del animal igual que el bambú
+     * (+5 % por nivel por encima del 1), redondeada hacia arriba.
+     */
+    fun unidadesMedicina(cantidadBase: Int, nivelAnimal: Int = 1): Int = kilosPorRacion(cantidadBase, nivelAnimal)
+
     /** Kilogramos para llevar un animal al 100 % desde su alimentación actual [nivel]. */
     fun kilosHastaMaximo(nivel: Int, kgPorIncremento: Int, nivelAnimal: Int = 1): Int =
         incrementosHastaMaximo(nivel) * kilosPorRacion(kgPorIncremento, nivelAnimal)

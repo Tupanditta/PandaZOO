@@ -206,7 +206,7 @@ class Sprint0Test {
     fun `T0_3 el esquema contiene todas las tablas e indices parciales`() {
         e.bd.leer("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'android_%'") {
             it.texto(0)
-        }.size shouldBe 36
+        }.size shouldBe 37
         e.bd.uno("SELECT sql FROM sqlite_master WHERE name = 'idx_animal_localizacion'") {
             it.texto(0).contains("WHERE estado_vital = 'VIVO'") shouldBe true
         }

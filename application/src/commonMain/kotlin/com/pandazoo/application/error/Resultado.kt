@@ -62,6 +62,15 @@ sealed class MotivoRechazo(val codigo: String) {
     data object AmigoInvalido : MotivoRechazo("AMIGO_INVALIDO")
     data object AmigoOcupado : MotivoRechazo("AMIGO_OCUPADO")
 
+    /** Quitar o cambiar la pareja solo se hace con el divorcio de la ficha del animal. */
+    data object DivorcioRequerido : MotivoRechazo("DIVORCIO_REQUERIDO")
+
+    /** El animal no tiene pareja a la que dejar. */
+    data object SinPareja : MotivoRechazo("SIN_PAREJA")
+
+    /** Un familiar (pareja, padres, hijos o hermanos) no puede ser mejor amigo. */
+    data object AmigoFamiliar : MotivoRechazo("AMIGO_FAMILIAR")
+
     data object AutoReferencia : MotivoRechazo("AUTOREFERENCIA")
 
     data object AnimalInexistente : MotivoRechazo("ANIMAL_INEXISTENTE")
@@ -93,6 +102,12 @@ sealed class MotivoRechazo(val codigo: String) {
     data class BambuInsuficiente(val requerido: Int, val disponible: Int) : MotivoRechazo("BAMBU_INSUFICIENTE") {
         val faltante: Int get() = requerido - disponible
     }
+
+    /** El regalo semanal de ese día ya se concedió. */
+    data object RegaloYaConcedido : MotivoRechazo("REGALO_YA_CONCEDIDO")
+
+    /** No hay ninguna especie que sortear para el regalo semanal. */
+    data object RegaloNoDisponible : MotivoRechazo("REGALO_NO_DISPONIBLE")
 
     /** El animal no está enfermo (CU-09, 4.a). */
     data object AnimalSano : MotivoRechazo("ANIMAL_SANO")

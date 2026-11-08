@@ -10,7 +10,7 @@ import com.pandazoo.domain.reproduccion.ReglasReproduccion
 class ReproduccionSql(private val bd: BaseDatos) : ReproduccionRepositorio {
     override fun parejasReproductoras(idPartida: IdPartida): List<ParejaReproductora> =
         bd.leer(
-            "SELECT a.id_animal, b.id_animal, r.umbral_reproduccion, r.probabilidad_reproduccion, r.penalizacion_hijo_reproduccion, " +
+            "SELECT a.id_animal, b.id_animal, r.umbral_reproduccion, r.probabilidad_reproduccion, r.factores_hijos, " +
                 "(SELECT COUNT(*) FROM Animal h WHERE h.id_partida = a.id_partida AND h.estado_vital = 'VIVO' " +
                 "AND ((h.id_padre = a.id_animal AND h.id_madre = b.id_animal) OR (h.id_padre = b.id_animal AND h.id_madre = a.id_animal))), " +
                 "EXISTS (SELECT 1 FROM ReproduccionCiclo c WHERE c.id_partida = a.id_partida AND c.id_animal_a = a.id_animal " +
@@ -24,7 +24,7 @@ class ReproduccionSql(private val bd: BaseDatos) : ReproduccionRepositorio {
         ) {
             ParejaReproductora(
                 idA = it.texto(0), idB = it.texto(1), umbral = it.decimal(2), probabilidad = it.decimal(3),
-                penalizacionPorHijo = it.decimal(4), hijosVivos = it.entero(5), concepcionAbierta = it.entero(6) == 1,
+                factoresPorHijo = it.texto(4).split(";").map(String::toDouble), hijosVivos = it.entero(5), concepcionAbierta = it.entero(6) == 1,
             )
         }
 

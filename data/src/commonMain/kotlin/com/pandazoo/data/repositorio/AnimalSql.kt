@@ -29,11 +29,26 @@ class AnimalSql(private val bd: BaseDatos) : AnimalRepositorio {
             idPartida, idEspacio,
         ) { resumen(it) }
 
+    override fun familiares(idPartida: IdPartida, idAnimal: String): Set<String> =
+        bd.leer(
+            "SELECT y.id_animal FROM Animal x JOIN Animal y ON y.id_partida = x.id_partida AND y.id_animal <> x.id_animal " +
+                "WHERE x.id_partida = ? AND x.id_animal = ? AND (" + CONDICION_FAMILIA + ")",
+            idPartida, idAnimal,
+        ) { it.texto(0) }.toSet()
+
+    override fun familiaresDeCria(idPartida: IdPartida, idPadre: String, idMadre: String): Set<String> =
+        (
+            listOf(idPadre, idMadre) + bd.leer(
+                "SELECT id_animal FROM Animal WHERE id_partida = ? AND (id_padre IN (?, ?) OR id_madre IN (?, ?))",
+                idPartida, idPadre, idMadre, idPadre, idMadre,
+            ) { it.texto(0) }
+            ).toSet()
+
     override fun ficha(idPartida: IdPartida, idAnimal: String): AnimalFicha? {
         val base = bd.uno(
             "SELECT a.id_animal, a.nombre, s.nombre_comun, r.nombre, a.estado_vital, a.id_espacio, e.nombre, h.nombre, " +
                 "a.nivel, a.ciclos_nivel, a.nivel_alimentacion, a.estado_salud, a.satisfaccion_actual, a.id_pareja, p.nombre, " +
-                "a.id_mejor_amigo, m.nombre, $COLUMNAS_PARAMETROS " +
+                "a.id_mejor_amigo, m.nombre, $COLUMNAS_PARAMETROS, a.id_especie " +
                 "FROM Animal a " +
                 "JOIN Especie s ON s.id_especie = a.id_especie " +
                 "JOIN RangoEspecie r ON r.id_rango = s.id_rango " +
@@ -51,7 +66,7 @@ class AnimalSql(private val bd: BaseDatos) : AnimalRepositorio {
                 alimentacion = f.entero(10), enfermo = f.texto(11) == "ENFERMO", satisfaccion = f.decimal(12),
                 idPareja = f.textoONulo(13), nombrePareja = f.textoONulo(14),
                 idMejorAmigo = f.textoONulo(15), nombreMejorAmigo = f.textoONulo(16),
-                habilidades = emptyList(), rasgos = emptyList(),
+                habilidades = emptyList(), rasgos = emptyList(), idEspecie = f.texto(22),
             )
         } ?: return null
         val habilidades = bd.leer("SELECT habilidad FROM HabilidadSocial WHERE id_animal = ? ORDER BY habilidad", idAnimal) { it.texto(0) }
@@ -92,6 +107,16 @@ class AnimalSql(private val bd: BaseDatos) : AnimalRepositorio {
         }
         bd.escribir("UPDATE Animal SET id_pareja = ? WHERE id_partida = ? AND id_animal = ?", idPareja, idPartida, idAnimal)
         bd.escribir("UPDATE Animal SET id_pareja = ? WHERE id_partida = ? AND id_animal = ?", idAnimal, idPartida, idPareja)
+    }
+
+    override fun divorciar(idPartida: IdPartida, idAnimal: String, idPareja: String) {
+        fijarPareja(idPartida, idAnimal, null)
+        // Los hijos comunes (de cualquier estado vital) pasan a ser individuos sin padres.
+        bd.escribir(
+            "UPDATE Animal SET id_padre = NULL, id_madre = NULL WHERE id_partida = ? AND " +
+                "((id_padre = ? AND id_madre = ?) OR (id_padre = ? AND id_madre = ?))",
+            idPartida, idAnimal, idPareja, idPareja, idAnimal,
+        )
     }
 
     override fun fijarMejorAmigo(idPartida: IdPartida, idAnimal: String, idAmigo: String?) {
@@ -166,6 +191,13 @@ class AnimalSql(private val bd: BaseDatos) : AnimalRepositorio {
         )
 
     private companion object {
+        /** x e y son familiares: pareja, padre o madre de uno, o comparten padre o madre (en cualquiera de las dos posiciones). */
+        const val CONDICION_FAMILIA =
+            "x.id_pareja = y.id_animal OR y.id_pareja = x.id_animal OR x.id_padre = y.id_animal OR x.id_madre = y.id_animal OR " +
+                "y.id_padre = x.id_animal OR y.id_madre = x.id_animal OR " +
+                "(x.id_padre IS NOT NULL AND (x.id_padre = y.id_padre OR x.id_padre = y.id_madre)) OR " +
+                "(x.id_madre IS NOT NULL AND (x.id_madre = y.id_padre OR x.id_madre = y.id_madre))"
+
         const val COLUMNAS_PARAMETROS =
             "r.beneficio_base_animal_ciclo, r.nivel_maximo, r.multiplicador_nivel_maximo, r.valor_venta_base, r.factor_venta_nivel_maximo"
 

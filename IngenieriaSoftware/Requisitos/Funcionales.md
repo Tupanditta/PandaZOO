@@ -91,7 +91,7 @@ El detalle de estos requisitos está en `Otros/DecisionesImplementacion.md`.
 
 ### Definiciones funcionales confirmadas y parametrizadas
 
-* Los índices y componentes de satisfacción utilizarán la escala `0..1`. La afinidad social no familiar se definirá entre pares de especies, incluidos los pares de cada especie consigo misma; todos los animales de una especie compartirán el coeficiente configurado para cada par.
+* Los índices y componentes de satisfacción utilizarán la escala `0..1`. La afinidad social, que incluye a los familiares del mismo espacio, se definirá entre pares de especies, incluidos los pares de cada especie consigo misma; todos los animales de una especie compartirán el coeficiente configurado para cada par.
 * Una relación social inexistente aportará `0` a `S_soc` y no aplicará una penalización adicional.
 * La presencia o ausencia de pareja, mejor amigo, padre, madre y hermanos se interpretará de la misma forma en todas las especies. En cada especie, el peso de la afinidad será superior a la suma de los pesos de los componentes familiares; los valores concretos se detallarán en el JSON.
 * `S_soc` y el resto de los componentes de satisfacción no se redondearán durante el cálculo; la satisfacción individual se redondeará al entero más cercano al mostrarla como porcentaje, con los medios hacia arriba.

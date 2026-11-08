@@ -130,7 +130,7 @@ class Sprint3UiTest {
             onNodeWithText("Confirmar compra").performScrollTo().assertIsEnabled().performClick()
 
             esperar("Tienda de animales") // vuelve a la tienda tras comprar
-            fondos(c) shouldBe antes - Dinero.desdeDecimal(40.0)
+            fondos(c) shouldBe antes - Dinero.desdeDecimal(200.0)
 
             onNodeWithContentDescription("Volver").performClick()
             onNodeWithContentDescription("Volver").performClick()
@@ -225,7 +225,7 @@ class Sprint3UiTest {
             val reembolsoOrigen = c.consultarZoo.costePagado(c.idPartida, origen)
             pulsar("Vender")
             esperar("Vender a Pincho")
-            esperar("🪙 2.00", subcadena = true)
+            esperar("🪙 10.00", subcadena = true)
             esperar("nivel de equilibrio")
             onNodeWithText("Cancelar").performClick()
             c.bd.uno("SELECT COUNT(*) FROM Animal WHERE estado_vital = 'VIVO'") { it.entero(0) } shouldBe 1
@@ -235,7 +235,7 @@ class Sprint3UiTest {
             // Tras la venta se vuelve a la pantalla del espacio original, ya vacío: ahí aparece el botón para venderlo.
             esperar("Vender espacio")
             c.bd.uno("SELECT estado_vital FROM Animal") { it.texto(0) } shouldBe "VENDIDO"
-            fondos(c) shouldBe antes + Dinero.desdeDecimal(2.0)
+            fondos(c) shouldBe antes + Dinero.desdeDecimal(10.0)
             c.consultarZoo.espacio(c.idPartida, refugio)!!.estado.name shouldBe "ACTIVO" // el vacío no se da de baja solo
             esperar("Vender espacio")
             onNodeWithText("Vender espacio").performClick()
@@ -243,7 +243,7 @@ class Sprint3UiTest {
             onNodeWithText("Confirmar venta del espacio").performClick()
             esperar("Cobijo") // vuelve a la lista del hábitat, donde el espacio vendido ya no figura
             c.consultarZoo.espacio(c.idPartida, origen) shouldBe null
-            fondos(c) shouldBe antes + Dinero.desdeDecimal(2.0) + reembolsoOrigen // vender el espacio devuelve lo que costó
+            fondos(c) shouldBe antes + Dinero.desdeDecimal(10.0) + reembolsoOrigen // vender el espacio devuelve lo que costó
             sinIdentificadoresTecnicos(c)
         }
 
@@ -274,7 +274,7 @@ class Sprint3UiTest {
             onNodeWithText("Veterano").performClick()
             esperar("Veterano · Nivel 15")
             esperar("Nivel máximo alcanzado")
-            esperar("🪙 60.00") // venta en el tope del rango 1
+            esperar("🪙 300.00") // venta en el tope del rango 1
             textos().forEach { t ->
                 t.contains("Edad", ignoreCase = true) shouldBe false
                 t.contains("años") shouldBe false

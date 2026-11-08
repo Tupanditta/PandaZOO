@@ -119,11 +119,11 @@ class Sprint2Test {
         e.datos.amigos(e.idPartida, padre, amigo)
         e.recalcular.alConsolidar(e.idPartida)
 
-        // Padre: pareja .1 + amigo .1 + hijos (cría = familia, no afinidad) + cebra es amigo y no familiar:
-        // C_afinidad = afinidad(leon, cebra) = 0.1 → S_soc = .1 + .1 + .6·.1 = .26; S = (.5 + .5·.26)·1·1 = .63
-        satisfaccionDe(padre) shouldBe (0.63 plusOrMinus tol)
-        // Cría: padre .05 + madre .05; no familiares = la cebra → .6·.1 = .06 → S_soc = .16; S = .5 + .08 = .58
-        satisfaccionDe(cria) shouldBe (0.58 plusOrMinus tol)
+        // La afinidad cuenta a todos los demás del espacio: familiares 0.8 (afinidad familiar) y cebra 0.1 (leon-cebra).
+        // Padre: pareja .1 + amigo .1 + afinidad .6·(madre .8 + cebra .1 + cría .8)/3 = .34 → S_soc = .54; S = .5 + .27 = .77
+        satisfaccionDe(padre) shouldBe (0.77 plusOrMinus tol)
+        // Cría: padre .05 + madre .05 + afinidad .6·(padre .8 + madre .8 + cebra .1)/3 = .34 → S_soc = .44; S = .5 + .22 = .72
+        satisfaccionDe(cria) shouldBe (0.72 plusOrMinus tol)
     }
 
     // ---- T2.7 ----
@@ -236,14 +236,14 @@ class Sprint2Test {
         e.recalcular.alConsolidar(e.idPartida)
 
         val m = e.consultarMonitor.ejecutar(e.idPartida)
-        // Afinidad leon-leon 0.7 entre no familiares: S_soc = 0.6·0.7 = 0.42.
-        // Simba: (0.5·1 + 0.5·0.42)·1·1 = 0.71. Nala (alimentación 0): (0 + 0.5·0.42)·1·0.3 = 0.063.
-        (m.parque as Seccion.Disponible).valor shouldBe ((0.71 + 0.063) / 2 plusOrMinus tol)
+        // Afinidad entre leones no familiares (misma especie): 0.5, S_soc = 0.6·0.5 = 0.30.
+        // Simba: (0.5·1 + 0.5·0.30)·1·1 = 0.65. Nala (alimentación 0): (0 + 0.5·0.30)·1·0.3 = 0.045.
+        (m.parque as Seccion.Disponible).valor shouldBe ((0.65 + 0.045) / 2 plusOrMinus tol)
         val esmerilUi = (m.habitats as Seccion.Disponible).valor.first { it.nombre == esmeril }
         val espacio = (esmerilUi.espacios as Seccion.Disponible).valor.single()
-        (espacio.valor as Seccion.Disponible).valor shouldBe ((0.71 + 0.063) / 2 plusOrMinus tol)
+        (espacio.valor as Seccion.Disponible).valor shouldBe ((0.65 + 0.045) / 2 plusOrMinus tol)
         (espacio.animales as Seccion.Disponible).valor.map { it.nombre } shouldBe listOf("Nala", "Simba")
-        (espacio.animales as Seccion.Disponible).valor.first { it.nombre == "Nala" }.valor shouldBe (0.063 plusOrMinus tol)
+        (espacio.animales as Seccion.Disponible).valor.first { it.nombre == "Nala" }.valor shouldBe (0.045 plusOrMinus tol)
     }
 
     @Test

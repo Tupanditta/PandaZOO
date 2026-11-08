@@ -19,6 +19,7 @@ data class ConfiguracionJuego(
     val catalogos: CatalogosCfg,
     val tablas: TablasCfg,
     @SerialName("partida_inicial") val partidaInicial: PartidaInicialCfg,
+    @SerialName("regalos_semanales") val regalosSemanales: List<RegaloSemanalCfg> = emptyList(),
 ) {
     companion object {
         private val json = Json { ignoreUnknownKeys = true }
@@ -60,7 +61,11 @@ data class PesosSocialesCfg(
 )
 
 @Serializable
-data class MatrizAfinidadCfg(val pares: List<ParAfinidadCfg>)
+data class MatrizAfinidadCfg(
+    val pares: List<ParAfinidadCfg>,
+    /** Afinidad entre familiares (pareja, hijos, padres y hermanos), que sustituye a la de la matriz entre esos dos animales. */
+    @SerialName("afinidad_familiar") val afinidadFamiliar: Double = 0.8,
+)
 
 @Serializable
 data class ParAfinidadCfg(
@@ -233,7 +238,10 @@ data class RangoCfg(
     val nombre: String,
     @SerialName("umbral_reproduccion") val umbralReproduccion: Double,
     @SerialName("probabilidad_reproduccion") val probabilidadReproduccion: Double,
-    @SerialName("penalizacion_hijo_reproduccion") val penalizacionHijo: Double,
+    /** En desuso: la penalización lineal la sustituye [factoresHijos]. Se conserva en el esquema con valor 0. */
+    @SerialName("penalizacion_hijo_reproduccion") val penalizacionHijo: Double = 0.0,
+    /** Factor de `probabilidad_reproduccion` según los hijos vivos comunes (0 a 5); el último es 0: tope de cinco hijos. */
+    @SerialName("factores_hijos") val factoresHijos: List<Double>,
     @SerialName("probabilidad_enfermedad") val probabilidadEnfermedad: Double,
     @SerialName("beneficio_base_animal_ciclo") val beneficioBase: Double,
     @SerialName("nivel_maximo") val nivelMaximo: Int,
@@ -321,6 +329,18 @@ data class BienvenidaCfg(
         listOf(ProbabilidadRango(3, 40), ProbabilidadRango(2, 60)),
         listOf(ProbabilidadRango(2, 50), ProbabilidadRango(4, 30), ProbabilidadRango(5, 20)),
     ),
+)
+
+/**
+ * Regalo de un día de la semana: un animal gratuito (unidad de la tienda) cuyo rango se sortea con [sorteo] y cuya especie
+ * se elige después dentro del rango. `diaSemana` es ISO: 1 = lunes … 7 = domingo.
+ */
+@Serializable
+data class RegaloSemanalCfg(
+    @SerialName("id_regalo") val id: String,
+    val nombre: String,
+    @SerialName("dia_semana") val diaSemana: Int,
+    val sorteo: List<ProbabilidadRango>,
 )
 
 /** Probabilidad porcentual de que un animal sorteado sea de un rango. */

@@ -323,6 +323,29 @@ class RetencionSql(private val bd: BaseDatos) : RetencionRepositorio {
                 "ORDER BY id_notificacion DESC LIMIT ?)",
             idPartida, idPartida, retencion.maximoAvisosCerrados,
         )
+        // Regalos semanales: solo hacen falta los recientes para no repetir uno; se conservan los 20 últimos de la partida.
+        borrar(
+            "DELETE FROM RegaloSemanal WHERE id_partida = ? AND id_regalo NOT IN (SELECT id_regalo FROM RegaloSemanal " +
+                "WHERE id_partida = ? ORDER BY fecha DESC, id_regalo DESC LIMIT 20)",
+            idPartida, idPartida,
+        )
+        // Reproducciones finalizadas fuera de ventana; las CONCEBIDA se conservan (BBDD 5.2).
+        borrar(
+            "DELETE FROM ReproduccionCiclo WHERE id_partida = ? AND estado IN ('CONFIRMADA', 'RECHAZADA', 'EXPIRADA') AND numero_ciclo < ?",
+            idPartida, numeroCiclo - retencion.reproduccionesFinalizadas,
+        )
+        // Poda de animales inactivos (BBDD 5.3): sin descendientes que los citen ni reproducciones que los referencien.
+        // Se repite hasta que no cae ninguna fila, porque al borrar un descendiente se libera a su ascendiente.
+        do {
+            bd.escribir(
+                "DELETE FROM Animal WHERE id_partida = ? AND estado_vital IN ('MUERTO', 'VENDIDO') " +
+                    "AND NOT EXISTS (SELECT 1 FROM Animal h WHERE h.id_partida = Animal.id_partida AND (h.id_padre = Animal.id_animal OR h.id_madre = Animal.id_animal)) " +
+                    "AND NOT EXISTS (SELECT 1 FROM ReproduccionCiclo r WHERE r.id_partida = Animal.id_partida AND (r.id_animal_a = Animal.id_animal OR r.id_animal_b = Animal.id_animal))",
+                idPartida,
+            )
+            val podados = bd.uno("SELECT changes()") { it.entero(0) } ?: 0
+            total += podados
+        } while (podados > 0)
         return total
     }
 }

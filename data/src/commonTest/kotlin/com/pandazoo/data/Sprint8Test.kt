@@ -64,7 +64,8 @@ class Sprint8Test {
 
     private fun campoInt(id: String, col: String) = e.bd.uno("SELECT $col FROM Animal WHERE id_animal = ?", id) { it.entero(0) }!!
 
-    private fun estadoVital(id: String) = e.bd.uno("SELECT estado_vital FROM Animal WHERE id_animal = ?", id) { it.texto(0) }!!
+    // La poda (BBDD 5.3) borra tras el ciclo a los animales inactivos sin descendencia: una fila ausente equivale a MUERTO.
+    private fun estadoVital(id: String) = e.bd.uno("SELECT estado_vital FROM Animal WHERE id_animal = ?", id) { it.texto(0) } ?: "MUERTO"
 
     private fun salud(id: String) = e.bd.uno("SELECT estado_salud FROM Animal WHERE id_animal = ?", id) { it.texto(0) }!!
 
@@ -287,7 +288,7 @@ class Sprint8Test {
     fun `T8_8 ausencia larga con moribundos reproduccion pendiente y caducada`() {
         reiniciar(valorAzar = 0.99)
         e.bd.escribir(
-            "UPDATE RangoEspecie SET umbral_reproduccion = 0.0, probabilidad_reproduccion = 1.0, penalizacion_hijo_reproduccion = 0.0 WHERE id_rango = 1",
+            "UPDATE RangoEspecie SET umbral_reproduccion = 0.0, probabilidad_reproduccion = 1.0, factores_hijos = '1;1;1;1;1;0' WHERE id_rango = 1",
         )
         val sp = espacio()
         val a = animal(sp, "Pincho")
@@ -306,10 +307,11 @@ class Sprint8Test {
         estadoVital(moribundo) shouldBe "MUERTO"
         estadoVital(enfermo) shouldBe "MUERTO"
         estadoVital(a) shouldBe "VIVO"
-        // La concepcion del primer ciclo caduco dentro de la sesion y su aviso se descarto.
-        (e.contar("ReproduccionCiclo", "estado = 'EXPIRADA'") >= 1) shouldBe true
-        e.contar("Notificacion", "codigo = 'REPRODUCCION_DISPONIBLE' AND estado = 'DESCARTADA'") shouldBe
-            e.contar("ReproduccionCiclo", "estado = 'EXPIRADA'")
+        // Las concepciones de los primeros ciclos caducaron dentro de la sesion y su aviso se descarto. Las finalizadas fuera de
+        // la ventana de retencion (3 ciclos) ya se purgaron (BBDD 5.2); las que quedan siguen siendo coherentes con sus avisos.
+        e.contar("ReproduccionCiclo", "numero_ciclo < ${8 - e.cfg.retencion.reproduccionFinalizada} AND estado <> 'CONCEBIDA'") shouldBe 0
+        (e.contar("Notificacion", "codigo = 'REPRODUCCION_DISPONIBLE' AND estado = 'DESCARTADA'") >= 1) shouldBe true
+        (e.contar("Notificacion", "codigo = 'REPRODUCCION_DISPONIBLE' AND estado = 'DESCARTADA'") >= e.contar("ReproduccionCiclo", "estado = 'EXPIRADA'")) shouldBe true
         // Sin duplicados de beneficios ni de alertas de salud abiertas por animal.
         (e.bd.uno("SELECT COUNT(DISTINCT numero_ciclo) FROM BeneficioPendiente") { it.entero(0) } ?: 0) shouldBe e.contar("BeneficioPendiente")
         e.contar("Notificacion", "codigo = 'ALERTA_SALUD' AND estado IN ('PENDIENTE', 'VISTA')") shouldBe 0

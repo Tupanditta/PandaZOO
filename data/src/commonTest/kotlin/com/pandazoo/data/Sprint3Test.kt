@@ -53,8 +53,9 @@ class Sprint3Test {
         amigo: String? = null,
         id: String = nueva(),
         entorno: Entorno = e,
+        pareja: String? = null,
     ) = entorno.adquirirAnimal.ejecutar(
-        ComandoAdquirirAnimal(entorno.idPartida, especie, espacio, FichaNueva(nombre, hab, ras, amigo), id),
+        ComandoAdquirirAnimal(entorno.idPartida, especie, espacio, FichaNueva(nombre, hab, ras, amigo, pareja), id),
     )
 
     private fun editar(
@@ -106,7 +107,7 @@ class Sprint3Test {
     fun `la tienda distingue bloqueadas comerciales desbloqueadas y exclusivas`() {
         val tienda = e.consultarTiendaAnimales.ejecutar(e.idPartida).associateBy { it.especie.id }
         tienda.getValue("erizo").especie.estado shouldBe EstadoTienda.COMERCIAL
-        tienda.getValue("erizo").especie.coste shouldBe d("40.00")
+        tienda.getValue("erizo").especie.coste shouldBe d("200.00")
         tienda.getValue("erizo").asequible shouldBe true
         tienda.getValue("leon").especie.estado shouldBe EstadoTienda.BLOQUEADA
         tienda.getValue("leon").asequible shouldBe false
@@ -127,14 +128,14 @@ class Sprint3Test {
     fun `T3_1 compra valida cambia saldo aforo animal satisfaccion y auditoria juntos`() {
         val sp = espacio()
         val r = exito(comprar(sp, "Pincho"))
-        r.coste shouldBe d("40.00")
-        r.saldo shouldBe d("1960.00")
-        e.fondos() shouldBe d("1960.00")
+        r.coste shouldBe d("200.00")
+        r.saldo shouldBe d("1800.00")
+        e.fondos() shouldBe d("1800.00")
         e.consultarZoo.espacio(e.idPartida, sp)!!.ocupacion shouldBe 1
         e.contar("Animal") shouldBe 1
         e.contar("RasgoPersonalidad") shouldBe 2
         e.contar("HabilidadSocial") shouldBe 2
-        e.contar("MovimientoEconomico", "tipo = 'COMPRA' AND importe = 40.0") shouldBe 1
+        e.contar("MovimientoEconomico", "tipo = 'COMPRA' AND importe = 200.0") shouldBe 1
         (satisfaccion(r.idAnimal) > 0.0) shouldBe true // se calculó con la ficha completa
         e.contar("MetricaSatisfaccion", "nivel = 'ESPACIO'") shouldBe 1
         e.auditoriaDe("COMPRA_ANIMAL").map { it.first } shouldContainExactly listOf("CONFIRMADO")
@@ -146,7 +147,7 @@ class Sprint3Test {
         e.recalcular.alConsolidar(e.idPartida, AlcanceRecalculo.Parque)
         e.bd.escribir("UPDATE Partida SET fondos = ? WHERE id_partida = ?", d("39.99").paraBd(), e.idPartida)
         var antes = instantanea()
-        rechazo(comprar(sp, "Pincho")) shouldBe MotivoRechazo.SaldoInsuficiente(d("40.00"), d("39.99"))
+        rechazo(comprar(sp, "Pincho")) shouldBe MotivoRechazo.SaldoInsuficiente(d("200.00"), d("39.99"))
         instantanea() shouldBe antes
 
         e.bd.escribir("UPDATE Partida SET fondos = ? WHERE id_partida = ?", d("1000.00").paraBd(), e.idPartida)
@@ -167,7 +168,7 @@ class Sprint3Test {
     @Test
     fun `T3_1 saldo exactamente igual al coste permite la compra`() {
         val sp = espacio()
-        e.bd.escribir("UPDATE Partida SET fondos = ? WHERE id_partida = ?", d("40.00").paraBd(), e.idPartida)
+        e.bd.escribir("UPDATE Partida SET fondos = ? WHERE id_partida = ?", d("200.00").paraBd(), e.idPartida)
         exito(comprar(sp, "Pincho")).saldo shouldBe d("0.00")
     }
 
@@ -296,7 +297,7 @@ class Sprint3Test {
     // ---- T3.7 vínculos ----
 
     @Test
-    fun `TN_8 la compra no ofrece pareja y el animal nuevo no tiene vinculo`() {
+    fun `TN_8 sin pareja elegida el animal nuevo no tiene vinculo`() {
         val sp = espacio()
         existente(sp, "erizo", "Zarza")
         val nuevo = exito(comprar(sp, "Pincho")).idAnimal
@@ -304,13 +305,36 @@ class Sprint3Test {
     }
 
     @Test
-    fun `TN_8 CU-05 rechaza la pareja con nivel 3 y la acepta con nivel 4 y es reciproca`() {
+    fun `la compra puede elegir pareja de la misma especie libre en el mismo espacio y es reciproca`() {
         val sp = espacio()
-        val a = existente(sp, "erizo", "Alfa", nivel = 3)
-        val b = existente(sp, "erizo", "Beta", nivel = 4)
-        rechazo(editar(a, "Alfa", pareja = b)) shouldBe MotivoRechazo.ParejaNivelInsuficiente
-        rechazo(editar(b, "Beta", pareja = a)) shouldBe MotivoRechazo.ParejaNivelInsuficiente
-        e.bd.escribir("UPDATE Animal SET nivel = 4 WHERE id_animal = ?", a)
+        val zarza = existente(sp, "erizo", "Zarza")
+        val nuevo = exito(comprar(sp, "Pincho", pareja = zarza)).idAnimal
+        campo(nuevo, "id_pareja") shouldBe zarza
+        campo(zarza, "id_pareja") shouldBe nuevo
+    }
+
+    @Test
+    fun `la compra rechaza una pareja de otra especie de otro espacio u ocupada sin cambiar nada`() {
+        val sp = espacio(capacidad = 10)
+        val otro = espacio("Otra")
+        val nutria = existente(sp, "nutria", "Nut")
+        val lejano = existente(otro, "erizo", "Lejano")
+        val a = existente(sp, "erizo", "Par1")
+        val b = existente(sp, "erizo", "Par2")
+        e.datos.parejas(e.idPartida, a, b)
+        val antes = instantanea()
+        rechazo(comprar(sp, "Pincho", pareja = nutria)) shouldBe MotivoRechazo.ParejaOtraEspecie
+        rechazo(comprar(sp, "Pincho", pareja = lejano)) shouldBe MotivoRechazo.ParejaOtroEspacio
+        rechazo(comprar(sp, "Pincho", pareja = a)) shouldBe MotivoRechazo.ParejaOcupada
+        rechazo(comprar(sp, "Pincho", pareja = "fantasma")) shouldBe MotivoRechazo.ParejaInexistente
+        instantanea() shouldBe antes
+    }
+
+    @Test
+    fun `TN_8 CU-05 acepta la pareja sin nivel minimo y es reciproca`() {
+        val sp = espacio()
+        val a = existente(sp, "erizo", "Alfa", nivel = 1)
+        val b = existente(sp, "erizo", "Beta", nivel = 1)
         exito(editar(a, "Alfa", pareja = b))
         campo(a, "id_pareja") shouldBe b
         campo(b, "id_pareja") shouldBe a
@@ -346,13 +370,11 @@ class Sprint3Test {
         val sp = espacio()
         val a = existente(sp, "erizo", "Alfa")
         val b = existente(sp, "erizo", "Beta")
-        val menor = existente(sp, "erizo", "Menor", nivel = 3)
         val nut = existente(sp, "nutria", "Nut")
         val antes = instantanea()
         rechazo(editar(a, "Alfa", pareja = a)) shouldBe MotivoRechazo.AutoReferencia
         rechazo(editar(a, "Alfa", amigo = a)) shouldBe MotivoRechazo.AutoReferencia
         rechazo(editar(a, "Alfa", pareja = nut)) shouldBe MotivoRechazo.ParejaOtraEspecie
-        rechazo(editar(a, "Alfa", pareja = menor)) shouldBe MotivoRechazo.ParejaNivelInsuficiente
         instantanea() shouldBe antes
 
         exito(editar(a, "Alfa", pareja = b, amigo = nut))
@@ -363,7 +385,7 @@ class Sprint3Test {
 
         // Con pareja asignada no se puede pasar directamente a otra.
         val c = existente(sp, "erizo", "Gamma")
-        rechazo(editar(a, "Alfa", pareja = c, amigo = nut)) shouldBe MotivoRechazo.ParejaOcupada
+        rechazo(editar(a, "Alfa", pareja = c, amigo = nut)) shouldBe MotivoRechazo.DivorcioRequerido
         rechazo(editar(c, "Gamma", pareja = b)) shouldBe MotivoRechazo.ParejaOcupada
     }
 
@@ -400,12 +422,14 @@ class Sprint3Test {
     }
 
     @Test
-    fun `T3_7 quitar la pareja libera a los dos y los vinculos quedan coherentes tras editar`() {
+    fun `T3_7 el divorcio libera a los dos y los vinculos quedan coherentes`() {
         val sp = espacio()
         val a = existente(sp, "erizo", "Alfa")
         val b = existente(sp, "erizo", "Beta")
         exito(editar(a, "Alfa", pareja = b))
-        exito(editar(a, "Alfa", pareja = null))
+        // Editar la ficha no quita la pareja: solo el divorcio.
+        rechazo(editar(a, "Alfa", pareja = null)) shouldBe MotivoRechazo.DivorcioRequerido
+        exito(e.divorciarAnimal.ejecutar(com.pandazoo.application.caso.ComandoDivorciar(e.idPartida, a, nueva())))
         campo(a, "id_pareja") shouldBe null
         campo(b, "id_pareja") shouldBe null
         // Y ahora b puede emparejarse con otro.
@@ -555,7 +579,7 @@ class Sprint3Test {
 
         val r = exito(vender(padre))
         r.origenVacio shouldBe false
-        r.importe shouldBe Dinero.desdeDecimal(14.67) // erizo (rango 1, base 40) en el nivel 4: 40 · (0.05 + 0.95 · 3 / 9)
+        r.importe shouldBe Dinero.desdeDecimal(73.33) // erizo (rango 1, base 200) en el nivel 4: 200 · (0.05 + 0.95 · 3 / 9)
         e.fondos() shouldBe fondos + r.importe
         campo(padre, "estado_vital") shouldBe "VENDIDO"
         campo(padre, "id_espacio") shouldBe null
@@ -564,7 +588,7 @@ class Sprint3Test {
         campo(cria, "id_mejor_amigo") shouldBe null
         campo(cria, "id_padre") shouldBe padre // la genealogía se conserva
         e.consultarZoo.espacio(e.idPartida, sp)!!.ocupacion shouldBe 2
-        e.contar("MovimientoEconomico", "tipo = 'VENTA' AND importe = 14.67") shouldBe 1
+        e.contar("MovimientoEconomico", "tipo = 'VENTA' AND importe = 73.33") shouldBe 1
         e.contar("RasgoPersonalidad", "id_animal = '$padre'") shouldBe 0
         (satisfaccion(cria) < satisfaccionCria) shouldBe true // perdió padre y amigo vivos: se recalculó
     }
@@ -666,7 +690,7 @@ class Sprint3Test {
         val segunda = comprar(sp, "Pincho", id = "fija")
         (segunda as Resultado.Exito<*>).repetido shouldBe true
         exito(segunda) shouldBe exito(primera)
-        e.fondos() shouldBe d("1960.00")
+        e.fondos() shouldBe d("1800.00")
         e.contar("Animal") shouldBe 1
         e.contar("MovimientoEconomico") shouldBe 1
         // La misma clave con otra ficha es un conflicto y no cambia nada.

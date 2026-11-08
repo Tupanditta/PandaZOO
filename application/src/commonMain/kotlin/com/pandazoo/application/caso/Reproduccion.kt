@@ -44,7 +44,7 @@ class EtapaReproduccion(
             val sa = satisfaccion[p.idA] ?: continue
             val sb = satisfaccion[p.idB] ?: continue
             if (!ReglasReproduccion.cumpleUmbral(sa, sb, p.umbral)) continue
-            val probabilidad = ReglasReproduccion.probabilidad(p.probabilidad, p.penalizacionPorHijo, p.hijosVivos)
+            val probabilidad = ReglasReproduccion.probabilidad(p.probabilidad, p.factoresPorHijo, p.hijosVivos)
             if (!ReglasReproduccion.concibe(azar.siguienteDouble(), probabilidad)) continue
             reproduccion.registrarConcepcion(idPartida, numeroCiclo, p.idA, p.idB, ahora)
             auditoria.registrar(
@@ -157,11 +157,11 @@ class AceptarReproduccion(
         Vinculos.validarFicha(nombre, c.ficha.habilidades, c.ficha.rasgos, catalogo)?.let { return Resultado.Rechazado(it) }
         val padre = requireNotNull(animales.animal(c.idPartida, concepcion.idA))
         val espacio = requireNotNull(padre.idEspacio)
-        c.ficha.idMejorAmigo?.let { id ->
-            Vinculos.validarAmigo(animales.animal(c.idPartida, id), null, espacio)?.let { return Resultado.Rechazado(it) }
-        }
-
         val (idPadre, idMadre) = ReglasReproduccion.progenitores(concepcion.idA, concepcion.idB)
+        c.ficha.idMejorAmigo?.let { id ->
+            val familiares = animales.familiaresDeCria(c.idPartida, idPadre, idMadre)
+            Vinculos.validarAmigo(animales.animal(c.idPartida, id), null, espacio, familiares)?.let { return Resultado.Rechazado(it) }
+        }
         val idCria = ids.nuevo()
         animales.crear(
             c.idPartida,
@@ -197,6 +197,8 @@ data class DetalleReproduccion(
     val especie: String,
     val nombreA: String,
     val nombreB: String,
+    val idA: String,
+    val idB: String,
     val idEspacio: String?,
     val nombreEspacio: String?,
     val habilitada: Boolean,
@@ -224,6 +226,8 @@ class ConsultarReproduccion(
             especie = a?.especie ?: b?.especie ?: "",
             nombreA = a?.nombre ?: "",
             nombreB = b?.nombre ?: "",
+            idA = c.idA,
+            idB = c.idB,
             idEspacio = a?.idEspacio,
             nombreEspacio = nombreEspacio,
             habilitada = motivo == null,

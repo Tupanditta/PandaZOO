@@ -52,11 +52,12 @@ internal object Vinculos {
 
     /**
      * El mejor amigo es recíproco: si B es mejor amigo de A, A lo es de B. Por eso ambos deben estar libres; la especie
-     * no importa. Para cambiar de amigo hay que quitar primero el actual.
+     * no importa, pero un familiar (pareja, padres, hijos o hermanos) nunca puede serlo. Para cambiar de amigo hay que quitar primero el actual.
      */
-    fun validarAmigo(candidato: AnimalResumen?, propio: AnimalResumen?, idEspacio: String): MotivoRechazo? {
+    fun validarAmigo(candidato: AnimalResumen?, propio: AnimalResumen?, idEspacio: String, familiares: Set<String> = emptySet()): MotivoRechazo? {
         if (candidato == null || !candidato.vivo) return MotivoRechazo.AmigoInvalido
         if (candidato.id == propio?.id) return MotivoRechazo.AutoReferencia
+        if (candidato.id in familiares) return MotivoRechazo.AmigoFamiliar
         if (candidato.idEspacio != idEspacio) return MotivoRechazo.AmigoInvalido
         if (candidato.idMejorAmigo != null && candidato.idMejorAmigo != propio?.id) return MotivoRechazo.AmigoOcupado
         if (propio?.idMejorAmigo != null && propio.idMejorAmigo != candidato.id) return MotivoRechazo.AmigoOcupado
@@ -79,6 +80,8 @@ data class FichaNueva(
     val habilidades: List<String>,
     val rasgos: List<String>,
     val idMejorAmigo: String? = null,
+    /** Pareja opcional en la compra: animal de la misma especie, libre y alojado en el mismo espacio (no hay nivel mínimo). */
+    val idPareja: String? = null,
 )
 
 data class ComandoAdquirirAnimal(
@@ -93,8 +96,8 @@ data class AnimalAdquirido(val idAnimal: String, val coste: Dinero, val saldo: D
 
 /**
  * CU-01 Adquirir espécimen (RF-01, RF-29, RF-32, RF-33, RF-51, RES-08, RES-09). Alta atómica: cargo, animal de nivel 1,
- * alimentación 100 % y sano, ficha, mejor amigo y satisfacción. La pareja se asigna después con CU-05, cuando el
- * animal alcance el nivel mínimo.
+ * alimentación 100 % y sano, ficha, mejor amigo y satisfacción. La pareja es opcional (misma especie, libre y en el
+ * mismo espacio); también puede asignarse después con CU-05.
  * La compatibilidad con el hábitat no impide la ubicación: solo afecta a la satisfacción.
  */
 class AdquirirAnimal(
@@ -119,7 +122,7 @@ class AdquirirAnimal(
             origen = "CU-01",
             idSolicitud = c.idSolicitud,
             huella = "especie=${c.idEspecie};espacio=${c.idEspacio};nombre=${f.nombre.trim()};hab=${f.habilidades.sorted()};" +
-                "ras=${f.rasgos.sorted()};amigo=${f.idMejorAmigo}",
+                "ras=${f.rasgos.sorted()};amigo=${f.idMejorAmigo};pareja=${f.idPareja}",
             codificar = { "${it.idAnimal}|${it.coste.centimos}|${it.saldo.centimos}" },
             decodificar = {
                 val (id, coste, saldo) = it.split("|")
@@ -150,7 +153,13 @@ class AdquirirAnimal(
         val nombre = c.ficha.nombre.trim()
         Vinculos.validarFicha(nombre, c.ficha.habilidades, c.ficha.rasgos, catalogo)?.let { return rechazo(it) }
         c.ficha.idMejorAmigo?.let { id ->
-            Vinculos.validarAmigo(animales.animal(c.idPartida, id), null, c.idEspacio)?.let { return rechazo(it) }
+            // La pareja elegida en la misma compra será familiar del animal nuevo.
+            Vinculos.validarAmigo(animales.animal(c.idPartida, id), null, c.idEspacio, setOfNotNull(c.ficha.idPareja))?.let { return rechazo(it) }
+        }
+
+        c.ficha.idPareja?.let { id ->
+            Vinculos.validarPareja(animales.animal(c.idPartida, id), null, c.idEspecie, c.idEspacio, ReglasNivel.NIVEL_INICIAL)
+                ?.let { return rechazo(it) }
         }
 
         val saldo = economia.fondos(c.idPartida)
@@ -168,7 +177,7 @@ class AdquirirAnimal(
                 nombre = nombre,
                 habilidades = c.ficha.habilidades,
                 rasgos = c.ficha.rasgos,
-                idPareja = null,
+                idPareja = c.ficha.idPareja,
                 idMejorAmigo = c.ficha.idMejorAmigo,
             ),
         )
@@ -235,13 +244,23 @@ class EditarFicha(
 
         // Un vínculo sin cambios no se vuelve a validar: la pareja puede haberse trasladado sin romper la relación.
         val cambiaPareja = c.idPareja != actual.idPareja
-        val cambiaAmigo = c.idMejorAmigo != actual.idMejorAmigo
+        // Dos mejores amigos pueden pasar a ser pareja: la amistad termina. Una pareja nunca pasa a ser mejores amigos.
+        val amigoPasaAPareja = cambiaPareja && c.idPareja != null && c.idPareja == actual.idMejorAmigo
+        val amigoResultante = if (amigoPasaAPareja && c.idMejorAmigo == c.idPareja) null else c.idMejorAmigo
+        val cambiaAmigo = amigoResultante != actual.idMejorAmigo
+        // Quitar o cambiar una pareja existente exige el divorcio (CU-24); la edición solo puede elegir pareja si no hay ninguna.
+        if (actual.idPareja != null && cambiaPareja) return rechazo(MotivoRechazo.DivorcioRequerido)
         if (cambiaPareja && c.idPareja != null) {
             Vinculos.validarPareja(animales.animal(c.idPartida, c.idPareja), actual, actual.idEspecie, espacio, actual.nivel)
                 ?.let { return rechazo(it) }
         }
-        if (cambiaAmigo && c.idMejorAmigo != null) {
-            Vinculos.validarAmigo(animales.animal(c.idPartida, c.idMejorAmigo), actual, espacio)?.let { return rechazo(it) }
+        // La pareja resultante no puede ser a la vez el mejor amigo resultante.
+        if (c.idPareja != null && c.idPareja == amigoResultante) return rechazo(MotivoRechazo.AmigoFamiliar)
+        if (cambiaAmigo && amigoResultante != null) {
+            val familiares = animales.familiares(c.idPartida, c.idAnimal) + setOfNotNull(c.idPareja)
+            // Si su amigo actual pasa a ser su pareja, el animal queda libre para elegir otro amigo.
+            val propio = if (amigoPasaAPareja) actual.copy(idMejorAmigo = null) else actual
+            Vinculos.validarAmigo(animales.animal(c.idPartida, amigoResultante), propio, espacio, familiares)?.let { return rechazo(it) }
         }
 
         val cambiaFicha = nombre != actual.nombre ||
@@ -255,10 +274,62 @@ class EditarFicha(
         }
         if (cambiaFicha) animales.actualizarFicha(c.idPartida, c.idAnimal, nombre, c.habilidades, c.rasgos)
         if (cambiaPareja) animales.fijarPareja(c.idPartida, c.idAnimal, c.idPareja)
-        if (cambiaAmigo) animales.fijarMejorAmigo(c.idPartida, c.idAnimal, c.idMejorAmigo)
+        if (cambiaAmigo) animales.fijarMejorAmigo(c.idPartida, c.idAnimal, amigoResultante)
         afectados += animales.espaciosRelacionados(c.idPartida, c.idAnimal)
         recalculo.alConsolidar(c.idPartida, AlcanceRecalculo.Espacios(afectados))
         return Resultado.Exito(FichaEditada(c.idAnimal))
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------- CU-24
+
+data class ComandoDivorciar(val idPartida: IdPartida, val idAnimal: String, val idSolicitud: String)
+
+data class DivorcioRealizado(val idAnimal: String, val idExPareja: String)
+
+/**
+ * CU-24 Divorcio: la única forma de quitar una pareja. Los dos quedan sin pareja y los hijos comunes pasan a no tener
+ * padre ni madre (y, por tanto, tampoco hermanos por esa vía). No se borra ningún animal. Después cada uno puede elegir otra
+ * pareja o ser mejor amigo del otro, porque ya no son familiares.
+ */
+class DivorciarAnimal(
+    private val ejecutor: EjecutorOperacion,
+    private val animales: AnimalRepositorio,
+    private val recalculo: RecalcularSatisfaccion,
+) {
+    fun ejecutar(c: ComandoDivorciar): Resultado<DivorcioRealizado> {
+        val op = Operacion(
+            idPartida = c.idPartida,
+            tipo = "DIVORCIO",
+            entidad = "ANIMAL",
+            origen = "CU-24",
+            idSolicitud = c.idSolicitud,
+            huella = "animal=${c.idAnimal}",
+            codificar = { "${it.idAnimal}|${it.idExPareja}" },
+            decodificar = {
+                val (id, ex) = it.split("|")
+                DivorcioRealizado(id, ex)
+            },
+            idEntidad = { it.idAnimal },
+        )
+        return ejecutor.ejecutar(op) { divorciar(c) }
+    }
+
+    private fun divorciar(c: ComandoDivorciar): Resultado<DivorcioRealizado> {
+        val actual = animales.animal(c.idPartida, c.idAnimal) ?: return rechazo(MotivoRechazo.AnimalInexistente)
+        val espacio = actual.idEspacio
+        if (!actual.vivo || espacio == null) return rechazo(MotivoRechazo.AnimalNoVivo)
+        val pareja = actual.idPareja ?: return rechazo(MotivoRechazo.SinPareja)
+
+        // Los afectados se calculan antes: después ya no quedan los vínculos con los hijos que se sueltan.
+        val afectados = HashSet<String>().apply {
+            add(espacio)
+            addAll(animales.espaciosRelacionados(c.idPartida, c.idAnimal))
+            addAll(animales.espaciosRelacionados(c.idPartida, pareja))
+        }
+        animales.divorciar(c.idPartida, c.idAnimal, pareja)
+        recalculo.alConsolidar(c.idPartida, AlcanceRecalculo.Espacios(afectados))
+        return Resultado.Exito(DivorcioRealizado(c.idAnimal, pareja))
     }
 }
 
@@ -471,6 +542,15 @@ class ConsultarAnimales(
     private val zoo: ZooRepositorio,
 ) {
     fun animalesDe(idPartida: IdPartida, idEspacio: String): List<AnimalResumen> = animales.animalesDeEspacio(idPartida, idEspacio)
+
+    /** Familiares de un animal, que no pueden ser su mejor amigo. */
+    fun familiares(idPartida: IdPartida, idAnimal: String): Set<String> = animales.familiares(idPartida, idAnimal)
+
+    /** Familiares de la cría de una concepción (sus progenitores y sus hermanos), que no pueden ser su mejor amigo. */
+    fun familiaresDeCria(idPartida: IdPartida, idA: String, idB: String): Set<String> {
+        val (padre, madre) = com.pandazoo.domain.reproduccion.ReglasReproduccion.progenitores(idA, idB)
+        return animales.familiaresDeCria(idPartida, padre, madre)
+    }
 
     fun ficha(idPartida: IdPartida, idAnimal: String): AnimalFicha? = animales.ficha(idPartida, idAnimal)
 

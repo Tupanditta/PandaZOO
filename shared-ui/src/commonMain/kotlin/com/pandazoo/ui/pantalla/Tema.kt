@@ -234,9 +234,15 @@ private val TonosOscuro = mapOf(
     "Exclusivo" to TonoRango(Color(0xFFD2B574), Color(0xFF3A3220)),
 )
 
+/** Tonos del diamante: azul hielo, que se distingue del dorado de los demás exclusivos. */
+private val TonoDiamanteClaro = TonoRango(Color(0xFF1F84AE), Color(0xFFD8EEF7))
+private val TonoDiamanteOscuro = TonoRango(Color(0xFF5FC1E4), Color(0xFF112B35))
+
+/** [diamante]: la especie con toques de diamante (sigue siendo exclusiva). */
 @Composable
-internal fun tonoRango(rango: String): TonoRango {
+internal fun tonoRango(rango: String, diamante: Boolean = false): TonoRango {
     val oscuro = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    if (diamante) return if (oscuro) TonoDiamanteOscuro else TonoDiamanteClaro
     val tonos = if (oscuro) TonosOscuro else TonosClaro
     return tonos[rango] ?: TonoRango(MaterialTheme.colorScheme.secondary, MaterialTheme.colorScheme.surface)
 }
@@ -247,10 +253,16 @@ private fun esOscuro() = MaterialTheme.colorScheme.background.luminance() < 0.5f
 /** Degradado del contorno exclusivo: dorado apagado con un destello claro, para no desentonar con el resto de la interfaz. */
 internal val BrilloExclusivo = Brush.linearGradient(listOf(Color(0xFFE3CE95), Color(0xFFB59044), Color(0xFFF1E3B8), Color(0xFFB59044), Color(0xFFE3CE95)))
 
+/** Degradado del contorno de diamante: hielo, blanco y un toque lila, con destellos intercalados. */
+internal val BrilloDiamante = Brush.linearGradient(
+    listOf(Color(0xFFA6DCF2), Color(0xFF369FCB), Color(0xFFFFFFFF), Color(0xFFB7A6F2), Color(0xFF80C6E8), Color(0xFFFFFFFF), Color(0xFF369FCB)),
+)
+
 /** Contorno de una ficha según su rango: degradado brillante en épico y exclusivo; el resto, el borde fino de siempre. */
 @Composable
-private fun bordeRango(rango: String?, filete: Color): BorderStroke {
+private fun bordeRango(rango: String?, filete: Color, diamante: Boolean = false): BorderStroke {
     val base = MaterialTheme.colorScheme.outlineVariant
+    if (diamante) return BorderStroke(2.5.dp, BrilloDiamante)
     return when (rango) {
         "Exclusivo" -> BorderStroke(2.dp, BrilloExclusivo)
         "Épico" -> BorderStroke(2.dp, Brush.linearGradient(listOf(filete, Color(0xFFD9BFFF), filete, Color(0xFFB98CF0), filete)))
@@ -273,6 +285,40 @@ internal fun Modifier.reflejos(activo: Boolean): Modifier =
         )
     }
 
+/** Destellos de diamante: pequeñas estrellas de cuatro puntas y una faceta clara (estático, como los reflejos). */
+internal fun Modifier.destellosDiamante(activo: Boolean): Modifier =
+    if (!activo) this else drawWithContent {
+        drawContent()
+        val w = size.width
+        val h = size.height
+        // Facetas: dos bandas diagonales claras con un matiz azulado.
+        drawRect(
+            Brush.linearGradient(
+                0.18f to Color.Transparent, 0.26f to Color(0xFFA6DCF2).copy(alpha = 0.30f), 0.34f to Color.Transparent,
+                0.52f to Color.Transparent, 0.58f to Color.White.copy(alpha = 0.26f), 0.64f to Color.Transparent,
+                0.78f to Color.Transparent, 0.82f to Color(0xFFC9B8FF).copy(alpha = 0.20f), 0.88f to Color.Transparent,
+                start = Offset(0f, 0f), end = Offset(w, h),
+            ),
+        )
+        // Estrellas de cuatro puntas en posiciones fijas.
+        fun estrella(cx: Float, cy: Float, radio: Float, alfa: Float) {
+            val p = androidx.compose.ui.graphics.Path().apply {
+                moveTo(cx, cy - radio)
+                quadraticTo(cx, cy, cx + radio, cy)
+                quadraticTo(cx, cy, cx, cy + radio)
+                quadraticTo(cx, cy, cx - radio, cy)
+                quadraticTo(cx, cy, cx, cy - radio)
+                close()
+            }
+            drawPath(p, Color.White.copy(alpha = alfa))
+        }
+        val base = minOf(w, h)
+        estrella(w * 0.10f, h * 0.22f, base * 0.10f, 0.85f)
+        estrella(w * 0.88f, h * 0.30f, base * 0.07f, 0.70f)
+        estrella(w * 0.72f, h * 0.80f, base * 0.09f, 0.80f)
+        estrella(w * 0.30f, h * 0.78f, base * 0.05f, 0.60f)
+    }
+
 /**
  * Ficha: unidad visual con filete izquierdo de color y borde fino (spec. sección 5.3). Con [rango] añade el brillo
  * propio del rango: contorno brillante y resplandor en los épicos; además reflejos en los exclusivos.
@@ -284,18 +330,19 @@ internal fun Ficha(
     atenuada: Boolean = false,
     fondo: Color = MaterialTheme.colorScheme.surface,
     rango: String? = null,
+    diamante: Boolean = false,
     contenido: @Composable () -> Unit,
 ) {
-    val brillante = rango == "Épico" || rango == "Exclusivo"
+    val brillante = rango == "Épico" || rango == "Exclusivo" || diamante
     val forma = MaterialTheme.shapes.medium
     Card(
         modifier = modifier.fillMaxWidth().alpha(if (atenuada) 0.6f else 1f)
             .then(if (brillante) Modifier.shadow(8.dp, forma, ambientColor = filete, spotColor = filete) else Modifier),
         shape = forma,
         colors = CardDefaults.cardColors(containerColor = fondo),
-        border = bordeRango(rango, filete),
+        border = bordeRango(rango, filete, diamante),
     ) {
-        Row(Modifier.height(IntrinsicSize.Min).reflejos(rango == "Exclusivo")) {
+        Row(Modifier.height(IntrinsicSize.Min).reflejos(rango == "Exclusivo" && !diamante).destellosDiamante(diamante)) {
             Box(Modifier.width(4.dp).fillMaxHeight().background(filete))
             Column(Modifier.padding(16.dp).weight(1f)) { contenido() }
         }
@@ -306,8 +353,30 @@ internal fun Ficha(
  * Nombre de un animal o especie. En el rango exclusivo es más luminoso: degradado dorado con resplandor.
  */
 @Composable
-internal fun NombreRango(texto: String, rango: String?, estilo: TextStyle = MaterialTheme.typography.titleMedium, modifier: Modifier = Modifier) {
-    if (rango == "Exclusivo") {
+internal fun NombreRango(
+    texto: String,
+    rango: String?,
+    estilo: TextStyle = MaterialTheme.typography.titleMedium,
+    modifier: Modifier = Modifier,
+    diamante: Boolean = false,
+) {
+    if (diamante) {
+        val oscuro = esOscuro()
+        val colores = if (oscuro) listOf(Color(0xFFD8F2FC), Color(0xFF5FC1E4), Color(0xFFFFFFFF), Color(0xFFB7A6F2))
+        else listOf(Color(0xFF0B5F82), Color(0xFF1F84AE), Color(0xFF3069B5), Color(0xFF1F84AE))
+        Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(
+                texto,
+                style = estilo.copy(
+                    brush = Brush.linearGradient(colores),
+                    fontWeight = FontWeight.Bold,
+                    shadow = Shadow(color = if (oscuro) Color(0xFF5FC1E4) else Color(0xFFA6DCF2), offset = Offset(0f, 0f), blurRadius = if (oscuro) 11f else 8f),
+                ),
+            )
+            // Toque de diamante junto al nombre.
+            Text("◆", style = estilo.copy(fontSize = estilo.fontSize * 0.8f), color = if (oscuro) Color(0xFF80D0EC) else Color(0xFF1F84AE))
+        }
+    } else if (rango == "Exclusivo") {
         val oscuro = esOscuro()
         val colores = if (oscuro) listOf(Color(0xFFEFE0B4), Color(0xFFD2B574), Color(0xFFF4E9C8), Color(0xFFD2B574))
         else listOf(Color(0xFF86672A), Color(0xFFB08A35), Color(0xFF94722C), Color(0xFFB08A35))

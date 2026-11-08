@@ -22,7 +22,8 @@ data class ParametrosNivelRango(
 object ReglasNivel {
     const val NIVEL_INICIAL = 1
     const val CICLOS_POR_NIVEL = 72
-    const val NIVEL_MINIMO_PAREJA = 4
+    /** Sin mínimo práctico: cualquier animal vivo puede tener pareja (el nivel inicial es 1). */
+    const val NIVEL_MINIMO_PAREJA = 1
     const val FRACCION_EQUILIBRIO = 0.6667
     const val FACTOR_VENTA_NIVEL_1 = 0.05
 

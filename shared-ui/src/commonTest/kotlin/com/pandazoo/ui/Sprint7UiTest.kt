@@ -86,7 +86,7 @@ class Sprint7UiTest {
         val b = d.animal(c.idPartida, espacio, "erizo", "Espina")
         d.parejas(c.idPartida, a, b)
         c.bd.escribir("UPDATE Animal SET satisfaccion_actual = 1.0 WHERE id_partida = ?", c.idPartida)
-        c.bd.escribir("UPDATE RangoEspecie SET umbral_reproduccion = 0.5, probabilidad_reproduccion = 1.0, penalizacion_hijo_reproduccion = 0.0")
+        c.bd.escribir("UPDATE RangoEspecie SET umbral_reproduccion = 0.5, probabilidad_reproduccion = 1.0, factores_hijos = '1;1;1;1;1;0'")
     }
 
     private fun vivos(c: AppContainer) = c.bd.uno("SELECT COUNT(*) FROM Animal WHERE estado_vital = 'VIVO'") { it.entero(0) }

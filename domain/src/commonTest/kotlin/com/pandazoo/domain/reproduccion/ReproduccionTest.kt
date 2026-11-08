@@ -12,10 +12,13 @@ class ReproduccionTest {
     }
 
     @Test
-    fun `la probabilidad nunca es negativa`() {
-        ReglasReproduccion.probabilidad(0.5, 0.2, 0) shouldBe 0.5
-        ReglasReproduccion.probabilidad(0.5, 0.2, 2) shouldBe (0.5 - 0.2 * 2)
-        ReglasReproduccion.probabilidad(0.5, 0.2, 3) shouldBe 0.0
+    fun `la probabilidad es la base por el factor de los hijos vivos y se anula en el tope`() {
+        val factores = listOf(1.0, 0.5, 0.25, 0.1, 0.05, 0.0)
+        ReglasReproduccion.probabilidad(0.04, factores, 0) shouldBe 0.04
+        ReglasReproduccion.probabilidad(0.04, factores, 1) shouldBe 0.04 * 0.5
+        ReglasReproduccion.probabilidad(0.04, factores, 4) shouldBe 0.04 * 0.05
+        ReglasReproduccion.probabilidad(0.04, factores, ReglasReproduccion.TOPE_HIJOS) shouldBe 0.0
+        ReglasReproduccion.probabilidad(0.04, factores, 9) shouldBe 0.0
     }
 
     @Test

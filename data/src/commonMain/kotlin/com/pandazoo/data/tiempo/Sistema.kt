@@ -13,6 +13,8 @@ import kotlin.uuid.Uuid
 @OptIn(ExperimentalTime::class)
 class RelojSistema : Reloj {
     override fun ahoraSegundos(): Long = Clock.System.now().epochSeconds
+
+    override fun desplazamientoLocalSegundos(): Int = desplazamientoZonaSegundos(ahoraSegundos())
 }
 
 class AzarSistema(private val random: Random = Random.Default) : Azar {

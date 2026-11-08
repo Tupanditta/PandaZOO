@@ -246,7 +246,7 @@ class TratarAnimal(
         val espacio = animal.idEspacio
         if (!animal.vivo || espacio == null) return rechazo(MotivoRechazo.AnimalNoVivo)
         if (!animal.enfermo) return rechazo(MotivoRechazo.AnimalSano)
-        val consumo = cuidado.consumoMedico(c.idPartida, c.idAnimal)
+        val consumo = cuidado.consumoMedico(c.idPartida, c.idAnimal).map { it.copy(cantidad = ReglasCuidado.unidadesMedicina(it.cantidad, animal.nivel)) }
         if (consumo.isEmpty()) return rechazo(MotivoRechazo.ConsumoMedicoNoConfigurado)
 
         val existencias = consumo.map { it to (inventario.cantidad(c.idPartida, Recurso(TipoRecurso.INSUMO, it.idInsumo)) ?: 0) }
@@ -301,8 +301,10 @@ class ConsultarCuidado(
         return PreviaGrupal(objetivo.size, total, inventario.cantidad(idPartida, BAMBU) ?: 0)
     }
 
-    fun tratamiento(idPartida: IdPartida, idAnimal: String): List<LineaTratamiento> =
-        cuidado.consumoMedico(idPartida, idAnimal).map {
-            LineaTratamiento(it.nombre, it.cantidad, inventario.cantidad(idPartida, Recurso(TipoRecurso.INSUMO, it.idInsumo)) ?: 0)
+    fun tratamiento(idPartida: IdPartida, idAnimal: String): List<LineaTratamiento> {
+        val nivel = animales.animal(idPartida, idAnimal)?.nivel ?: 1
+        return cuidado.consumoMedico(idPartida, idAnimal).map {
+            LineaTratamiento(it.nombre, ReglasCuidado.unidadesMedicina(it.cantidad, nivel), inventario.cantidad(idPartida, Recurso(TipoRecurso.INSUMO, it.idInsumo)) ?: 0)
         }
+    }
 }

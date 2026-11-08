@@ -37,6 +37,7 @@ import com.pandazoo.domain.animal.OpcionFicha
 import com.pandazoo.domain.animal.ReglasAnimal
 import com.pandazoo.domain.animal.ReglasCuidado
 import com.pandazoo.domain.animal.ReglasNivel
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -466,6 +467,12 @@ class ComprarAnimalViewModel(c: AppContainer, private val especie: Ref, private 
         if (s == null) emptyList() else c.consultarAnimales.animalesDe(c.idPartida, s.valor).filter { it.idMejorAmigo == null }.let(Textos::candidatos)
     }
 
+    /** Animales libres de la misma especie en el espacio elegido: candidatos a pareja. */
+    val parejas: StateFlow<List<CandidatoUi>> = observarPor(espacioElegido, emptyList()) { s ->
+        if (s == null) emptyList()
+        else c.consultarAnimales.animalesDe(c.idPartida, s.valor).filter { it.idEspecie == especie.valor && it.idPareja == null }.let(Textos::candidatos)
+    }
+
     val habilidades: List<OpcionUi> = opciones(c.catalogoFicha.habilidades)
     val rasgos: List<OpcionUi> = opciones(c.catalogoFicha.rasgos)
     val comprado = MutableStateFlow(false)
@@ -481,13 +488,13 @@ class ComprarAnimalViewModel(c: AppContainer, private val especie: Ref, private 
         descartarMensaje()
     }
 
-    fun comprar(nombre: String, habilidades: Set<String>, rasgos: Set<String>, amigo: Ref?) {
+    fun comprar(nombre: String, habilidades: Set<String>, rasgos: Set<String>, amigo: Ref?, pareja: Ref? = null) {
         val espacio = espacioElegido.value ?: return
         val comando = ComandoAdquirirAnimal(
             idPartida = c.idPartida,
             idEspecie = especie.valor,
             idEspacio = espacio.valor,
-            ficha = FichaNueva(nombre, habilidades.toList(), rasgos.toList(), amigo?.valor),
+            ficha = FichaNueva(nombre, habilidades.toList(), rasgos.toList(), amigo?.valor, pareja?.valor),
             idSolicitud = solicitud,
         )
         congelada = true
@@ -577,6 +584,32 @@ class FichaAnimalViewModel(c: AppContainer, private val animal: Ref) : BaseViewM
         c.consultarAnimales.ficha(c.idPartida, animal.valor)?.let { Textos.ficha(it, c.catalogoFicha, c.ciclosPorNivel) }
     }
     val confirmandoVenta = MutableStateFlow(false)
+
+    /** Ventana con las consecuencias del divorcio; solo se divorcia si se acepta. */
+    val confirmandoDivorcio = MutableStateFlow(false)
+
+    /** Ventana de ánimo que sale tras el divorcio; se cierra al tocar fuera de ella. */
+    val animoTrasDivorcio = MutableStateFlow(false)
+
+    fun pedirDivorcio() {
+        confirmandoDivorcio.value = true
+    }
+
+    fun cancelarDivorcio() {
+        confirmandoDivorcio.value = false
+    }
+
+    fun aceptarDivorcio() {
+        confirmandoDivorcio.value = false
+        ejecutar({ c.divorciarAnimal.ejecutar(com.pandazoo.application.caso.ComandoDivorciar(c.idPartida, animal.valor, solicitud)) }) {
+            animoTrasDivorcio.value = true
+            null
+        }
+    }
+
+    fun cerrarAnimo() {
+        animoTrasDivorcio.value = false
+    }
 
     /** Panel de estadísticas (satisfacción y beneficio) desplegado en la ficha. */
     val verEstadisticas = MutableStateFlow(true) // [simplificar-6] siempre visibles
@@ -695,13 +728,17 @@ class EditarFichaViewModel(c: AppContainer, private val animal: Ref) : BaseViewM
         val lista = if (espacio == null) emptyList() else c.consultarAnimales.animalesDe(c.idPartida, espacio)
         val yo = lista.firstOrNull { it.id == animal.valor }
         val otros = lista.filter { it.id != animal.valor }
+        val familiares = c.consultarAnimales.familiares(c.idPartida, animal.valor)
         CandidatosUi(
             parejas = otros.filter {
                 yo != null && yo.nivel >= ReglasNivel.NIVEL_MINIMO_PAREJA && it.idEspecie == yo.idEspecie &&
                     it.nivel >= ReglasNivel.NIVEL_MINIMO_PAREJA && (it.idPareja == null || it.id == yo.idPareja)
             }.let(Textos::candidatos),
             // El mejor amigo es recíproco: solo se puede elegir a un animal libre, y quien ya tiene amigo solo puede quitarlo.
-            amigos = otros.filter { yo?.idMejorAmigo == null && it.idMejorAmigo == null || it.id == yo?.idMejorAmigo }.let(Textos::candidatos),
+            // Tampoco puede serlo un familiar (pareja, padres, hijos o hermanos).
+            amigos = otros.filter {
+                it.id !in familiares && (yo?.idMejorAmigo == null && it.idMejorAmigo == null || it.id == yo?.idMejorAmigo)
+            }.let(Textos::candidatos),
         )
     }
     val habilidades: List<OpcionUi> = opciones(c.catalogoFicha.habilidades)
@@ -751,8 +788,15 @@ class CriaViewModel(c: AppContainer, private val aviso: Ref) : BaseViewModel(c) 
 
     /** Animales del espacio de los progenitores: candidatos a mejor amigo de la cría. */
     val companeros: StateFlow<List<CandidatoUi>> = observar(emptyList()) {
-        val espacio = id?.let { c.consultarReproduccion.ejecutar(c.idPartida, it) }?.idEspacio
-        if (espacio == null) emptyList() else c.consultarAnimales.animalesDe(c.idPartida, espacio).filter { it.idMejorAmigo == null }.let(Textos::candidatos)
+        val detalle = id?.let { c.consultarReproduccion.ejecutar(c.idPartida, it) }
+        val espacio = detalle?.idEspacio
+        if (detalle == null || espacio == null) {
+            emptyList()
+        } else {
+            // Los progenitores y los hermanos de la cría no pueden ser su mejor amigo.
+            val familiares = c.consultarAnimales.familiaresDeCria(c.idPartida, detalle.idA, detalle.idB)
+            c.consultarAnimales.animalesDe(c.idPartida, espacio).filter { it.idMejorAmigo == null && it.id !in familiares }.let(Textos::candidatos)
+        }
     }
 
     val habilidades: List<OpcionUi> = opciones(c.catalogoFicha.habilidades)

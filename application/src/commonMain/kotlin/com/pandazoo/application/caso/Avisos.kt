@@ -237,6 +237,7 @@ class PurgarRetencion(
             ciclos = cfg.cicloSimulacion,
             idempotencia = cfg.idempotencia,
             recompensasCerradas = cfg.recompensaMisionCerrada,
+            reproduccionesFinalizadas = cfg.reproduccionFinalizada,
         )
         return transaccion.ejecutar { repositorio.purgar(idPartida, numero, ventanas) }
     }

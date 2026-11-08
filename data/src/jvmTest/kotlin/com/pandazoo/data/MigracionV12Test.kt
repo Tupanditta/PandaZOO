@@ -18,7 +18,7 @@ class MigracionV12Test {
         c.cerrar()
         val bd = BaseDatos.enArchivo(f.absolutePath)
         try {
-            bd.uno("PRAGMA user_version") { it.entero(0) } shouldBe 12
+            bd.uno("PRAGMA user_version") { it.entero(0) } shouldBe BaseDatos.VERSION
             bd.leer("SELECT capacidad_max FROM CosteEspacio ORDER BY capacidad_max") { it.entero(0) } shouldBe listOf(25, 30)
         } finally {
             bd.cerrar()

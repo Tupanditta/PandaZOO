@@ -49,6 +49,7 @@ CREATE TABLE RangoEspecie (
     umbral_reproduccion REAL NOT NULL CHECK (umbral_reproduccion BETWEEN 0.00 AND 1.00),
     probabilidad_reproduccion REAL NOT NULL CHECK (probabilidad_reproduccion BETWEEN 0.00 AND 1.00),
     penalizacion_hijo_reproduccion REAL NOT NULL CHECK (penalizacion_hijo_reproduccion BETWEEN 0.00 AND 1.00),
+    factores_hijos TEXT NOT NULL DEFAULT '1;1;1;1;1;0',
     probabilidad_enfermedad REAL NOT NULL CHECK (probabilidad_enfermedad BETWEEN 0.00 AND 1.00),
     beneficio_base_animal_ciclo REAL NOT NULL CHECK (beneficio_base_animal_ciclo >= 0 AND beneficio_base_animal_ciclo = ROUND(beneficio_base_animal_ciclo, 2)),
     nivel_maximo INTEGER NOT NULL CHECK (nivel_maximo >= 2),
@@ -412,7 +413,7 @@ CREATE TABLE UnidadGratuita (
     id_unidad INTEGER PRIMARY KEY,
     id_partida TEXT NOT NULL,
     id_especie TEXT NOT NULL,
-    origen TEXT NOT NULL CHECK (origen IN ('BIENVENIDA')),
+    origen TEXT NOT NULL CHECK (origen IN ('BIENVENIDA', 'SEMANAL')),
     unidad_pendiente INTEGER NOT NULL DEFAULT 1 CHECK (unidad_pendiente IN (0, 1)),
     fecha INTEGER NOT NULL,
     FOREIGN KEY (id_partida) REFERENCES Partida(id_partida)
@@ -420,6 +421,18 @@ CREATE TABLE UnidadGratuita (
     FOREIGN KEY (id_especie) REFERENCES Especie(id_especie)
         ON UPDATE CASCADE ON DELETE RESTRICT
 )
+;;
+CREATE TABLE RegaloSemanal (
+    id_partida TEXT NOT NULL,
+    id_regalo TEXT NOT NULL,
+    id_especie TEXT NOT NULL,
+    fecha INTEGER NOT NULL,
+    PRIMARY KEY (id_partida, id_regalo),
+    FOREIGN KEY (id_partida) REFERENCES Partida(id_partida)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+    FOREIGN KEY (id_especie) REFERENCES Especie(id_especie)
+        ON UPDATE CASCADE ON DELETE RESTRICT
+) WITHOUT ROWID
 ;;
 CREATE TABLE CicloSimulacion (
     id_partida TEXT NOT NULL,

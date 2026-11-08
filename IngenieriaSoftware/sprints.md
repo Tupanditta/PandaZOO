@@ -192,7 +192,7 @@ Hitos de revisión sugeridos:
 **Estado: implementado (verificado en Windows/JVM y compilación Android; iOS sin verificar).** `./gradlew check :androidApp:assembleDebug` correcto. T2.1 a T2.10 cubiertos: fórmula y medias en `domain` (`SatisfaccionTest`), persistencia, recálculo por alcance, monitor y rendimiento en `data` (`Sprint2Test`), pantalla y no recálculo al navegar en `shared-ui` (`Sprint2UiTest`). La carga de 500 animales y 50 espacios se recalcula y persiste muy por debajo de 1000 ms en JVM; la medición en dispositivo queda para el Sprint 10 (D6). Decisiones de interpretación:
 
 - Un vínculo (pareja, amigo, padre, madre) solo cuenta si el animal vinculado sigue vivo y alojado; no se exige que comparta espacio. `num_hermanos` cuenta animales vivos que comparten padre o madre, estén donde estén.
-- Familia a efectos de `C_afinidad`: pareja, padre, madre, hermanos e hijos vivos. El mejor amigo no es familiar y sí entra en la afinidad.
+- **Superado:** la afinidad cuenta a todos los demás animales vivos del espacio, familiares incluidos (`Otros/DecisionesImplementacion.md`, sección 13). Antes se excluían la pareja, el padre, la madre, los hermanos y los hijos.
 - Las medias de espacio, hábitat y parque son medias directas sobre los animales vivos de cada nivel, no medias de medias (`EspecificacionBBDD.md`, 4.3).
 - El orquestador `RecalcularSatisfaccion` admite alcance `Parque` o `Espacios`. Los casos de uso de los sprints 3 a 8 deben incluir en el alcance todos los espacios afectados, incluidos los de familiares alojados en otros espacios cuando cambie el número de hermanos o una relación.
 - Generador de datos de prueba (`DatosDePrueba`): solo en tests (el modo de depuración se retiró; ver `Otros/DecisionesImplementacion.md`, sección 11).
@@ -614,6 +614,10 @@ Hitos de revisión sugeridos:
 
 **Criterio de hecho:** todos los RNF cumplen su umbral, todas las pruebas pasan y el recorrido de aceptación se completa. Versión candidata.
 
+**Estado: parcial (verificado en Windows/JVM y compilación Android; web verificada con `jsNodeTest`; iOS y dispositivos sin verificar).** Entregado: la purga de `ReproduccionCiclo` (ventana `reproduccion_finalizada`, las `CONCEBIDA` se conservan) y la poda de animales inactivos (BBDD 5.3, repetida hasta que no cae ninguna fila), con `Sprint10Test` (T10.6: poda simple, genealogía, reproducción concebida, ventana y simulación larga de 900 ciclos con histórico acotado). Consecuencia: un animal muerto o vendido sin descendencia desaparece tras el ciclo; los tests de los sprints 8 y N que leían su fila se ajustaron. Pendiente: T10.1 a T10.5 (mediciones en dispositivo de referencia, D6), T10.8 (barrido de UI), T10.9 (recorrido de aceptación) y la paridad en iOS.
+
+Hallazgos: `shared-ui` no compilaba para JS (faltaba `import kotlin.concurrent.Volatile` en `ViewModels.kt`); corregido. T10.7 ya queda cubierto por T1.8 y las pruebas de auditoría de cada sprint. Los `BeneficioPendiente` en estado `PENDIENTE` nunca se purgan (BBDD 5.2): si el jugador no reclama, crecen una fila por ciclo.
+
 ---
 
 ## 4. Trazabilidad
@@ -714,6 +718,7 @@ Todos los puntos que estaban abiertos quedan resueltos con estas decisiones. Si 
 | D15 | Prestigio y misiones | El prestigio nunca baja y llega al 100; la misión de prestigio siempre da un animal sorteado por rango. | P |
 | D16 | Avisos | Se descartan los de severidad baja y media; caducan a 1 y 3 ciclos. | P |
 | D17 | Modo de depuración | Retirado. Los ciclos solo los ejecuta CU-11. | P |
+| D18 | Precios y reproducción | Coste y venta base ×5 en los rangos 1 a 4, sin nivel mínimo de pareja, probabilidad por factores según hijos vivos y máximo de cinco (`Otros/DecisionesImplementacion.md`, sección 12; base de datos versión 13). | 10 |
 
 ### 5.2. Regla del reloj (D2)
 

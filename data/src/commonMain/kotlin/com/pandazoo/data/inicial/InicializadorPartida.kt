@@ -117,10 +117,11 @@ class InicializadorPartida(
             bd.escribir(
                 "INSERT INTO RangoEspecie (id_rango, nombre, umbral_reproduccion, probabilidad_reproduccion, " +
                     "penalizacion_hijo_reproduccion, probabilidad_enfermedad, beneficio_base_animal_ciclo, nivel_maximo, " +
-                    "multiplicador_nivel_maximo, valor_venta_base, factor_venta_nivel_maximo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "multiplicador_nivel_maximo, valor_venta_base, factor_venta_nivel_maximo, factores_hijos) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 it.id, it.nombre, it.umbralReproduccion, it.probabilidadReproduccion, it.penalizacionHijo,
                 it.probabilidadEnfermedad, it.beneficioBase, it.nivelMaximo, it.multiplicadorNivelMaximo, it.valorVentaBase,
-                it.factorVentaNivelMaximo,
+                it.factorVentaNivelMaximo, it.factoresHijos.joinToString(";"),
             )
         }
         val nivelPorEspecie = t.desbloqueos.flatMap { n -> n.especies.map { it to n.nivel } }.toMap()

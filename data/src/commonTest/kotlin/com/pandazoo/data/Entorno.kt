@@ -123,6 +123,7 @@ class Entorno(val cfg: ConfiguracionJuego = configuracionBase, valorAzar: Double
     val alimentarAnimal = AlimentarAnimal(ejecutor, animales, cuidado, inventario, recalcular)
     val alimentarEspacio = AlimentarEspacio(ejecutor, zoo, animales, cuidado, inventario, recalcular)
     val alimentarHabitat = AlimentarHabitat(ejecutor, zoo, animales, cuidado, inventario, recalcular)
+    val divorciarAnimal = com.pandazoo.application.caso.DivorciarAnimal(ejecutor, animales, recalcular)
     val tratarAnimal = TratarAnimal(ejecutor, animales, cuidado, inventario, recalcular)
     val consultarCuidado = ConsultarCuidado(animales, cuidado, inventario, zoo)
     val monitor = MonitorSql(bd)

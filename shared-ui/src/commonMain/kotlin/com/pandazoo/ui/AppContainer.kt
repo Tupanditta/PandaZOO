@@ -5,7 +5,10 @@ import com.pandazoo.application.caso.AlimentarEspacio
 import com.pandazoo.application.caso.AlimentarHabitat
 import com.pandazoo.application.caso.ConsultarCuidado
 import com.pandazoo.application.caso.TratarAnimal
+import com.pandazoo.application.caso.ConcederRegalosSemanales
+import com.pandazoo.application.caso.RegaloSemanalConcedido
 import com.pandazoo.data.repositorio.CuidadoSql
+import com.pandazoo.data.repositorio.RegalosSemanalesSql
 import com.pandazoo.application.caso.ActualizarMisiones
 import com.pandazoo.application.caso.ConsultarMisiones
 import com.pandazoo.application.caso.EtapaMisiones
@@ -146,6 +149,7 @@ class AppContainer(
     val alimentarAnimal = AlimentarAnimal(ejecutor, animales, cuidado, inventario, recalcularSatisfaccion)
     val alimentarEspacio = AlimentarEspacio(ejecutor, zoo, animales, cuidado, inventario, recalcularSatisfaccion)
     val alimentarHabitat = AlimentarHabitat(ejecutor, zoo, animales, cuidado, inventario, recalcularSatisfaccion)
+    val divorciarAnimal = com.pandazoo.application.caso.DivorciarAnimal(ejecutor, animales, recalcularSatisfaccion)
     val tratarAnimal = TratarAnimal(ejecutor, animales, cuidado, inventario, recalcularSatisfaccion)
     val consultarCuidado = ConsultarCuidado(animales, cuidado, inventario, zoo)
     val consultarMonitor = ConsultarMonitorSatisfaccion(MonitorSql(bd))
@@ -186,6 +190,32 @@ class AppContainer(
     val consultarReproduccion = ConsultarReproduccion(reproduccion, ciclos, animales, zoo)
     private val purgarRetencion = PurgarRetencion(bd, RetencionSql(bd), ciclos, cfg.retencion)
 
+    // Regalos semanales (lunes y viernes): una unidad gratuita por regalo y día, con identificador propio.
+    private val concederRegalosSemanales = ConcederRegalosSemanales(
+        ejecutor, RegalosSemanalesSql(bd), SorteoAnimales.desde(cfg), azar, reloj, cfg.regalosSemanales,
+        cfg.especies.associate { it.id to it.nombre },
+    )
+    private val _regalosSemanales = MutableStateFlow<List<RegaloSemanalConcedido>>(emptyList())
+
+    /** Regalos semanales recién concedidos, pendientes de mostrarse de uno en uno. */
+    val regalosSemanales: StateFlow<List<RegaloSemanalConcedido>> get() = _regalosSemanales
+
+    /** Concede los regalos de hoy que falten (si es lunes o viernes) y los deja pendientes de mostrar. */
+    fun comprobarRegalosSemanales() {
+        try {
+            val nuevos = concederRegalosSemanales.ejecutar(idPartida)
+            if (nuevos.isNotEmpty()) _regalosSemanales.value = _regalosSemanales.value + nuevos
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Un fallo técnico revierte el regalo; se reintentará en el siguiente paso a primer plano.
+        }
+    }
+
+    fun descartarRegaloSemanal() {
+        _regalosSemanales.value = _regalosSemanales.value.drop(1)
+    }
+
     private val marcaMonotonica = TimeSource.Monotonic.markNow()
 
     /** Temporizador del ciclo (RF-24). Se inicia al pasar a primer plano y se detiene al pasar a segundo plano. */
@@ -219,6 +249,7 @@ class AppContainer(
     fun alPrimerPlano() {
         if (reanudacion?.isActive == true) return
         reanudacion = ambito.launch {
+            withContext(Dispatchers.Default) { comprobarRegalosSemanales() }
             try {
                 val r = withContext(Dispatchers.Default) { procesarDiferido.ejecutar(idPartida, cancelado = { !isActive }) }
                 if (r is Resultado.Exito && r.valor.ciclosProcesados > 0) _ultimoDiferido.value = r.valor

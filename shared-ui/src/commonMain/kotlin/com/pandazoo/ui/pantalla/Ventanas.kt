@@ -131,8 +131,10 @@ internal fun VentanaFlotante(v: VentanaUi, alConfirmar: () -> Unit, alCancelar: 
 internal fun VentanaPremio(p: PremioUi, alCerrar: () -> Unit) {
     val e = MaterialTheme.colorScheme
     var revelado by remember(p) { mutableStateOf(p.probabilidades.isEmpty()) }
+    val diamante = revelado && p.diamante
     val tono = when {
         !revelado -> TonoRango(e.primary, e.primaryContainer)
+        diamante -> tonoRango("Exclusivo", diamante = true)
         p.exclusivo -> tonoRango("Exclusivo")
         p.rango != null -> tonoRango(p.rango)
         else -> TonoRango(e.primary, e.primaryContainer)
@@ -145,14 +147,16 @@ internal fun VentanaPremio(p: PremioUi, alCerrar: () -> Unit) {
             modifier = if (brillo) Modifier.shadow(9.dp, forma, ambientColor = tono.filete, spotColor = tono.filete) else Modifier,
             shape = forma,
             color = tono.contenedor,
-            border = if (brillo) {
+            border = if (diamante) {
+                BorderStroke(2.5.dp, BrilloDiamante)
+            } else if (brillo) {
                 BorderStroke(2.5.dp, BrilloExclusivo)
             } else {
                 BorderStroke(2.dp, tono.filete)
             },
         ) {
             Column(
-                Modifier.fillMaxWidth().reflejos(brillo).padding(horizontal = 24.dp, vertical = 22.dp),
+                Modifier.fillMaxWidth().reflejos(brillo && !diamante).destellosDiamante(diamante).padding(horizontal = 24.dp, vertical = 22.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -171,13 +175,67 @@ internal fun VentanaPremio(p: PremioUi, alCerrar: () -> Unit) {
                     }
                     BotonPrincipal("¡SUERTE!", { revelado = true })
                 } else {
-                    NombreRango(p.valor, if (p.exclusivo) "Exclusivo" else null, MaterialTheme.typography.headlineSmall.copy(textAlign = TextAlign.Center))
+                    NombreRango(p.valor, if (p.exclusivo) "Exclusivo" else null, MaterialTheme.typography.headlineSmall.copy(textAlign = TextAlign.Center), diamante = diamante)
                     if (p.exclusivo) {
-                        Text("Animal exclusivo", style = MaterialTheme.typography.labelMedium, color = tono.filete)
+                        Text(if (diamante) "Animal exclusivo · diamante" else "Animal exclusivo", style = MaterialTheme.typography.labelMedium, color = tono.filete)
                     } else if (p.rango != null) {
                         Text("Animal ${p.rango.lowercase()}", style = MaterialTheme.typography.labelMedium, color = tono.filete)
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Ventana de confirmación del divorcio: explica las consecuencias y solo con «Acepto» se realiza la operación. Cerrarla
+ * (botón «Cancelar» o tocar fuera) no hace nada.
+ */
+@Composable
+internal fun VentanaDivorcio(nombre: String, nombrePareja: String, alAceptar: () -> Unit, alCancelar: () -> Unit) {
+    val e = MaterialTheme.colorScheme
+    Dialog(onDismissRequest = alCancelar) {
+        Surface(shape = RoundedCornerShape(24.dp), color = e.surface, border = BorderStroke(1.dp, e.error), tonalElevation = 6.dp) {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 22.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("Divorcio", style = MaterialTheme.typography.titleLarge, color = e.error)
+                Text(
+                    "$nombre y $nombrePareja dejarán de ser pareja.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = e.onSurface,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    "Si tienen hijos en común, dejarán de ser sus hijos: quedarán como individuos sin padres ni hermanos. " +
+                        "No se borra ningún animal. Después, cada uno podrá elegir otra pareja o ser mejor amigo del otro. " +
+                        "No se puede deshacer.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = e.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+                BotonPrincipal("Acepto", alAceptar)
+                BotonPrincipal("Cancelar", alCancelar)
+            }
+        }
+    }
+}
+
+/** Ventana de ánimo tras un divorcio: se cierra tocando fuera de ella. */
+@Composable
+internal fun VentanaAnimo(alCerrar: () -> Unit) {
+    val e = MaterialTheme.colorScheme
+    Dialog(onDismissRequest = alCerrar) {
+        Surface(shape = RoundedCornerShape(22.dp), color = e.primaryContainer, border = BorderStroke(2.dp, e.primary)) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 30.dp), contentAlignment = Alignment.Center) {
+                Text(
+                    "Ánimo My Sheila ❤",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = e.onPrimaryContainer,
+                    textAlign = TextAlign.Center,
+                )
             }
         }
     }

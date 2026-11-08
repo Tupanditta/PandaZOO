@@ -93,10 +93,10 @@ class SatisfaccionTest {
         val p = animal("p", pareja = "a")
         val cebra = animal("c", especie = "cebra")
         val todos = listOf(a, p, cebra)
-        // S_soc = 0.10 (pareja) + 0.60·0.2 (cebra, única no familiar) = 0.22
-        s(a, "b2", todos) shouldBe (0.61 plusOrMinus tol) // (0.5·1 + 0.5·0.22)·1·1
+        // S_soc = 0.10 (pareja) + 0.60·(0.8 pareja leon + 0.2 cebra)/2 = 0.40: la pareja también cuenta en la afinidad
+        s(a, "b2", todos) shouldBe (0.7 plusOrMinus tol) // (0.5·1 + 0.5·0.40)·1·1
         val hambriento = a.copy(nivelAlimentacion = 0)
-        s(hambriento, "b2", listOf(hambriento, p, cebra)) shouldBe (0.033 plusOrMinus tol) // (0 + 0.11)·1·0.3
+        s(hambriento, "b2", listOf(hambriento, p, cebra)) shouldBe (0.06 plusOrMinus tol) // (0 + 0.5·0.40)·1·0.3
     }
 
     @Test
@@ -105,7 +105,7 @@ class SatisfaccionTest {
         val p = animal("p", pareja = "a")
         val cebra = animal("c", especie = "cebra")
         val enfermo = a.copy(enfermo = true)
-        s(enfermo, "b2", listOf(enfermo, p, cebra)) shouldBe (0.366 plusOrMinus tol) // (0.5 + 0.11)·1·0.6
+        s(enfermo, "b2", listOf(enfermo, p, cebra)) shouldBe (0.42 plusOrMinus tol) // (0.5 + 0.5·0.40)·1·0.6
     }
 
     @Test
@@ -113,7 +113,7 @@ class SatisfaccionTest {
         val a = animal("a", pareja = "p")
         val p = animal("p", pareja = "a")
         val cebra = animal("c", especie = "cebra")
-        s(a, "b1", listOf(a, p, cebra)) shouldBe (0.488 plusOrMinus tol) // 0.61·0.8
+        s(a, "b1", listOf(a, p, cebra)) shouldBe (0.56 plusOrMinus tol) // 0.70·0.8
     }
 
     // ---- T2.2 ----
@@ -148,18 +148,18 @@ class SatisfaccionTest {
     }
 
     @Test
-    fun `T2_2 los hermanos se limitan al tope y la afinidad excluye a la familia pero no al amigo`() {
+    fun `T2_2 los hermanos se limitan al tope y la afinidad cuenta tambien a la familia`() {
         val padre = animal("pa", espacio = "e2")
         val yo = animal("yo", especie = "cebra", padre = "pa") // tope 2
         val hermanos = (1..5).map { animal("h$it", especie = "cebra", padre = "pa") }
         val todos = listOf(padre, yo) + hermanos
         val d = regla.calcular(yo, "b1", todos.filter { it.idEspacio == "e1" }, IndiceVivos(todos))
-        // padre .05 + hermanos .10·min(1, 5/2) = .10; los cinco hermanos son familia: sin no familiares C_afinidad = 0
-        d.sSoc shouldBe (0.15 plusOrMinus tol)
+        // padre .05 + hermanos .10·min(1, 5/2) = .10 + afinidad .60·0.8 (los cinco hermanos son familia: afinidad familiar)
+        d.sSoc shouldBe (0.63 plusOrMinus tol)
     }
 
     @Test
-    fun `T2_2 la afinidad es la media con los no familiares de otra y de la misma especie`() {
+    fun `T2_2 la afinidad es la media con los demas animales del espacio, de otra y de la misma especie`() {
         val yo = animal("yo")
         val leon = animal("l")
         val cebra = animal("c", especie = "cebra")
@@ -173,11 +173,11 @@ class SatisfaccionTest {
     }
 
     @Test
-    fun `T2_2 los hijos vivos cuentan como familia y no como afinidad`() {
+    fun `T2_2 los hijos vivos tambien cuentan en la afinidad`() {
         val yo = animal("yo")
         val hijo = animal("hijo", padre = "yo")
         val d = regla.calcular(yo, "b2", listOf(yo, hijo), IndiceVivos(listOf(yo, hijo)))
-        d.sSoc shouldBe 0.0
+        d.sSoc shouldBe (0.48 plusOrMinus tol) // afinidad .60·0.8 (leon-leon): la misma especie cuenta aunque sea familia
     }
 
     // ---- T2.3 ----
@@ -249,7 +249,7 @@ class SatisfaccionTest {
         val p = animal("p", pareja = "a")
         val cebra = animal("c", especie = "cebra")
         val v = s(a, "b1", listOf(a, p, cebra))
-        v shouldBe (0.488 plusOrMinus tol)
+        v shouldBe (0.56 plusOrMinus tol)
         (v == 0.49 || v == 0.5).shouldBe(false)
         val tres = animal("t", alimentacion = 30)
         regla.calcular(tres, "b2", listOf(tres), IndiceVivos(listOf(tres))).sBio shouldBe 0.3

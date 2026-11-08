@@ -8,7 +8,8 @@ data class ParejaReproductora(
     val idB: String,
     val umbral: Double,
     val probabilidad: Double,
-    val penalizacionPorHijo: Double,
+    /** Factor de la probabilidad según los hijos vivos comunes (índice = número de hijos). */
+    val factoresPorHijo: List<Double>,
     /** Hijos comunes con estado vital `VIVO`, estén alojados o no. */
     val hijosVivos: Int,
     /** Ya tiene una concepción abierta (`CONCEBIDA`): no se evalúa otra hasta resolverla. */

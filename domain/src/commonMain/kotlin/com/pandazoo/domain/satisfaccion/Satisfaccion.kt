@@ -81,6 +81,7 @@ class ReglaSatisfaccion(cfg: ConfiguracionJuego) {
     private val especies: Map<String, EspecieCfg> = cfg.especies.associateBy { it.id }
     private val afinidades: Map<Pair<String, String>, Double> =
         cfg.matrizAfinidad.pares.associate { clave(it.a, it.b) to it.valor }
+    private val afinidadFamiliar: Double = cfg.matrizAfinidad.afinidadFamiliar
     private val compatibilidad: Map<Pair<String, String>, Double> =
         cfg.tablas.compatibilidad.associate { (it.idEspecie to it.idBioma) to it.factor }
     private val factoresCriticos: Map<String, McritEspecieCfg> = cfg.tablas.factoresMcrit.associateBy { it.idEspecie }
@@ -132,15 +133,18 @@ class ReglaSatisfaccion(cfg: ConfiguracionJuego) {
         val hermanos = indice.hermanos(animal)
         val cHermanos = minOf(1.0, hermanos.size.toDouble() / especie.social.topeHermanos)
 
-        // Familia: pareja, padre, madre, hermanos e hijos vivos. El mejor amigo no es familiar.
+        // La afinidad cuenta a todos los demás animales vivos del espacio. Con un familiar (pareja, hijos, padres y hermanos)
+        // vale la afinidad familiar; con cualquier otro, la de la matriz (en la misma especie, la diagonal, intermedia).
+        // El mejor amigo no es familiar.
         val familia = HashSet<String>(hermanos)
         familia += indice.hijos(animal)
         animal.idPareja?.let { familia += it }
         animal.idPadre?.let { familia += it }
         animal.idMadre?.let { familia += it }
-        val noFamiliares = delEspacio.filter { it.id != animal.id && it.id !in familia }
+        val otros = delEspacio.filter { it.id != animal.id }
         val cAfinidad =
-            if (noFamiliares.isEmpty()) 0.0 else noFamiliares.sumOf { afinidad(animal.idEspecie, it.idEspecie) } / noFamiliares.size
+            if (otros.isEmpty()) 0.0
+            else otros.sumOf { if (it.id in familia) afinidadFamiliar else afinidad(animal.idEspecie, it.idEspecie) } / otros.size
 
         val bruto = w.pareja * cPareja + w.amigo * cAmigo + w.padre * cPadre + w.madre * cMadre +
             w.hermanos * cHermanos + w.afinidad * cAfinidad

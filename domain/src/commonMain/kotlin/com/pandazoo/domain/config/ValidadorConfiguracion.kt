@@ -42,6 +42,7 @@ object ValidadorConfiguracion {
         validarMisiones(cfg, e)
         validarRetencion(cfg, e)
         validarPartidaInicial(cfg, e)
+        validarRegalosSemanales(cfg, e)
         return e
     }
 
@@ -95,6 +96,10 @@ object ValidadorConfiguracion {
                 "probabilidad_enfermedad" to r.probabilidadEnfermedad,
             )
             campos.filterValues { !enUnidad(it) }.keys.forEach { e += "rango ${r.id}: $it fuera de 0..1" }
+            val fh = r.factoresHijos
+            if (fh.size != 6 || fh.any { !enUnidad(it) } || fh.first() != 1.0 || fh.last() != 0.0 || fh.zipWithNext().any { (a, b) -> b > a }) {
+                e += "rango ${r.id}: factores_hijos debe tener 6 valores en 0..1, empezar en 1, no crecer y acabar en 0"
+            }
             if (!importeValido(r.beneficioBase)) e += "rango ${r.id}: beneficio base por animal inválido"
             if (r.nivelMaximo < 2) e += "rango ${r.id}: nivel_maximo debe ser al menos 2"
             if (r.multiplicadorNivelMaximo < 1.0) e += "rango ${r.id}: multiplicador_nivel_maximo debe ser al menos 1"
@@ -197,6 +202,7 @@ object ValidadorConfiguracion {
         if (faltan.isNotEmpty()) e += "afinidad: faltan ${faltan.size} pares (p. ej. ${faltan.first()})"
         if ((claves.toSet() - esperados).isNotEmpty()) e += "afinidad: pares con especies inexistentes"
         pares.filter { !enUnidad(it.valor) }.forEach { e += "afinidad ${it.a}-${it.b} fuera de 0..1" }
+        if (!enUnidad(cfg.matrizAfinidad.afinidadFamiliar)) e += "afinidad_familiar fuera de 0..1"
     }
 
     private fun validarCompatibilidad(cfg: ConfiguracionJuego, e: MutableList<String>) {
@@ -323,6 +329,21 @@ object ValidadorConfiguracion {
         if (tabla.sumOf { it.porcentaje } != 100 || tabla.any { it.idRango !in 2..5 || it.porcentaje <= 0 }) {
             e += "sorteo de rango $nombre: debe sumar 100 con rangos 2 a 5"
         }
+    }
+
+    private fun validarRegalosSemanales(cfg: ConfiguracionJuego, e: MutableList<String>) {
+        val regalos = cfg.regalosSemanales
+        unico(regalos.map { it.id }, "regalos semanales", e)
+        regalos.forEach { r ->
+            if (r.id.isBlank() || ':' in r.id) e += "regalo semanal '${r.id}': el identificador no puede estar vacío ni contener ':'"
+            if (r.diaSemana !in 1..7) e += "regalo semanal ${r.id}: dia_semana debe estar entre 1 y 7"
+            if (r.sorteo.sumOf { it.porcentaje } != 100 || r.sorteo.any { it.idRango !in 1..5 || it.porcentaje <= 0 } ||
+                r.sorteo.map { it.idRango }.toSet().size != r.sorteo.size
+            ) {
+                e += "regalo semanal ${r.id}: el sorteo debe sumar 100 con rangos distintos del 1 al 5"
+            }
+        }
+        if (regalos.map { it.diaSemana }.toSet().size != regalos.size) e += "regalos semanales: un día de la semana solo puede tener un regalo"
     }
 
     private fun validarPartidaInicial(cfg: ConfiguracionJuego, e: MutableList<String>) {

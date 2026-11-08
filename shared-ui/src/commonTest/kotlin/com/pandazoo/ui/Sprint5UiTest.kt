@@ -111,11 +111,11 @@ class Sprint5UiTest {
 
             onNodeWithContentDescription("Ver beneficios").performClick()
             esperar("Reclamar beneficios")
-            esperar("🪙 6.00", subcadena = true)
+            esperar("🪙 2.40", subcadena = true)
             esperar("▸ Bosque templado")
             pulsar("Reclamar beneficios")
             esperar("Confirmar reclamación")
-            esperar("+🪙 6.00")
+            esperar("+🪙 2.40")
             sinIdentificadoresTecnicos(c)
             onNodeWithText("Cancelar").performClick()
             fondos(c) shouldBe antes
@@ -123,7 +123,7 @@ class Sprint5UiTest {
             pulsar("Reclamar beneficios")
             onNodeWithText("Confirmar reclamación").performClick()
             esperar("🪙 0.00", subcadena = true) // pendiente a cero
-            fondos(c) shouldBe antes + Dinero.desdeDecimal(6.0)
+            fondos(c) shouldBe antes + Dinero.desdeDecimal(2.4)
             textos().none { it.contains("Has reclamado") } shouldBe true // sin aviso al reclamar
             onNodeWithText("Reclamar beneficios").performScrollTo().assertIsNotEnabled()
             sinIdentificadoresTecnicos(c)

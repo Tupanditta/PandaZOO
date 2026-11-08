@@ -119,6 +119,7 @@ data class RecompensaReclamada(
     val agotada: Boolean,
     val idRango: Int? = null,
     val probabilidades: List<ProbabilidadRango> = emptyList(),
+    val idEspecie: String? = null,
 )
 
 /**
@@ -149,7 +150,7 @@ class ReclamarRecompensa(
             huella = "instancia=${c.idInstancia}",
             codificar = {
                 "${it.tipo}|${it.cantidad}|${it.nombreItem.orEmpty()}|${it.nombreEspecie.orEmpty()}|${if (it.agotada) 1 else 0}|" +
-                    "${it.idRango ?: ""}|${it.probabilidades.joinToString(",") { p -> "${p.idRango}:${p.porcentaje}" }}"
+                    "${it.idRango ?: ""}|${it.probabilidades.joinToString(",") { p -> "${p.idRango}:${p.porcentaje}" }}|${it.idEspecie.orEmpty()}"
             },
             decodificar = {
                 val p = it.split("|")
@@ -160,6 +161,7 @@ class ReclamarRecompensa(
                         val (rango, porcentaje) = s.split(":")
                         ProbabilidadRango(rango.toInt(), porcentaje.toInt())
                     },
+                    p.getOrNull(7)?.ifEmpty { null },
                 )
             },
             idEntidad = { c.idInstancia },
@@ -239,6 +241,7 @@ class ReclamarRecompensa(
                 agotada = agotada,
                 idRango = especie?.let { sorteo?.rangoDe(it) },
                 probabilidades = tabla,
+                idEspecie = especie,
             ),
         )
     }

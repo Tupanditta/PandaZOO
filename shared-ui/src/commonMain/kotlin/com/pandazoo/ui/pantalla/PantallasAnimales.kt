@@ -87,16 +87,17 @@ fun PantallaTiendaAnimales(alVolver: () -> Unit, alElegir: (Ref) -> Unit) {
             FichaSaldo(saldo)
             if (ofertas.none { it.seleccionable }) AvisoUi("No hay animales que puedas comprar ahora.", TipoAviso.ADVERTENCIA)
             ofertas.forEach { o ->
-                val tono = tonoRango(o.rango)
+                val tono = tonoRango(o.rango, o.diamante)
                 Ficha(
                     Modifier.clickable(enabled = o.seleccionable) { alElegir(o.ref) },
                     filete = tono.filete,
                     fondo = tono.contenedor,
                     atenuada = !o.seleccionable,
                     rango = o.rango,
+                    diamante = o.diamante,
                 ) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        NombreRango(o.nombre, o.rango, modifier = Modifier.weight(1f))
+                        NombreRango(o.nombre, o.rango, modifier = Modifier.weight(1f), diamante = o.diamante)
                         Text(if (o.exclusiva) "—" else o.coste, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 12.dp))
                     }
                     if (o.detalle.isNotEmpty()) Text(o.detalle, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -119,12 +120,14 @@ fun PantallaComprarAnimal(especie: Ref, espacioFijo: Ref? = null, alVolver: () -
     val habitatElegido by vm.habitatElegido.collectAsState()
     val espacioElegido by vm.espacioElegido.collectAsState()
     val companeros by vm.companeros.collectAsState()
+    val parejas by vm.parejas.collectAsState()
     val mensaje by vm.mensaje.collectAsState()
     val comprado by vm.comprado.collectAsState()
     var nombre by rememberSaveable { mutableStateOf("") }
     var habilidades by remember { mutableStateOf(emptySet<String>()) }
     var rasgos by remember { mutableStateOf(emptySet<String>()) }
     var amigo by remember(espacioElegido) { mutableStateOf<Ref?>(null) }
+    var pareja by remember(espacioElegido) { mutableStateOf<Ref?>(null) }
     LaunchedEffect(comprado) { if (comprado) alVolver() }
 
     fun alternar(set: Set<String>, v: String) = if (v in set) set - v else set + v
@@ -133,8 +136,8 @@ fun PantallaComprarAnimal(especie: Ref, espacioFijo: Ref? = null, alVolver: () -
         Column(Modifier.padding(pad).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             FichaSaldo(saldo)
             oferta?.let { o ->
-                val tono = tonoRango(o.rango)
-                Ficha(filete = tono.filete, fondo = tono.contenedor, rango = o.rango) {
+                val tono = tonoRango(o.rango, o.diamante)
+                Ficha(filete = tono.filete, fondo = tono.contenedor, rango = o.rango, diamante = o.diamante) {
                     Fila("Especie", o.nombre)
                     Fila("Rango", o.rango)
                     Fila("Coste", o.coste)
@@ -176,14 +179,13 @@ fun PantallaComprarAnimal(especie: Ref, espacioFijo: Ref? = null, alVolver: () -
                 Etiquetas(vm.habilidades, habilidades, ReglasAnimal.HABILIDADES_POR_FICHA) { habilidades = alternar(habilidades, it) }
                 Text("Rasgos de personalidad (elige 2)", style = MaterialTheme.typography.labelLarge)
                 Etiquetas(vm.rasgos, rasgos, ReglasAnimal.RASGOS_POR_FICHA) { rasgos = alternar(rasgos, it) }
-                Elegir("Mejor amigo", "Sin mejor amigo", companeros, amigo) { amigo = it }
-                Text(
-                    "La pareja se podrá asignar más adelante, cuando el animal alcance el nivel ${ReglasNivel.NIVEL_MINIMO_PAREJA}.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                // La pareja es familiar, así que no puede ser a la vez el mejor amigo.
+                val amigosPosibles = companeros.filter { it.ref != pareja }
+                if (amigosPosibles.isNotEmpty()) Elegir("Mejor amigo", "Sin mejor amigo", amigosPosibles, amigo) { amigo = it }
+                if (parejas.isNotEmpty()) Elegir("Pareja", "Sin pareja", parejas.filter { it.ref != amigo }, pareja) { pareja = it }
                 BotonPrincipal(
                     "Confirmar compra",
-                    { vm.comprar(nombre, habilidades, rasgos, amigo) },
+                    { vm.comprar(nombre, habilidades, rasgos, amigo, pareja) },
                     enabled = oferta?.seleccionable == true && nombre.isNotBlank() &&
                         habilidades.size == ReglasAnimal.HABILIDADES_POR_FICHA && rasgos.size == ReglasAnimal.RASGOS_POR_FICHA,
                 )
@@ -222,10 +224,10 @@ fun PantallaAnimales(espacio: Ref, alVolver: () -> Unit, alAnimal: (Ref) -> Unit
                 BotonPrincipal("Alimentar a todos", vm::pedirAlimentarGrupo, enabled = hayHambre)
             }
             animales.forEach { a ->
-                val tono = tonoRango(a.rango)
-                Ficha(Modifier.clickable { alAnimal(a.ref) }, filete = tono.filete, fondo = tono.contenedor, rango = a.rango) {
+                val tono = tonoRango(a.rango, a.diamante)
+                Ficha(Modifier.clickable { alAnimal(a.ref) }, filete = tono.filete, fondo = tono.contenedor, rango = a.rango, diamante = a.diamante) {
                     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        NombreRango(a.nombre, a.rango)
+                        NombreRango(a.nombre, a.rango, diamante = a.diamante)
                         Text(
                             a.especie,
                             style = MaterialTheme.typography.labelMedium,
@@ -276,6 +278,8 @@ fun PantallaFichaAnimal(animal: Ref, alVolver: () -> Unit, alEditar: () -> Unit,
     val estadisticas by vm.estadisticas.collectAsState()
     val alimentando by vm.confirmandoAlimentar.collectAsState()
     val tratando by vm.confirmandoTratar.collectAsState()
+    val divorciando by vm.confirmandoDivorcio.collectAsState()
+    val animo by vm.animoTrasDivorcio.collectAsState()
     LaunchedEffect(terminado) { if (terminado) alVolver() }
     Marco(ficha?.nombre ?: "Ficha del animal", alVolver) { pad ->
         Column(Modifier.padding(pad).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -283,9 +287,9 @@ fun PantallaFichaAnimal(animal: Ref, alVolver: () -> Unit, alEditar: () -> Unit,
             if (f == null) {
                 Text("El animal ya no está en el zoo.", color = MaterialTheme.colorScheme.onBackground)
             } else {
-                val tono = tonoRango(f.rango)
-                Ficha(filete = tono.filete, fondo = tono.contenedor, rango = f.rango) {
-                    NombreRango("${f.nombre} · Nivel ${f.nivel}", f.rango, MaterialTheme.typography.headlineSmall)
+                val tono = tonoRango(f.rango, f.diamante)
+                Ficha(filete = tono.filete, fondo = tono.contenedor, rango = f.rango, diamante = f.diamante) {
+                    NombreRango("${f.nombre} · Nivel ${f.nivel}", f.rango, MaterialTheme.typography.headlineSmall, diamante = f.diamante)
                     f.lineas.forEach { Fila(it.etiqueta, it.valor) }
                 }
                 // [simplificar-2] Sin habilidades ni rasgos no se muestra la tarjeta ni sus títulos.
@@ -310,6 +314,7 @@ fun PantallaFichaAnimal(animal: Ref, alVolver: () -> Unit, alEditar: () -> Unit,
                     }
                     BotonPrincipal("Alimentar", vm::pedirAlimentar, enabled = f.alimentacion < ReglasCuidado.ALIMENTACION_MAXIMA)
                     if (f.enfermo) BotonPrincipal("Aplicar tratamiento", vm::pedirTratamiento)
+                    if (f.idPareja != null) BotonPrincipal("Divorcio", vm::pedirDivorcio)
                     BotonPrincipal("Editar ficha", alEditar)
                     BotonPrincipal("Trasladar", alReubicar)
                     val puedeVender = !f.enfermo && f.alimentacion > 0
@@ -327,6 +332,10 @@ fun PantallaFichaAnimal(animal: Ref, alVolver: () -> Unit, alEditar: () -> Unit,
     tratando?.let {
         VentanaFlotante(it, alConfirmar = vm::tratar, alCancelar = vm::cancelarTratamiento)
     }
+    if (divorciando) {
+        VentanaDivorcio(ficha?.nombre ?: "", ficha?.nombrePareja ?: "", alAceptar = vm::aceptarDivorcio, alCancelar = vm::cancelarDivorcio)
+    }
+    if (animo) VentanaAnimo(vm::cerrarAnimo)
     if (confirmando) {
         ficha?.let { VentanaFlotante(it.ventanaVenta, alConfirmar = vm::vender, alCancelar = vm::cancelarVenta) }
     }
@@ -382,7 +391,18 @@ private fun FormularioFicha(vm: EditarFichaViewModel, f: FichaAnimalUi, candidat
     Etiquetas(vm.habilidades, habilidades, ReglasAnimal.HABILIDADES_POR_FICHA) { habilidades = alternar(habilidades, it) }
     Text("Rasgos de personalidad (elige 2)", style = MaterialTheme.typography.labelLarge)
     Etiquetas(vm.rasgos, rasgos, ReglasAnimal.RASGOS_POR_FICHA) { rasgos = alternar(rasgos, it) }
-    Elegir("Pareja", "Sin pareja", parejas, pareja) { pareja = it }
+    // Dos mejores amigos pueden pasar a ser pareja: la amistad termina al elegirlo.
+    if (f.idPareja != null) {
+        // Con pareja solo se muestra quién es: para dejarla hay que divorciarse desde la ficha del animal.
+        Text("Pareja", style = MaterialTheme.typography.labelLarge)
+        Text(f.nombrePareja ?: "")
+        Text("Para dejar a la pareja usa el botón de divorcio de la ficha del animal.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } else {
+        Elegir("Pareja", "Sin pareja", parejas, pareja) {
+            pareja = it
+            if (it != null && it == amigo) amigo = null
+        }
+    }
     Elegir("Mejor amigo", "Sin mejor amigo", amigos, amigo) { amigo = it }
     BotonPrincipal(
         "Guardar",

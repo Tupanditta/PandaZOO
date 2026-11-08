@@ -12,9 +12,17 @@ object ReglasReproduccion {
     fun cumpleUmbral(satisfaccionA: Double, satisfaccionB: Double, umbral: Double): Boolean =
         satisfaccionA >= umbral && satisfaccionB >= umbral
 
-    /** `max(0, p_inicial − penalización × hijos vivos comunes)`. */
-    fun probabilidad(base: Double, penalizacionPorHijo: Double, hijosVivos: Int): Double =
-        maxOf(0.0, base - penalizacionPorHijo * hijosVivos)
+    /** Número máximo de hijos vivos comunes de una pareja: con 5 el factor es 0. */
+    const val TOPE_HIJOS = 5
+
+    /**
+     * `p_inicial × factor(hijos vivos comunes)`. `factores[n]` es el factor con `n` hijos vivos; con más hijos que entradas
+     * se usa el último (0 en la configuración vigente, que fija el tope en [TOPE_HIJOS]).
+     */
+    fun probabilidad(base: Double, factores: List<Double>, hijosVivos: Int): Double {
+        if (factores.isEmpty()) return base
+        return base * factores[hijosVivos.coerceIn(0, factores.size - 1)]
+    }
 
     /** Se concibe si `aleatorio < probabilidad`: con `0` nunca y con `1` siempre. */
     fun concibe(aleatorio: Double, probabilidad: Double): Boolean = aleatorio < probabilidad

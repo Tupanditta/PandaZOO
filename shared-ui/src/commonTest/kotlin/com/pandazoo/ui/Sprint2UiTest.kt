@@ -85,8 +85,8 @@ class Sprint2UiTest {
             datos(c)
             onNodeWithContentDescription("Abrir monitor de satisfacción").performClick()
 
-            // (0.71 + 0.063) / 2 = 0.3865, que se muestra como 39 %.
-            esperar("39%")
+            // (0.65 + 0.045) / 2 = 0.3475, que se muestra como 35 %.
+            esperar("35%")
             esperar("▸ Campos de Esmeril")
             esperar("Bosque templado")
             esperar("Sin animales")
@@ -96,9 +96,9 @@ class Sprint2UiTest {
             esperar("▸ Sabana")
             onNodeWithText("▸ Sabana").performClick()
             esperar("Simba (León)")
-            esperar("71%")
+            esperar("65%")
             esperar("Nala (León)")
-            esperar("6%")
+            esperar("5%")
             sinIdentificadoresTecnicos(c)
         }
 
@@ -117,7 +117,7 @@ class Sprint2UiTest {
             datos(c)
             val invocaciones = c.recalcularSatisfaccion.invocaciones
             onNodeWithContentDescription("Abrir monitor de satisfacción").performClick()
-            esperar("39%")
+            esperar("35%")
             onNodeWithContentDescription("Volver").performClick()
             esperar("Campos de Esmeril")
             c.recalcularSatisfaccion.invocaciones shouldBe invocaciones

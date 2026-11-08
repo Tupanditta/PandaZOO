@@ -119,7 +119,7 @@ class ValidadorConfiguracionTest {
     fun `TN_1 la configuracion 1_1 declara los valores de nivel esperados`() {
         base.reglas.nivel.nivelInicial shouldBe 1
         base.reglas.nivel.ciclosPorNivel shouldBe 72
-        base.reglas.nivel.nivelMinimoPareja shouldBe 4
+        base.reglas.nivel.nivelMinimoPareja shouldBe 1
         base.reglas.venta.factorNivel1 shouldBe 0.05
         base.reglas.venta.fraccionEquilibrio shouldBe 0.6667
         base.tablas.rangos.map { it.nivelMaximo } shouldBe listOf(15, 29, 41, 51, 61)

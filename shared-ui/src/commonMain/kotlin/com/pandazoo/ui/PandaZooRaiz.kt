@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,4 +71,7 @@ fun PandaZooRaiz(
 internal fun VentanasBienvenida(c: AppContainer) {
     var pendientes by remember(c) { mutableStateOf(c.regaloBienvenida?.let(Textos::bienvenida).orEmpty()) }
     pendientes.firstOrNull()?.let { VentanaPremio(it) { pendientes = pendientes.drop(1) } }
+    // Los regalos semanales esperan a que se cierre el de bienvenida y se muestran de uno en uno.
+    val semanales by c.regalosSemanales.collectAsState()
+    if (pendientes.isEmpty()) semanales.firstOrNull()?.let { VentanaPremio(Textos.regaloSemanal(it)) { c.descartarRegaloSemanal() } }
 }

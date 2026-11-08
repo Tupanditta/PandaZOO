@@ -258,20 +258,20 @@ class Sprint5Test {
     @Test
     fun `T5_7 el beneficio sigue la formula y se calcula tras las defunciones`() {
         val sp = espacio()
-        val a = animal(sp, "erizo", "A") // rango 1: base 6,00
+        val a = animal(sp, "erizo", "A") // rango 1: base 2,40
         val b = animal(sp, "erizo", "B")
-        val rey = animal(sp, "leon", "Rey") // rango 3: base 20,00
+        val rey = animal(sp, "leon", "Rey") // rango 3: base 8,00
         listOf(a, b, rey).forEach { fijarSatisfaccion(it, 0.5) }
-        // Por animal, nivel 1: 6 · 0,5 + 6 · 0,5 + 20 · 0,5 = 16,00
-        exito(ciclo()).beneficio shouldBe d("16.00")
-        pendientes() shouldBe d("16.00")
+        // Por animal, nivel 1: 2,4 · 0,5 + 2,4 · 0,5 + 8 · 0,5 = 6,40
+        exito(ciclo()).beneficio shouldBe d("6.40")
+        pendientes() shouldBe d("6.40")
         e.contar("BeneficioPendiente") shouldBe 1
 
-        // Uno de los erizos muere en el ciclo 2 (tercer ciclo crítico): no cuenta (3 + 10 = 13,00).
+        // Uno de los erizos muere en el ciclo 2 (tercer ciclo crítico): no cuenta (1,2 + 4 = 5,20).
         e.bd.escribir("UPDATE Animal SET nivel_alimentacion = 0, ciclos_desnutricion = 2 WHERE id_animal = ?", b)
         listOf(a, b, rey).forEach { fijarSatisfaccion(it, 0.5) } // el recálculo del ciclo 1 cambió la satisfacción
-        exito(ciclo()).beneficio shouldBe d("13.00")
-        pendientes() shouldBe d("29.00")
+        exito(ciclo()).beneficio shouldBe d("5.20")
+        pendientes() shouldBe d("11.60")
     }
 
     @Test
@@ -286,12 +286,12 @@ class Sprint5Test {
     fun `T5_7 satisfaccion fraccionaria redondea al centimo con los medios hacia arriba`() {
         val sp = espacio()
         val a = animal(sp)
-        fijarSatisfaccion(a, 0.0025) // 6,00 · 0,0025 = 0,015 → 0,02 (medio hacia arriba)
+        fijarSatisfaccion(a, 0.00625) // 2,40 · 0,00625 = 0,015 → 0,02 (medio hacia arriba)
         exito(ciclo()).beneficio shouldBe d("0.02")
         val b = animal(sp, nombre = "B")
         fijarSatisfaccion(a, 0.3333)
-        fijarSatisfaccion(b, 0.3333) // 6 · 0,3333 + 6 · 0,3333 = 3,9996 → 4,00
-        exito(ciclo()).beneficio shouldBe d("4.00")
+        fijarSatisfaccion(b, 0.3333) // 2,4 · 0,3333 + 2,4 · 0,3333 = 1,59984 → 1,60
+        exito(ciclo()).beneficio shouldBe d("1.60")
     }
 
     // ---- T5.8 mutaciones entre ciclos ----
@@ -321,19 +321,19 @@ class Sprint5Test {
         val a = animal(sp)
         fijarSatisfaccion(a, 1.0)
         repeat(3) { fijarSatisfaccion(a, 1.0); exito(ciclo()) }
-        pendientes() shouldBe d("18.00")
+        pendientes() shouldBe d("7.20")
         val antes = e.fondos()
 
-        val r = exito(e.reclamarBeneficios.ejecutar(ComandoReclamarBeneficios(e.idPartida, d("18.00"), nueva())))
-        r.importe shouldBe d("18.00")
-        r.saldo shouldBe antes + d("18.00")
-        e.fondos() shouldBe antes + d("18.00")
+        val r = exito(e.reclamarBeneficios.ejecutar(ComandoReclamarBeneficios(e.idPartida, d("7.20"), nueva())))
+        r.importe shouldBe d("7.20")
+        r.saldo shouldBe antes + d("7.20")
+        e.fondos() shouldBe antes + d("7.20")
         pendientes() shouldBe Dinero.CERO
         e.contar("BeneficioPendiente", "estado = 'RECLAMADO' AND fecha_reclamacion IS NOT NULL") shouldBe 3
-        e.contar("MovimientoEconomico", "tipo = 'INGRESO' AND importe = 18.0") shouldBe 1
+        e.contar("MovimientoEconomico", "tipo = 'INGRESO' AND importe = 7.2") shouldBe 1
 
         rechazo(e.reclamarBeneficios.ejecutar(ComandoReclamarBeneficios(e.idPartida, null, nueva()))) shouldBe MotivoRechazo.SinBeneficios
-        e.fondos() shouldBe antes + d("18.00")
+        e.fondos() shouldBe antes + d("7.20")
         e.contar("MovimientoEconomico", "tipo = 'INGRESO'") shouldBe 1
     }
 
@@ -345,14 +345,14 @@ class Sprint5Test {
         exito(ciclo())
         val antes = e.fondos()
         rechazo(e.reclamarBeneficios.ejecutar(ComandoReclamarBeneficios(e.idPartida, d("3.00"), nueva()))) shouldBe
-            MotivoRechazo.BeneficiosCambiados(d("6.00"))
+            MotivoRechazo.BeneficiosCambiados(d("2.40"))
         e.fondos() shouldBe antes
 
-        val mismo = ComandoReclamarBeneficios(e.idPartida, d("6.00"), "reclamo-1")
+        val mismo = ComandoReclamarBeneficios(e.idPartida, d("2.40"), "reclamo-1")
         exito(e.reclamarBeneficios.ejecutar(mismo))
         val repetido = e.reclamarBeneficios.ejecutar(mismo) as Resultado.Exito
         repetido.repetido shouldBe true
-        e.fondos() shouldBe antes + d("6.00")
+        e.fondos() shouldBe antes + d("2.40")
     }
 
     // ---- T5.10 idempotencia del ciclo ----

@@ -37,11 +37,16 @@ class Sprint7Test {
 
     private fun <T> exito(r: Resultado<T>): T = (r as Resultado.Exito<T>).valor
 
-    private fun fijarRango(umbral: Double, probabilidad: Double, penalizacion: Double) =
+    /** Una penalización lineal `p` equivale a los factores `max(0, (base − p·n) / base)`; el último (tope de cinco hijos) es 0. */
+    private fun fijarRango(umbral: Double, probabilidad: Double, penalizacion: Double) {
+        val factores = (0..5).map { n ->
+            if (n == 5) 0.0 else if (probabilidad == 0.0) 1.0 else maxOf(0.0, (probabilidad - penalizacion * n) / probabilidad)
+        }
         e.bd.escribir(
-            "UPDATE RangoEspecie SET umbral_reproduccion = ?, probabilidad_reproduccion = ?, penalizacion_hijo_reproduccion = ? WHERE id_rango = 1",
-            umbral, probabilidad, penalizacion,
+            "UPDATE RangoEspecie SET umbral_reproduccion = ?, probabilidad_reproduccion = ?, factores_hijos = ? WHERE id_rango = 1",
+            umbral, probabilidad, factores.joinToString(";"),
         )
+    }
 
     private fun reiniciar(valorAzar: Double) {
         e.cerrar()
@@ -173,6 +178,27 @@ class Sprint7Test {
         repeat(3) { animal(sp, "Hijo ${it + 1}", padre = a, madre = b) }
         exito(ciclo())
         concepciones() shouldBe 0
+    }
+
+    @Test
+    fun `T7_2 la configuracion vigente reduce la probabilidad con cada hijo vivo y prohibe el sexto`() {
+        reiniciar(0.0)
+        // Rango 1 con la tabla real de factores (solo se fija el umbral): p = 0,03 × factor(hijos vivos).
+        val rango = e.cfg.tablas.rangos.first { it.id == 1 }
+        rango.factoresHijos shouldBe listOf(1.0, 0.125, 0.0625, 0.04, 0.01, 0.0)
+        e.bd.escribir(
+            "UPDATE RangoEspecie SET umbral_reproduccion = 0.5, probabilidad_reproduccion = ?, factores_hijos = ? WHERE id_rango = 1",
+            rango.probabilidadReproduccion, rango.factoresHijos.joinToString(";"),
+        )
+        val (sp, a, b) = pareja(capacidad = 15)
+        // Con 4 hijos vivos (nace el quinto) todavía puede concebir; con 5, nunca, ni con el aleatorio más favorable.
+        repeat(4) { animal(sp, "Hijo ${it + 1}", padre = a, madre = b) }
+        exito(ciclo())
+        concepciones() shouldBe 1
+        e.bd.escribir("UPDATE ReproduccionCiclo SET estado = 'EXPIRADA'")
+        animal(sp, "Hijo 5", padre = a, madre = b)
+        exito(ciclo())
+        concepciones() shouldBe 1
     }
 
     // ---- T7.3 / T7.4 ----
@@ -316,9 +342,10 @@ class Sprint7Test {
     fun `T7_8 la cria hereda la especie nace en el nivel 1 sana alimentada y con sus progenitores`() {
         val (sp, a, b) = pareja()
         val hermano = animal(sp, "Hermano", padre = a, madre = b)
+        val vecino = animal(sp, "Vecino") // sin parentesco: puede ser el mejor amigo de la cría
         exito(ciclo())
         val aviso = idAviso()
-        val cria = exito(aceptar(aviso, ficha("Brote", amigo = hermano)))
+        val cria = exito(aceptar(aviso, ficha("Brote", amigo = vecino)))
         cria.idEspacio shouldBe sp
 
         val (padre, madre) = if (a < b) a to b else b to a
@@ -335,7 +362,7 @@ class Sprint7Test {
         fila[6] shouldBe padre
         fila[7] shouldBe madre
         fila[8] shouldBe sp
-        fila[9] shouldBe hermano
+        fila[9] shouldBe vecino
         fila[10] shouldBe null
         (fila[11]!!.toDouble() > 0.0) shouldBe true
         e.contar("HabilidadSocial", "id_animal = '${cria.idAnimal}'") shouldBe 2

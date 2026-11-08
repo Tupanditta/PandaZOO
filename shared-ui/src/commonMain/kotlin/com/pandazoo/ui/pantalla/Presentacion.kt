@@ -166,6 +166,8 @@ data class PremioUi(
     /** Rango del animal (Común, Poco común, Raro, Exclusivo); `null` si el premio no es un animal. */
     val rango: String? = null,
     val titulo: String = "Has conseguido",
+    /** Especie con toques de diamante (el panda): sigue siendo exclusiva. */
+    val diamante: Boolean = false,
     /**
      * Probabilidad de cada rango del sorteo (nombre del rango y porcentaje). Si no está vacía, la ventana muestra primero las
      * probabilidades con el botón «¡SUERTE!» y solo después el animal.
@@ -185,6 +187,7 @@ data class OfertaAnimalUi(
     val seleccionable: Boolean,
     /** Solo se obtiene con misiones: no muestra precio. */
     val exclusiva: Boolean,
+    val diamante: Boolean = false,
 )
 
 /** `nombre` incluye el sufijo de desambiguación (edad u orden); la especie se muestra aparte, más pequeña y en cursiva. */
@@ -196,6 +199,7 @@ data class AnimalItemUi(
     val detalle: String,
     /** Vivo y por debajo del 100 % de alimentación: entra en la acción grupal (CU-13). */
     val necesitaAlimento: Boolean = false,
+    val diamante: Boolean = false,
 )
 
 data class CandidatoUi(val ref: Ref, val etiqueta: String)
@@ -223,9 +227,15 @@ data class FichaAnimalUi(
     /** Importe que se acreditaría al vender ahora; se envía al confirmar para detectar un cambio de nivel (CU-06, 4.a). */
     val importeVenta: Dinero,
     val ventanaVenta: VentanaUi,
+    val diamante: Boolean = false,
 )
 
 object Textos {
+    /** La especie que luce toques de diamante además de ser exclusiva. */
+    const val ESPECIE_DIAMANTE = "panda"
+
+    fun esDiamante(idEspecie: String?) = idEspecie == ESPECIE_DIAMANTE
+
     /** Los hábitats se muestran sin la palabra «Hábitat» (p. ej. «Bosque templado»). */
     fun nombreHabitat(nombre: String) = nombre.removePrefix("Hábitat ").trim()
 
@@ -392,9 +402,12 @@ object Textos {
             MotivoRechazo.ParejaOtraEspecie -> "La pareja debe ser de la misma especie."
             MotivoRechazo.ParejaOtroEspacio -> "La pareja debe estar en el mismo espacio."
             MotivoRechazo.ParejaNivelInsuficiente ->
-                "Para ser pareja, los dos animales deben tener al menos el nivel ${ReglasNivel.NIVEL_MINIMO_PAREJA}."
+                "Para ser pareja, los dos animales deben ser de la misma especie y estar en el mismo espacio."
             MotivoRechazo.ParejaOcupada -> "Alguno de los dos ya tiene otra pareja. Quítala antes de elegir una nueva."
             MotivoRechazo.AmigoInvalido -> "El mejor amigo debe ser otro animal del mismo espacio."
+            MotivoRechazo.DivorcioRequerido -> "Para quitar o cambiar la pareja hay que divorciarse desde la ficha del animal."
+            MotivoRechazo.SinPareja -> "El animal no tiene pareja."
+            MotivoRechazo.AmigoFamiliar -> "Un familiar (pareja, padres, hijos o hermanos) no puede ser mejor amigo."
             MotivoRechazo.AmigoOcupado -> "Ambos animales deben estar libres: quita antes el mejor amigo actual."
             MotivoRechazo.AutoReferencia -> "Un animal no puede ser su propia pareja ni su propio mejor amigo."
             MotivoRechazo.AnimalInexistente -> "El animal ya no existe."
@@ -414,6 +427,8 @@ object Textos {
                 "Los animales del espacio han cambiado. El nuevo total es de ${m.requerido} kg de bambú; revísalo y confirma de nuevo."
             is MotivoRechazo.BambuInsuficiente ->
                 "Bambú insuficiente: se necesitan ${m.requerido} kg, hay ${m.disponible} kg y faltan ${m.faltante} kg."
+            MotivoRechazo.RegaloYaConcedido -> "Ese regalo ya se recibió."
+            MotivoRechazo.RegaloNoDisponible -> "No hay ningún animal disponible para este regalo."
             MotivoRechazo.AnimalSano -> "El animal no está enfermo, no necesita tratamiento."
             MotivoRechazo.ConsumoMedicoNoConfigurado ->
                 "No hay un consumo de medicinas configurado para este rango; no se puede tratar."
@@ -475,9 +490,18 @@ object Textos {
             val rango = nombreRango(it.idRango)
             PremioUi(
                 Iconos.Pata, it.nombre, exclusivo = rango == "Exclusivo", rango = rango, titulo = titulo,
-                probabilidades = sorteoVisible(it.probabilidades),
+                probabilidades = sorteoVisible(it.probabilidades), diamante = esDiamante(it.idEspecie),
             )
         }
+    }
+
+    /** Ventana del regalo semanal: el animal sorteado, con la tabla de probabilidades de su rango. */
+    fun regaloSemanal(r: com.pandazoo.application.caso.RegaloSemanalConcedido): PremioUi {
+        val rango = nombreRango(r.idRango)
+        return PremioUi(
+            Iconos.Pata, r.nombreEspecie, exclusivo = rango == "Exclusivo", rango = rango, titulo = r.nombreRegalo,
+            probabilidades = sorteoVisible(r.probabilidades), diamante = esDiamante(r.idEspecie),
+        )
     }
 
     /** Solo hay ventana de suerte si el rango depende de probabilidades; con un único rango posible el animal se entrega directo. */
@@ -500,7 +524,7 @@ object Textos {
             val rango = r.idRango?.let(::nombreRango)
             PremioUi(
                 Iconos.Pata, r.nombreEspecie ?: "Animal aleatorio", exclusivo = rango == "Exclusivo", rango = rango,
-                probabilidades = sorteoVisible(r.probabilidades),
+                probabilidades = sorteoVisible(r.probabilidades), diamante = esDiamante(r.idEspecie),
             )
         }
     }
@@ -520,7 +544,7 @@ object Textos {
             return OfertaAnimalUi(
                 ref = Ref(e.id), nombre = e.nombre, rango = e.rango, coste = "Gratis",
                 estado = "Gratis · concedido por misión", detalle = "Gratis · concedido por misión",
-                seleccionable = true, exclusiva = false,
+                seleccionable = true, exclusiva = false, diamante = esDiamante(e.id),
             )
         }
         val estado = when (e.estado) {
@@ -543,6 +567,7 @@ object Textos {
             detalle = detalle,
             seleccionable = o.asequible,
             exclusiva = e.estado == EstadoTienda.EXCLUSIVA,
+            diamante = esDiamante(e.id),
         )
     }
 
@@ -583,6 +608,7 @@ object Textos {
                     "Satisfacción ${porcentaje(a.satisfaccion)}",
                 ).joinToString(" · "),
                 necesitaAlimento = a.vivo && a.alimentacion < ReglasCuidado.ALIMENTACION_MAXIMA,
+                diamante = esDiamante(a.idEspecie),
             )
         }
     }
@@ -655,6 +681,7 @@ object Textos {
             rango = f.rango,
             nivel = f.nivel,
             importeVenta = importe,
+            diamante = esDiamante(f.idEspecie),
             ventanaVenta = VentanaUi(
                 icono = Iconos.Saldo,
                 titulo = "Vender a ${f.nombre}",
