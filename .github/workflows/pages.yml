@@ -26,7 +26,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Aceptar licencias del SDK de Android
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-      - run: ./gradlew :webApp:jsBrowserDistribution
+      - run: ./gradlew -Dorg.gradle.java.home="$JAVA_HOME" :webApp:jsBrowserDistribution
       - name: Quitar mapas de depuración (no sirven al usuario)
         run: find webApp/build/dist/js/productionExecutable -name "*.map" -delete
       - uses: actions/upload-pages-artifact@v3
