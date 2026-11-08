@@ -45,6 +45,7 @@ import com.pandazoo.domain.animal.catalogoFicha
 import com.pandazoo.application.caso.AdquirirInsumos
 import com.pandazoo.application.caso.ConfigurarEspacio
 import com.pandazoo.application.caso.ConsultarInventarioFinanzas
+import com.pandazoo.application.caso.ConsultarEstadisticasAnimal
 import com.pandazoo.application.caso.ConsultarMonitorSatisfaccion
 import com.pandazoo.application.caso.RecalcularSatisfaccion
 import com.pandazoo.application.caso.RecalcularPrestigio
@@ -115,6 +116,7 @@ class Entorno(val cfg: ConfiguracionJuego = configuracionBase, valorAzar: Double
     val ampliarEspacio = AmpliarEspacio(ejecutor, economia, zoo, catalogo, reloj)
     val consultarTiendaAnimales = ConsultarTiendaAnimales(animales, economia, misionesRepo)
     val consultarAnimales = ConsultarAnimales(animales, zoo)
+    val consultarEstadisticas = ConsultarEstadisticasAnimal(SatisfaccionSql(bd), animales, regla)
 
     // Sprint 4: cuidado animal.
     val cuidado = CuidadoSql(bd)

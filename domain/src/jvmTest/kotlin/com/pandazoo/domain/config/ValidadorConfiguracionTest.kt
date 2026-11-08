@@ -183,4 +183,38 @@ class ValidadorConfiguracionTest {
         val copia = File("../shared-ui/src/commonMain/composeResources/files/valores_y_pesos.json").readText(Charsets.UTF_8)
         (original == copia).shouldBeTrue()
     }
+
+    @Test
+    fun `rechaza una tabla de sorteo de bienvenida que no suma 100 o usa rangos no sorteables`() {
+        fun con(b: BienvenidaCfg) = base.copy(partidaInicial = base.partidaInicial.copy(bienvenida = b))
+        errores(con(BienvenidaCfg(sorteos = listOf(listOf(ProbabilidadRango(2, 50), ProbabilidadRango(3, 40))))))
+            .algunoContiene("sorteo de rango bienvenida").shouldBeTrue()
+        errores(con(BienvenidaCfg(sorteos = listOf(listOf(ProbabilidadRango(1, 100)))))).algunoContiene("bienvenida").shouldBeTrue()
+        errores(con(BienvenidaCfg(sorteos = listOf(listOf(ProbabilidadRango(6, 100)))))).algunoContiene("bienvenida").shouldBeTrue()
+        errores(con(BienvenidaCfg(sorteos = listOf(listOf(ProbabilidadRango(2, 0), ProbabilidadRango(3, 100))))))
+            .algunoContiene("bienvenida").shouldBeTrue()
+        errores(con(BienvenidaCfg(comunes = -1))).algunoContiene("bienvenida inválida").shouldBeTrue()
+        errores(con(BienvenidaCfg(pocoComunes = -1))).algunoContiene("bienvenida inválida").shouldBeTrue()
+    }
+
+    @Test
+    fun `rechaza una tabla de sorteo de prestigio invalida`() {
+        fun con(s: SorteoPrestigioCfg) = base.copy(recompensasAnimales = base.recompensasAnimales.copy(sorteoPrestigio = s))
+        errores(con(SorteoPrestigioCfg(base = listOf(ProbabilidadRango(2, 90))))).algunoContiene("prestigio base").shouldBeTrue()
+        errores(con(SorteoPrestigioCfg(multiplo5 = listOf(ProbabilidadRango(5, 99))))).algunoContiene("múltiplo de 5").shouldBeTrue()
+        errores(con(SorteoPrestigioCfg(multiplo10 = listOf(ProbabilidadRango(1, 100))))).algunoContiene("múltiplo de 10").shouldBeTrue()
+    }
+
+    @Test
+    fun `rechaza un espacio gratuito con una capacidad que no existe`() {
+        val p = base.partidaInicial.copy(espacioGratuito = EspacioGratuitoCfg(capacidad = 4))
+        errores(base.copy(partidaInicial = p)).algunoContiene("espacio gratuito").shouldBeTrue()
+        val ok = base.partidaInicial.copy(espacioGratuito = EspacioGratuitoCfg(capacidad = 30))
+        errores(base.copy(partidaInicial = ok)).shouldBeEmpty()
+    }
+
+    @Test
+    fun `la configuracion exige las capacidades de espacio vigentes`() {
+        base.tablas.costesEspacios.map { it.capacidad } shouldBe listOf(6, 8, 10, 15, 20, 25, 30)
+    }
 }

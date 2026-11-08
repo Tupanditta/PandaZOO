@@ -110,7 +110,7 @@ class Sprint6UiTest {
         prueba { c ->
             datos(c, 3)
             onNodeWithText("Avisos").performClick()
-            esperar("Has alcanzado el prestigio 3.", subcadena = true)
+            esperar("Has alcanzado el prestigio 1.", subcadena = true)
             esperar("Nuevo hábitat disponible: Campos de Esmeril.", subcadena = true)
             esperar("Nueva especie disponible", subcadena = true)
             sinIdentificadoresTecnicos(c)

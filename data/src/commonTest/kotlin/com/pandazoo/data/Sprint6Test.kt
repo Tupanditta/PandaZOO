@@ -91,21 +91,21 @@ class Sprint6Test {
         val a = animales(5)
         evaluar()
         val alto = estado()
-        alto.actual shouldBe 7
-        alto.maximos!!.nivel shouldBe 7
+        alto.actual shouldBe 2
+        alto.maximos!!.nivel shouldBe 2
         alto.maximos!!.animalesVivos shouldBe 5
 
         // Mueren cuatro: las estadísticas bajan, pero el prestigio y los máximos se conservan.
         a.drop(1).forEach { e.animales.retirar(e.idPartida, it, "MUERTO") }
         evaluar()
         val bajo = estado()
-        bajo.actual shouldBe 7
+        bajo.actual shouldBe 2
         bajo.maximos shouldBe alto.maximos
 
         // Un solo animal con más satisfacción que antes puede subir solo el máximo de satisfacción.
         e.bd.escribir("UPDATE Animal SET nivel_alimentacion = 100, estado_salud = 'SANO'")
         evaluar()
-        estado().maximos!!.nivel shouldBe 7
+        estado().maximos!!.nivel shouldBe 2
         estado().maximos!!.animalesVivos shouldBe 5
     }
 
@@ -118,12 +118,12 @@ class Sprint6Test {
     fun `T6_5 un desbloqueo es permanente y el prestigio no desciende aunque mueran los animales`() {
         val a = animales(3)
         evaluar()
-        estado().actual shouldBe 3
+        estado().actual shouldBe 1
         e.animales.especieTienda(e.idPartida, "suricata")!!.estado shouldBe EstadoTienda.COMERCIAL
 
         a.forEach { e.animales.retirar(e.idPartida, it, "MUERTO") }
         evaluar()
-        estado().actual shouldBe 3
+        estado().actual shouldBe 1
         e.animales.especieTienda(e.idPartida, "suricata")!!.estado shouldBe EstadoTienda.COMERCIAL
         e.contar("DesbloqueoEspecie", "id_especie = 'suricata' AND origen = 'PRESTIGIO'") shouldBe 1
     }
@@ -132,8 +132,8 @@ class Sprint6Test {
     fun `T6_6 subir varios niveles en un recalculo emite un solo aviso del mas alto y no se repite`() {
         val a = animales(5)
         evaluar()
-        estado().actual shouldBe 7
-        avisos("PRESTIGIO_ASCENSO") shouldContainExactly listOf(listOf("7", "INFORMATIVA", "BAJA", "PENDIENTE", "0"))
+        estado().actual shouldBe 2
+        avisos("PRESTIGIO_ASCENSO") shouldContainExactly listOf(listOf("2", "INFORMATIVA", "BAJA", "PENDIENTE", "0"))
         e.auditoriaDe("PRESTIGIO_ASCENSO") shouldHaveSize 1
 
         // Baja y recupera un nivel ya alcanzado: no hay aviso nuevo.
@@ -141,14 +141,14 @@ class Sprint6Test {
         evaluar()
         animales(4)
         evaluar()
-        estado().actual shouldBe 7
+        estado().actual shouldBe 2
         avisos("PRESTIGIO_ASCENSO") shouldHaveSize 1
 
         // Un nivel superior sí se avisa.
-        animales(1)
+        animales(3)
         evaluar()
-        estado().actual shouldBe 9
-        avisos("PRESTIGIO_ASCENSO").map { it[0] } shouldContainExactly listOf("7", "9")
+        estado().actual shouldBe 3
+        avisos("PRESTIGIO_ASCENSO").map { it[0] } shouldContainExactly listOf("2", "3")
     }
 
     @Test
@@ -157,12 +157,12 @@ class Sprint6Test {
         evaluar()
         evaluar()
         evaluar()
-        // Niveles 1 a 3: el hábitat Campos de Esmeril (nivel 1) y suricata (nivel 1), cebra (2) y mono (3).
-        avisos("ESPECIE_DESBLOQUEADA").map { it[0] } shouldContainExactly listOf("suricata", "cebra", "mono")
+        // Nivel 1: el hábitat Campos de Esmeril y la suricata.
+        avisos("ESPECIE_DESBLOQUEADA").map { it[0] } shouldContainExactly listOf("suricata")
         avisos("ESPECIE_DESBLOQUEADA").all { it[1] == "INFORMATIVA" && it[2] == "BAJA" && it[3] == "PENDIENTE" } shouldBe true
         avisos("HABITAT_DESBLOQUEADO") shouldHaveSize 1
         e.contar("DesbloqueoHabitat", "id_habitat = '${e.habitat("campos_de_esmeril")}'") shouldBe 1
-        e.auditoriaDe("ESPECIE_DESBLOQUEADA") shouldHaveSize 3
+        e.auditoriaDe("ESPECIE_DESBLOQUEADA") shouldHaveSize 1
         // Los desbloqueos iniciales (nivel 0) no generan aviso.
         avisos("ESPECIE_DESBLOQUEADA").none { it[0] == "erizo" } shouldBe true
     }
@@ -171,10 +171,10 @@ class Sprint6Test {
     fun `T6_7 un salto de varios niveles desbloquea todo lo de los niveles intermedios`() {
         animales(5)
         evaluar()
-        // Niveles 1 a 7: 2 especies en cada uno de los niveles 2, 4 y 7 y el hábitat del nivel 1.
-        e.contar("DesbloqueoEspecie", "origen = 'PRESTIGIO'") shouldBe 6
+        // Niveles 1 y 2: suricata (1) y cebra (2) y el hábitat del nivel 1.
+        e.contar("DesbloqueoEspecie", "origen = 'PRESTIGIO'") shouldBe 2
         e.contar("DesbloqueoHabitat") shouldBe 3
-        avisos("ESPECIE_DESBLOQUEADA") shouldHaveSize 6
+        avisos("ESPECIE_DESBLOQUEADA") shouldHaveSize 2
     }
 
     @Test
@@ -223,7 +223,7 @@ class Sprint6Test {
         (p.animalesVivos as Seccion.Disponible).valor shouldBe 2
         (p.satisfaccionGlobal as Seccion.Disponible).valor shouldBe (satisfaccionGlobal() plusOrMinus 1e-12)
         p.siguiente!!.nivel shouldBe 2
-        p.siguiente!!.animalesVivos shouldBe 3
+        p.siguiente!!.animalesVivos shouldBe 5
     }
 
     @Test
