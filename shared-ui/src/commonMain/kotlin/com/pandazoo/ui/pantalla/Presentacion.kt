@@ -188,6 +188,8 @@ data class OfertaAnimalUi(
     /** Solo se obtiene con misiones: no muestra precio. */
     val exclusiva: Boolean,
     val diamante: Boolean = false,
+    /** Animales vivos de la especie alojados ahora en el zoo. */
+    val alojados: Int = 0,
 )
 
 /** `nombre` incluye el sufijo de desambiguación (edad u orden); la especie se muestra aparte, más pequeña y en cursiva. */
@@ -544,7 +546,7 @@ object Textos {
             return OfertaAnimalUi(
                 ref = Ref(e.id), nombre = e.nombre, rango = e.rango, coste = "Gratis",
                 estado = "Gratis · concedido por misión", detalle = "Gratis · concedido por misión",
-                seleccionable = true, exclusiva = false, diamante = esDiamante(e.id),
+                seleccionable = true, exclusiva = false, diamante = esDiamante(e.id), alojados = o.alojados,
             )
         }
         val estado = when (e.estado) {
@@ -568,6 +570,7 @@ object Textos {
             seleccionable = o.asequible,
             exclusiva = e.estado == EstadoTienda.EXCLUSIVA,
             diamante = esDiamante(e.id),
+            alojados = o.alojados,
         )
     }
 

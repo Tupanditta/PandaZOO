@@ -140,7 +140,7 @@ class AppContainer(
     val venderAnimal = VenderAnimal(ejecutor, economia, zoo, animales, reloj, recalcularSatisfaccion, seguimientoMisiones)
     val darDeBajaEspacio = DarDeBajaEspacio(ejecutor, zoo, economia, reloj)
     val ampliarEspacio = AmpliarEspacio(ejecutor, economia, zoo, catalogo, reloj)
-    val consultarTiendaAnimales = ConsultarTiendaAnimales(animales, economia, misionesRepo)
+    val consultarTiendaAnimales = ConsultarTiendaAnimales(animales, economia, misionesRepo, SatisfaccionSql(bd))
     val consultarAnimales = ConsultarAnimales(animales, zoo)
     val consultarEstadisticasAnimal = ConsultarEstadisticasAnimal(SatisfaccionSql(bd), animales, ReglaSatisfaccion(cfg))
 

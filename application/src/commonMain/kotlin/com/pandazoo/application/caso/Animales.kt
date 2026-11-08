@@ -14,6 +14,7 @@ import com.pandazoo.application.puerto.EstadoTienda
 import com.pandazoo.application.puerto.GeneradorId
 import com.pandazoo.application.puerto.NuevoAnimal
 import com.pandazoo.application.puerto.Reloj
+import com.pandazoo.application.puerto.SatisfaccionRepositorio
 import com.pandazoo.application.puerto.TipoMovimiento
 import com.pandazoo.application.puerto.UnidadesGratuitas
 import com.pandazoo.application.puerto.ZooRepositorio
@@ -517,21 +518,26 @@ class DarDeBajaEspacio(
 
 // ---------------------------------------------------------------------------------------------------- Consultas
 
-/** `gratuita`: una recompensa de misión concedió una unidad de coste cero de esta especie (RF-38). */
-data class OfertaAnimal(val especie: EspecieTienda, val asequible: Boolean, val gratuita: Boolean = false)
+/**
+ * `gratuita`: una recompensa de misión concedió una unidad de coste cero de esta especie (RF-38).
+ * `alojados`: animales vivos de la especie alojados ahora mismo en el zoo.
+ */
+data class OfertaAnimal(val especie: EspecieTienda, val asequible: Boolean, val gratuita: Boolean = false, val alojados: Int = 0)
 
 /** Tienda de animales (CU-01, paso 2): todas las especies con su estado; solo las comerciales desbloqueadas se compran. */
 class ConsultarTiendaAnimales(
     private val animales: AnimalRepositorio,
     private val economia: EconomiaRepositorio,
     private val unidades: UnidadesGratuitas? = null,
+    private val poblacion: SatisfaccionRepositorio? = null,
 ) {
     fun ejecutar(idPartida: IdPartida): List<OfertaAnimal> {
         val saldo = economia.fondos(idPartida)
         val gratuitas = unidades?.especiesConUnidad(idPartida).orEmpty()
+        val alojados = poblacion?.animalesVivosAlojados(idPartida).orEmpty().groupingBy { it.idEspecie }.eachCount()
         return animales.especiesTienda(idPartida).map {
             val gratis = it.id in gratuitas
-            OfertaAnimal(it, gratis || (it.estado == EstadoTienda.COMERCIAL && saldo >= it.coste), gratis)
+            OfertaAnimal(it, gratis || (it.estado == EstadoTienda.COMERCIAL && saldo >= it.coste), gratis, alojados[it.id] ?: 0)
         }
     }
 }

@@ -96,8 +96,17 @@ fun PantallaTiendaAnimales(alVolver: () -> Unit, alElegir: (Ref) -> Unit) {
                     rango = o.rango,
                     diamante = o.diamante,
                 ) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        NombreRango(o.nombre, o.rango, modifier = Modifier.weight(1f), diamante = o.diamante)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            NombreRango(o.nombre, o.rango, modifier = Modifier.weight(1f, fill = false), diamante = o.diamante)
+                            // Animales de la especie alojados ahora: misma tipografía que el nombre, algo menor y en cursiva.
+                            val estilo = MaterialTheme.typography.titleMedium
+                            Text(
+                                o.alojados.toString(),
+                                style = estilo.copy(fontSize = estilo.fontSize * 0.85f, fontStyle = FontStyle.Italic),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                         Text(if (o.exclusiva) "—" else o.coste, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 12.dp))
                     }
                     if (o.detalle.isNotEmpty()) Text(o.detalle, color = MaterialTheme.colorScheme.onSurfaceVariant)
