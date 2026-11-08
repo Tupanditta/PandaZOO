@@ -6,6 +6,7 @@ import com.pandazoo.application.error.Resultado
 import com.pandazoo.application.operacion.EjecutorOperacion
 import com.pandazoo.application.operacion.Operacion
 import com.pandazoo.application.puerto.AnimalRepositorio
+import com.pandazoo.application.puerto.AnimalResumen
 import com.pandazoo.application.puerto.CuidadoRepositorio
 import com.pandazoo.application.puerto.InventarioRepositorio
 import com.pandazoo.application.puerto.ZooRepositorio
@@ -58,7 +59,8 @@ class AlimentarAnimal(
         val espacio = animal.idEspacio
         if (!animal.vivo || espacio == null) return rechazo(MotivoRechazo.AnimalNoVivo)
         if (animal.alimentacion >= ReglasCuidado.ALIMENTACION_MAXIMA) return rechazo(MotivoRechazo.AlimentacionCompleta)
-        val kilos = cuidado.kilosPorIncremento(animal.idEspecie) ?: return rechazo(MotivoRechazo.RacionNoConfigurada)
+        val kilos = cuidado.kilosPorIncremento(animal.idEspecie)?.let { ReglasCuidado.kilosPorRacion(it, animal.nivel) }
+            ?: return rechazo(MotivoRechazo.RacionNoConfigurada)
         val disponible = inventario.cantidad(c.idPartida, BAMBU) ?: 0
         if (disponible < kilos) return rechazo(MotivoRechazo.BambuInsuficiente(kilos, disponible))
 
@@ -122,7 +124,7 @@ class AlimentarEspacio(
         var total = 0
         for (a in objetivo) {
             val kilos = cuidado.kilosPorIncremento(a.idEspecie) ?: return rechazo(MotivoRechazo.RacionNoConfigurada)
-            total += ReglasCuidado.kilosHastaMaximo(a.alimentacion, kilos)
+            total += ReglasCuidado.kilosHastaMaximo(a.alimentacion, kilos, a.nivel)
         }
         if (c.kilosEsperados != null && c.kilosEsperados != total) return rechazo(MotivoRechazo.ConjuntoCambiado(total))
         val disponible = inventario.cantidad(c.idPartida, BAMBU) ?: 0
@@ -135,6 +137,75 @@ class AlimentarEspacio(
         }
         recalculo.alConsolidar(c.idPartida, AlcanceRecalculo.Espacios(setOf(c.idEspacio)))
         return Resultado.Exito(EspacioAlimentado(c.idEspacio, objetivo.size, total, disponible - total))
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------- CU-13 hábitat
+
+/** Como [ComandoAlimentarEspacio], pero para todos los espacios activos de un hábitat. */
+data class ComandoAlimentarHabitat(
+    val idPartida: IdPartida,
+    val idHabitat: String,
+    val kilosEsperados: Int?,
+    val idSolicitud: String,
+)
+
+data class HabitatAlimentado(val idHabitat: String, val animales: Int, val kilos: Int, val bambuRestante: Int)
+
+/**
+ * CU-13 Alimentar espécimen, acción por hábitat: lleva al 100 % a todos los animales vivos por debajo de ese
+ * nivel en los espacios activos del hábitat. Atómico: si el bambú no alcanza para todos, no cambia nada.
+ */
+class AlimentarHabitat(
+    private val ejecutor: EjecutorOperacion,
+    private val zoo: ZooRepositorio,
+    private val animales: AnimalRepositorio,
+    private val cuidado: CuidadoRepositorio,
+    private val inventario: InventarioRepositorio,
+    private val recalculo: RecalcularSatisfaccion,
+) {
+    fun ejecutar(c: ComandoAlimentarHabitat): Resultado<HabitatAlimentado> {
+        val op = Operacion(
+            idPartida = c.idPartida,
+            tipo = "ALIMENTACION_HABITAT",
+            entidad = "HABITAT",
+            origen = "CU-13",
+            idSolicitud = c.idSolicitud,
+            huella = "habitat=${c.idHabitat};kilos=${c.kilosEsperados}",
+            codificar = { "${it.idHabitat}|${it.animales}|${it.kilos}|${it.bambuRestante}" },
+            decodificar = {
+                val (id, n, kilos, restante) = it.split("|")
+                HabitatAlimentado(id, n.toInt(), kilos.toInt(), restante.toInt())
+            },
+            idEntidad = { it.idHabitat },
+        )
+        return ejecutor.ejecutar(op) { alimentar(c) }
+    }
+
+    private fun alimentar(c: ComandoAlimentarHabitat): Resultado<HabitatAlimentado> {
+        zoo.habitat(c.idPartida, c.idHabitat) ?: return rechazo(MotivoRechazo.HabitatNoDisponible)
+        val espacios = zoo.espacios(c.idPartida, c.idHabitat).map { it.id }
+        val objetivo = espacios.flatMap { e ->
+            animales.animalesDeEspacio(c.idPartida, e).filter { it.alimentacion < ReglasCuidado.ALIMENTACION_MAXIMA }
+        }
+        if (objetivo.isEmpty()) return rechazo(MotivoRechazo.NadaQueAlimentar)
+
+        var total = 0
+        for (a in objetivo) {
+            val kilos = cuidado.kilosPorIncremento(a.idEspecie) ?: return rechazo(MotivoRechazo.RacionNoConfigurada)
+            total += ReglasCuidado.kilosHastaMaximo(a.alimentacion, kilos, a.nivel)
+        }
+        if (c.kilosEsperados != null && c.kilosEsperados != total) return rechazo(MotivoRechazo.ConjuntoCambiado(total))
+        val disponible = inventario.cantidad(c.idPartida, BAMBU) ?: 0
+        if (disponible < total) return rechazo(MotivoRechazo.BambuInsuficiente(total, disponible))
+
+        inventario.incrementar(c.idPartida, BAMBU, -total)
+        objetivo.forEach {
+            cuidado.fijarAlimentacion(c.idPartida, it.id, ReglasCuidado.ALIMENTACION_MAXIMA)
+            cuidado.resolverAlertaSalud(c.idPartida, it.id)
+        }
+        recalculo.alConsolidar(c.idPartida, AlcanceRecalculo.Espacios(objetivo.mapNotNull { it.idEspacio }.toSet()))
+        return Resultado.Exito(HabitatAlimentado(c.idHabitat, objetivo.size, total, disponible - total))
     }
 }
 
@@ -206,18 +277,26 @@ class ConsultarCuidado(
     private val animales: AnimalRepositorio,
     private val cuidado: CuidadoRepositorio,
     private val inventario: InventarioRepositorio,
+    private val zoo: ZooRepositorio,
 ) {
     fun racion(idPartida: IdPartida, idAnimal: String): PreviaRacion? {
         val a = animales.animal(idPartida, idAnimal) ?: return null
-        return PreviaRacion(cuidado.kilosPorIncremento(a.idEspecie), inventario.cantidad(idPartida, BAMBU) ?: 0)
+        return PreviaRacion(cuidado.kilosPorIncremento(a.idEspecie)?.let { ReglasCuidado.kilosPorRacion(it, a.nivel) }, inventario.cantidad(idPartida, BAMBU) ?: 0)
     }
 
-    fun grupal(idPartida: IdPartida, idEspacio: String): PreviaGrupal {
-        val objetivo = animales.animalesDeEspacio(idPartida, idEspacio).filter { it.alimentacion < ReglasCuidado.ALIMENTACION_MAXIMA }
+    fun grupal(idPartida: IdPartida, idEspacio: String): PreviaGrupal =
+        previa(idPartida, animales.animalesDeEspacio(idPartida, idEspacio))
+
+    /** Como [grupal], sobre todos los espacios activos del hábitat. */
+    fun grupalHabitat(idPartida: IdPartida, idHabitat: String): PreviaGrupal =
+        previa(idPartida, zoo.espacios(idPartida, idHabitat).flatMap { animales.animalesDeEspacio(idPartida, it.id) })
+
+    private fun previa(idPartida: IdPartida, candidatos: List<AnimalResumen>): PreviaGrupal {
+        val objetivo = candidatos.filter { it.alimentacion < ReglasCuidado.ALIMENTACION_MAXIMA }
         var total: Int? = 0
         for (a in objetivo) {
             val kilos = cuidado.kilosPorIncremento(a.idEspecie)
-            total = if (kilos == null || total == null) null else total + ReglasCuidado.kilosHastaMaximo(a.alimentacion, kilos)
+            total = if (kilos == null || total == null) null else total + ReglasCuidado.kilosHastaMaximo(a.alimentacion, kilos, a.nivel)
         }
         return PreviaGrupal(objetivo.size, total, inventario.cantidad(idPartida, BAMBU) ?: 0)
     }

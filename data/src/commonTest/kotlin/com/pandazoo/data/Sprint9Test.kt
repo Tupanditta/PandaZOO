@@ -75,6 +75,14 @@ class Sprint9Test {
         e.misionesRepo.fijarProgreso(e.idPartida, i.idInstancia, ReglasObjetivo.de(i), EstadoMision.CUMPLIDA)
     }
 
+    /** Fija el prestigio que exige la instancia vigente de la misión de prestigio (el animal exclusivo se da cada 5). */
+    private fun exigirPrestigio(nivel: Int) {
+        e.bd.escribir(
+            "UPDATE ParametroProgresoMision SET valor_numero = ? WHERE nombre_parametro = 'nivel_prestigio_requerido'",
+            nivel.toDouble(),
+        )
+    }
+
     private object ReglasObjetivo {
         fun de(i: InstanciaMision) = com.pandazoo.domain.mision.ReglasMision.objetivo(i.idMision, i.numericos)!!
     }
@@ -423,7 +431,7 @@ class Sprint9Test {
         val bambu = e.inventario.existencias(e.idPartida).firstOrNull { it.recurso.codigo == "bambu" }?.cantidad ?: 0
         val medicos = e.inventario.existencias(e.idPartida).firstOrNull { it.recurso.codigo == "insumo_medico" }?.cantidad ?: 0
         cumplir("crecer_especie") // 30 kg de bambú
-        cumplir("animales_habitat") // 5 insumos médicos
+        cumplir("animales_habitat") // 5 medicinas
         cumplir("espacios_ocupados_habitat") // 400.00
         val fondos = e.fondos()
         val r1 = exito(reclamar(mision("crecer_especie")))
@@ -476,6 +484,7 @@ class Sprint9Test {
 
     @Test
     fun `T9_7 la recompensa de animal sortea y persiste la especie y los reintentos no vuelven a sortear`() {
+        exigirPrestigio(10)
         cumplir("subir_prestigio")
         val i = mision("subir_prestigio")
         val primera = exito(reclamar(i))
@@ -490,18 +499,56 @@ class Sprint9Test {
 
     @Test
     fun `T9_7 se permite repetir especie en recompensas sucesivas`() {
-        repeat(2) {
+        listOf(10, 20).forEach {
+            exigirPrestigio(it)
             cumplir("subir_prestigio")
             exito(reclamar(mision("subir_prestigio")))
         }
         e.contar("RecompensaMision", "id_especie_seleccionada = 'alce_leucistico'") shouldBe 2
         e.contar("RecompensaMision", "unidad_pendiente = 1") shouldBe 2
-        mision("subir_prestigio").numericos["nivel_prestigio_requerido"] shouldBe 3.0
+        mision("subir_prestigio").numericos["nivel_prestigio_requerido"] shouldBe 21.0
+    }
+
+    private fun tabla(vararg p: Pair<Int, Int>) = p.map { com.pandazoo.domain.config.ProbabilidadRango(it.first, it.second) }
+
+    @Test
+    fun `T9_7 cada prestigio da siempre un animal con la tabla de rango que le corresponde`() {
+        val antes = e.fondos()
+        val esperado = mapOf(
+            4 to tabla(2 to 50, 3 to 25, 4 to 15, 5 to 10),
+            5 to tabla(2 to 30, 3 to 40, 4 to 20, 5 to 10),
+            15 to tabla(2 to 30, 3 to 40, 4 to 20, 5 to 10),
+            10 to tabla(5 to 100),
+            20 to tabla(5 to 100),
+        )
+        esperado.forEach { (nivel, tabla) ->
+            exigirPrestigio(nivel)
+            cumplir("subir_prestigio")
+            val r = exito(reclamar(mision("subir_prestigio")))
+            r.tipo shouldBe com.pandazoo.application.puerto.TipoRecompensa.ESPECIE
+            r.probabilidades shouldBe tabla
+            (r.nombreEspecie != null) shouldBe true
+        }
+        e.fondos() shouldBe antes
+    }
+
+    @Test
+    fun `T9_7 el rango sale del primer sorteo y la especie del segundo`() {
+        // Prestigio 4: tabla 50/25/15/10. Primer azar 0.60 cae en Raro (50..75); el segundo elige la especie de ese rango.
+        val sorteo = com.pandazoo.domain.mision.SorteoAnimales.desde(e.cfg)
+        val tabla = sorteo.tablaPrestigio(4)
+        sorteo.rangoDe(sorteo.sortear(tabla, 0.0, 0.0)!!) shouldBe 2
+        sorteo.rangoDe(sorteo.sortear(tabla, 0.49, 0.9)!!) shouldBe 2
+        sorteo.rangoDe(sorteo.sortear(tabla, 0.50, 0.0)!!) shouldBe 3
+        sorteo.rangoDe(sorteo.sortear(tabla, 0.75, 0.0)!!) shouldBe 4
+        sorteo.rangoDe(sorteo.sortear(tabla, 0.90, 0.0)!!) shouldBe 5
+        sorteo.rangoDe(sorteo.sortear(tabla, 0.9999, 0.9999)!!) shouldBe 5
     }
 
     // ---- T9.8 ----
 
     private fun concederAlce() {
+        exigirPrestigio(10)
         cumplir("subir_prestigio")
         exito(reclamar(mision("subir_prestigio")))
     }
@@ -521,7 +568,7 @@ class Sprint9Test {
             it.gratuita shouldBe true
             it.asequible shouldBe true
         }
-        e.contar("Notificacion", "codigo = 'ESPECIE_DESBLOQUEADA' AND id_entidad = 'alce_leucistico'") shouldBe 1
+        e.contar("DesbloqueoEspecie", "id_especie = 'alce_leucistico'") shouldBe 0
 
         val compra = exito(comprar(sp, "alce_leucistico"))
         compra.coste shouldBe Dinero.CERO

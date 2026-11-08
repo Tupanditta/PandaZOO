@@ -31,7 +31,7 @@ class Sprint6UiTest {
     private fun prueba(bloque: ComposeUiTest.(AppContainer) -> Unit) =
         runComposeUiTest {
             val bd = BaseDatos.enMemoria()
-            val contenedor = AppContainer.crear(bd, depuracion = true) { ConfiguracionDePrueba.texto }
+            val contenedor = AppContainer.crear(bd, conBienvenida = false) { ConfiguracionDePrueba.texto }
             setContent {
                 CompositionLocalProvider(LocalContenedor provides contenedor) {
                     PandaZooTema { PandaZooNavegacion() }
@@ -81,11 +81,14 @@ class Sprint6UiTest {
     @Test
     fun `la cabecera muestra el nivel y el panel lista nivel, estadisticas y maximos sin claves`() =
         prueba { c ->
-            esperar("Nivel 0")
+            esperar("Prestigio 0")
             onNodeWithContentDescription("Abrir panel de prestigio").performClick()
             esperar("Prestigio actual")
             esperar("Sin registrar")
-            esperar("Para el siguiente: Nivel 1: 2 animales vivos y 30% de satisfacción")
+            esperar("Siguiente prestigio · Prestigio 1")
+            esperar("30%")
+            esperar("Desbloquea hábitats")
+            esperar("Campos de Esmeril")
             esperar("Animales vivos alojados")
             sinIdentificadoresTecnicos(c)
         }
@@ -94,9 +97,9 @@ class Sprint6UiTest {
     fun `tras una mutacion el panel muestra el nuevo nivel y los maximos`() =
         prueba { c ->
             datos(c)
-            esperar("Nivel 1")
+            esperar("Prestigio 1")
             onNodeWithContentDescription("Abrir panel de prestigio").performClick()
-            esperar("Para el siguiente: Nivel 2: 3 animales vivos", subcadena = true)
+            esperar("Siguiente prestigio · Prestigio 2")
             esperar("Animales vivos alojados")
             esperar("2")
             sinIdentificadoresTecnicos(c)
@@ -105,9 +108,9 @@ class Sprint6UiTest {
     @Test
     fun `los desbloqueos y el ascenso aparecen como avisos informativos legibles`() =
         prueba { c ->
-            datos(c)
+            datos(c, 3)
             onNodeWithText("Avisos").performClick()
-            esperar("Has alcanzado el nivel de prestigio 1.", subcadena = true)
+            esperar("Has alcanzado el prestigio 3.", subcadena = true)
             esperar("Nuevo hábitat disponible: Campos de Esmeril.", subcadena = true)
             esperar("Nueva especie disponible", subcadena = true)
             sinIdentificadoresTecnicos(c)

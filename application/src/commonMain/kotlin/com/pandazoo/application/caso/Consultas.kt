@@ -4,6 +4,7 @@ import com.pandazoo.application.puerto.CatalogoRepositorio
 import com.pandazoo.application.puerto.EconomiaRepositorio
 import com.pandazoo.application.puerto.InventarioRepositorio
 import com.pandazoo.application.puerto.ZooRepositorio
+import com.pandazoo.domain.economia.Dinero
 import com.pandazoo.domain.modelo.Espacio
 import com.pandazoo.domain.modelo.Habitat
 import com.pandazoo.domain.modelo.IdPartida
@@ -36,10 +37,23 @@ class ConsultarInventarioFinanzas(
 }
 
 /** Oferta de la tienda de recursos y de espacios (CU-07 paso 2, CU-03 paso 3). Solo lectura. */
-class ConsultarTienda(private val catalogo: CatalogoRepositorio) {
+class ConsultarTienda(private val catalogo: CatalogoRepositorio, private val zoo: ZooRepositorio? = null) {
     fun recursos(): List<OfertaRecurso> = catalogo.recursosElegibles()
 
-    fun capacidades(): List<OpcionCapacidad> = catalogo.opcionesCapacidad()
+    /** Con [idPartida], el primer espacio de la capacidad gratuita figura con coste cero mientras siga disponible. */
+    fun capacidades(idPartida: IdPartida? = null): List<OpcionCapacidad> {
+        val gratuito = idPartida != null && zoo?.espacioGratuitoDisponible(idPartida) == true
+        return catalogo.opcionesCapacidad().map {
+            if (gratuito && it.capacidad == AdquirirEspacio.CAPACIDAD_GRATUITA) it.copy(coste = Dinero.CERO) else it
+        }
+    }
+
+    /** Capacidades a las que se puede ampliar un espacio de capacidad [actual], con el coste real de la ampliación. */
+    fun ampliaciones(actual: Int): List<OpcionCapacidad> {
+        val opciones = catalogo.opcionesCapacidad()
+        val precioActual = opciones.firstOrNull { it.capacidad == actual }?.coste ?: Dinero.CERO
+        return opciones.filter { it.capacidad > actual }.map { it.copy(coste = AmpliarEspacio.costeAmpliacion(precioActual, it.coste)) }
+    }
 }
 
 /** Navegación jerárquica Hábitats a Espacios (RF-08). Solo lectura. */
@@ -49,4 +63,7 @@ class ConsultarZoo(private val zoo: ZooRepositorio) {
     fun espacios(idPartida: IdPartida, idHabitat: String): List<Espacio> = zoo.espacios(idPartida, idHabitat)
 
     fun espacio(idPartida: IdPartida, idEspacio: String): Espacio? = zoo.espacio(idPartida, idEspacio)
+
+    /** Lo que se recupera al vender el espacio. */
+    fun costePagado(idPartida: IdPartida, idEspacio: String): Dinero = zoo.costePagado(idPartida, idEspacio)
 }

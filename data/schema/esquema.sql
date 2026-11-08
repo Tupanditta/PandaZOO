@@ -152,6 +152,7 @@ CREATE TABLE Partida (
         CHECK (satisfaccion_global_maxima IS NULL OR satisfaccion_global_maxima BETWEEN 0.00 AND 1.00),
     estado TEXT NOT NULL DEFAULT 'ACTIVA'
         CHECK (estado IN ('ACTIVA', 'PAUSADA', 'FINALIZADA')),
+    espacio_gratuito_disponible INTEGER NOT NULL DEFAULT 1 CHECK (espacio_gratuito_disponible IN (0, 1)),
     CHECK (
         (prestigio_maximo_nivel IS NULL AND animales_vivos_maximos IS NULL
             AND satisfaccion_global_maxima IS NULL)
@@ -183,6 +184,7 @@ CREATE TABLE Espacio (
     nombre TEXT NOT NULL,
     capacidad_max INTEGER NOT NULL CHECK (capacidad_max > 0),
     estado TEXT NOT NULL DEFAULT 'ACTIVO' CHECK (estado IN ('ACTIVO', 'INACTIVO')),
+    coste_pagado REAL NOT NULL DEFAULT 0 CHECK (coste_pagado >= 0 AND coste_pagado = ROUND(coste_pagado, 2)),
     UNIQUE (id_partida, id_espacio),
     UNIQUE (id_partida, id_habitat, nombre),
     FOREIGN KEY (id_partida, id_habitat) REFERENCES Habitat(id_partida, id_habitat)
@@ -352,6 +354,7 @@ CREATE TABLE ProgresoMision (
     id_mision TEXT NOT NULL,
     progreso REAL NOT NULL DEFAULT 0 CHECK (progreso >= 0),
     estado TEXT NOT NULL CHECK (estado IN ('PENDIENTE', 'CUMPLIDA', 'AGOTADA')),
+    orden_cumplida INTEGER,
     PRIMARY KEY (id_partida, id_instancia_mision),
     UNIQUE (id_partida, id_mision),
     UNIQUE (id_partida, id_instancia_mision, id_mision),
@@ -403,6 +406,19 @@ CREATE TABLE RecompensaMision (
         OR (tipo <> 'ESPECIE' AND id_especie_seleccionada IS NULL)
     ),
     CHECK (unidad_pendiente = 0 OR (tipo = 'ESPECIE' AND estado = 'RECLAMADA'))
+)
+;;
+CREATE TABLE UnidadGratuita (
+    id_unidad INTEGER PRIMARY KEY,
+    id_partida TEXT NOT NULL,
+    id_especie TEXT NOT NULL,
+    origen TEXT NOT NULL CHECK (origen IN ('BIENVENIDA')),
+    unidad_pendiente INTEGER NOT NULL DEFAULT 1 CHECK (unidad_pendiente IN (0, 1)),
+    fecha INTEGER NOT NULL,
+    FOREIGN KEY (id_partida) REFERENCES Partida(id_partida)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+    FOREIGN KEY (id_especie) REFERENCES Especie(id_especie)
+        ON UPDATE CASCADE ON DELETE RESTRICT
 )
 ;;
 CREATE TABLE CicloSimulacion (

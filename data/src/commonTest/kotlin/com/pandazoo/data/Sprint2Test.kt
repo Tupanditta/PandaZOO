@@ -153,7 +153,7 @@ class Sprint2Test {
     @Test
     fun `T2_7 las compras de insumos y espacios de este sprint no ejecutan el recalculo`() {
         val antes = e.recalcular.invocaciones
-        e.adquirirEspacio.ejecutar(ComandoAdquirirEspacio(e.idPartida, e.habitat("campos_de_esmeril"), "Nuevo", 4, "sol-1"))
+        e.adquirirEspacio.ejecutar(ComandoAdquirirEspacio(e.idPartida, e.habitat("campos_de_esmeril"), "Nuevo", 8, "sol-1"))
         e.adquirirInsumos.ejecutar(ComandoAdquirirInsumos(e.idPartida, AdquirirInsumos.bambu(), 5, "sol-2"))
         e.recalcular.invocaciones shouldBe antes
     }

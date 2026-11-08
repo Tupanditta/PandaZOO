@@ -2,6 +2,7 @@ package com.pandazoo.data
 
 import com.pandazoo.application.caso.AlimentarAnimal
 import com.pandazoo.application.caso.AlimentarEspacio
+import com.pandazoo.application.caso.AlimentarHabitat
 import com.pandazoo.application.caso.ConsultarCuidado
 import com.pandazoo.application.caso.TratarAnimal
 import com.pandazoo.data.repositorio.CuidadoSql
@@ -11,7 +12,9 @@ import com.pandazoo.application.caso.EtapaMisiones
 import com.pandazoo.application.caso.ReclamarRecompensa
 import com.pandazoo.data.repositorio.MisionSql
 import com.pandazoo.domain.mision.EspecieElegible
+import com.pandazoo.domain.mision.SorteoAnimales
 import com.pandazoo.application.caso.AbrirAviso
+import com.pandazoo.application.caso.DescartarAviso
 import com.pandazoo.application.caso.ConsultarBeneficios
 import com.pandazoo.application.caso.ConsultarHistorialAvisos
 import com.pandazoo.application.caso.ConsultarSeguimientoCritico
@@ -30,6 +33,7 @@ import com.pandazoo.application.caso.EtapaReproduccion
 import com.pandazoo.data.repositorio.ReproduccionSql
 import com.pandazoo.application.caso.AdquirirAnimal
 import com.pandazoo.application.caso.AdquirirEspacio
+import com.pandazoo.application.caso.AmpliarEspacio
 import com.pandazoo.application.caso.ConsultarAnimales
 import com.pandazoo.application.caso.ConsultarTiendaAnimales
 import com.pandazoo.application.caso.DarDeBajaEspacio
@@ -88,7 +92,7 @@ class Entorno(val cfg: ConfiguracionJuego = configuracionBase, valorAzar: Double
     val adquirirInsumos = AdquirirInsumos(ejecutor, economia, inventario, catalogo, reloj)
     val adquirirEspacio = AdquirirEspacio(ejecutor, economia, zoo, catalogo, ids, reloj)
     val consultarInventario = ConsultarInventarioFinanzas(economia, inventario)
-    val consultarTienda = ConsultarTienda(catalogo)
+    val consultarTienda = ConsultarTienda(catalogo, zoo)
     val consultarZoo = ConsultarZoo(zoo)
 
     val regla = ReglaSatisfaccion(cfg)
@@ -107,7 +111,8 @@ class Entorno(val cfg: ConfiguracionJuego = configuracionBase, valorAzar: Double
     val editarFicha = EditarFicha(ejecutor, animales, catalogoFicha, recalcular)
     val reubicarAnimal = ReubicarAnimal(ejecutor, zoo, animales, recalcular)
     val venderAnimal = VenderAnimal(ejecutor, economia, zoo, animales, reloj, recalcular, seguimientoMisiones)
-    val darDeBajaEspacio = DarDeBajaEspacio(ejecutor, zoo)
+    val darDeBajaEspacio = DarDeBajaEspacio(ejecutor, zoo, economia, reloj)
+    val ampliarEspacio = AmpliarEspacio(ejecutor, economia, zoo, catalogo, reloj)
     val consultarTiendaAnimales = ConsultarTiendaAnimales(animales, economia, misionesRepo)
     val consultarAnimales = ConsultarAnimales(animales, zoo)
 
@@ -115,8 +120,9 @@ class Entorno(val cfg: ConfiguracionJuego = configuracionBase, valorAzar: Double
     val cuidado = CuidadoSql(bd)
     val alimentarAnimal = AlimentarAnimal(ejecutor, animales, cuidado, inventario, recalcular)
     val alimentarEspacio = AlimentarEspacio(ejecutor, zoo, animales, cuidado, inventario, recalcular)
+    val alimentarHabitat = AlimentarHabitat(ejecutor, zoo, animales, cuidado, inventario, recalcular)
     val tratarAnimal = TratarAnimal(ejecutor, animales, cuidado, inventario, recalcular)
-    val consultarCuidado = ConsultarCuidado(animales, cuidado, inventario)
+    val consultarCuidado = ConsultarCuidado(animales, cuidado, inventario, zoo)
     val monitor = MonitorSql(bd)
     val consultarMonitor = ConsultarMonitorSatisfaccion(monitor)
     val datos = DatosDePrueba(bd, GeneradorIdSecuencial("dp"))
@@ -132,10 +138,12 @@ class Entorno(val cfg: ConfiguracionJuego = configuracionBase, valorAzar: Double
     )
     val reclamarBeneficios = ReclamarBeneficios(ejecutor, economia, beneficios, ciclos, reloj)
     val consultarBeneficios = ConsultarBeneficios(beneficios, economia)
+    val consultarDesgloseBeneficios = com.pandazoo.application.caso.ConsultarDesgloseBeneficios(zoo, animales)
     val consultarSeguimiento = ConsultarSeguimientoCritico(SeguimientoSql(bd))
     val avisos = AvisoSql(bd)
     val consultarAvisos = ConsultarHistorialAvisos(avisos)
     val abrirAviso = AbrirAviso(ejecutor, avisos, ciclos)
+    val descartarAviso = DescartarAviso(ejecutor, avisos, ciclos)
 
     // Sprint 7: reproducción.
     val aceptarReproduccion = AceptarReproduccion(ejecutor, reproduccion, ciclos, animales, zoo, catalogoFicha, ids, recalcular)
@@ -146,8 +154,9 @@ class Entorno(val cfg: ConfiguracionJuego = configuracionBase, valorAzar: Double
     val reclamarRecompensa = ReclamarRecompensa(
         ejecutor, misionesRepo, economia, inventario, ciclos, seguimientoMisiones, azar, reloj,
         cfg.recompensasAnimales.especies.map { EspecieElegible(it.idEspecie, it.probabilidad) },
+        SorteoAnimales.desde(cfg),
     )
-    val consultarMisiones = ConsultarMisiones(misionesRepo)
+    val consultarMisiones = ConsultarMisiones(misionesRepo, SorteoAnimales.desde(cfg))
 
     // Sprint 8: simulación en diferido.
     fun procesarDiferido(maxCiclos: Int = cfg.retencion.maxCiclosOffline, ciclo: EjecutarCiclo = ejecutarCiclo) =

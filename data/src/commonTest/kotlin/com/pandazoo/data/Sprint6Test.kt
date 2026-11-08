@@ -87,25 +87,25 @@ class Sprint6Test {
     }
 
     @Test
-    fun `T6_4 los maximos son independientes y no bajan al bajar el prestigio`() {
+    fun `T6_4 los maximos son independientes y el prestigio no baja`() {
         val a = animales(5)
         evaluar()
         val alto = estado()
-        alto.actual shouldBe 4
-        alto.maximos!!.nivel shouldBe 4
+        alto.actual shouldBe 7
+        alto.maximos!!.nivel shouldBe 7
         alto.maximos!!.animalesVivos shouldBe 5
 
-        // Mueren cuatro: el prestigio baja, los máximos se conservan.
+        // Mueren cuatro: las estadísticas bajan, pero el prestigio y los máximos se conservan.
         a.drop(1).forEach { e.animales.retirar(e.idPartida, it, "MUERTO") }
         evaluar()
         val bajo = estado()
-        bajo.actual shouldBe 0
+        bajo.actual shouldBe 7
         bajo.maximos shouldBe alto.maximos
 
         // Un solo animal con más satisfacción que antes puede subir solo el máximo de satisfacción.
         e.bd.escribir("UPDATE Animal SET nivel_alimentacion = 100, estado_salud = 'SANO'")
         evaluar()
-        estado().maximos!!.nivel shouldBe 4
+        estado().maximos!!.nivel shouldBe 7
         estado().maximos!!.animalesVivos shouldBe 5
     }
 
@@ -115,15 +115,15 @@ class Sprint6Test {
     }
 
     @Test
-    fun `T6_5 un desbloqueo es permanente aunque el prestigio descienda`() {
-        val a = animales(2)
+    fun `T6_5 un desbloqueo es permanente y el prestigio no desciende aunque mueran los animales`() {
+        val a = animales(3)
         evaluar()
-        estado().actual shouldBe 1
+        estado().actual shouldBe 3
         e.animales.especieTienda(e.idPartida, "suricata")!!.estado shouldBe EstadoTienda.COMERCIAL
 
         a.forEach { e.animales.retirar(e.idPartida, it, "MUERTO") }
         evaluar()
-        estado().actual shouldBe 0
+        estado().actual shouldBe 3
         e.animales.especieTienda(e.idPartida, "suricata")!!.estado shouldBe EstadoTienda.COMERCIAL
         e.contar("DesbloqueoEspecie", "id_especie = 'suricata' AND origen = 'PRESTIGIO'") shouldBe 1
     }
@@ -132,8 +132,8 @@ class Sprint6Test {
     fun `T6_6 subir varios niveles en un recalculo emite un solo aviso del mas alto y no se repite`() {
         val a = animales(5)
         evaluar()
-        estado().actual shouldBe 4
-        avisos("PRESTIGIO_ASCENSO") shouldContainExactly listOf(listOf("4", "INFORMATIVA", "BAJA", "PENDIENTE", "0"))
+        estado().actual shouldBe 7
+        avisos("PRESTIGIO_ASCENSO") shouldContainExactly listOf(listOf("7", "INFORMATIVA", "BAJA", "PENDIENTE", "0"))
         e.auditoriaDe("PRESTIGIO_ASCENSO") shouldHaveSize 1
 
         // Baja y recupera un nivel ya alcanzado: no hay aviso nuevo.
@@ -141,24 +141,24 @@ class Sprint6Test {
         evaluar()
         animales(4)
         evaluar()
-        estado().actual shouldBe 4
+        estado().actual shouldBe 7
         avisos("PRESTIGIO_ASCENSO") shouldHaveSize 1
 
         // Un nivel superior sí se avisa.
-        animales(3)
+        animales(1)
         evaluar()
-        estado().actual shouldBe 5
-        avisos("PRESTIGIO_ASCENSO").map { it[0] } shouldContainExactly listOf("4", "5")
+        estado().actual shouldBe 9
+        avisos("PRESTIGIO_ASCENSO").map { it[0] } shouldContainExactly listOf("7", "9")
     }
 
     @Test
     fun `T6_7 las especies y habitats desbloqueados avisan una sola vez como informativos`() {
-        animales(2)
+        animales(3)
         evaluar()
         evaluar()
         evaluar()
-        // Nivel 1: suricata, flamenco, antilope y el hábitat Campos de Esmeril.
-        avisos("ESPECIE_DESBLOQUEADA").map { it[0] } shouldContainExactly listOf("suricata", "flamenco", "antilope")
+        // Niveles 1 a 3: el hábitat Campos de Esmeril (nivel 1) y suricata (nivel 1), cebra (2) y mono (3).
+        avisos("ESPECIE_DESBLOQUEADA").map { it[0] } shouldContainExactly listOf("suricata", "cebra", "mono")
         avisos("ESPECIE_DESBLOQUEADA").all { it[1] == "INFORMATIVA" && it[2] == "BAJA" && it[3] == "PENDIENTE" } shouldBe true
         avisos("HABITAT_DESBLOQUEADO") shouldHaveSize 1
         e.contar("DesbloqueoHabitat", "id_habitat = '${e.habitat("campos_de_esmeril")}'") shouldBe 1
@@ -171,21 +171,21 @@ class Sprint6Test {
     fun `T6_7 un salto de varios niveles desbloquea todo lo de los niveles intermedios`() {
         animales(5)
         evaluar()
-        // Niveles 1 a 4: 3 + 3 + 3 + 2 especies y el hábitat del nivel 1.
-        e.contar("DesbloqueoEspecie", "origen = 'PRESTIGIO'") shouldBe 11
+        // Niveles 1 a 7: 2 especies en cada uno de los niveles 2, 4 y 7 y el hábitat del nivel 1.
+        e.contar("DesbloqueoEspecie", "origen = 'PRESTIGIO'") shouldBe 6
         e.contar("DesbloqueoHabitat") shouldBe 3
-        avisos("ESPECIE_DESBLOQUEADA") shouldHaveSize 11
+        avisos("ESPECIE_DESBLOQUEADA") shouldHaveSize 6
     }
 
     @Test
     fun `T6_8 tras desbloquear un habitat se puede crear un espacio en el`() {
         val campos = e.habitat("campos_de_esmeril")
-        val antes = e.adquirirEspacio.ejecutar(ComandoAdquirirEspacio(e.idPartida, campos, "Sabana", 2, nueva()))
+        val antes = e.adquirirEspacio.ejecutar(ComandoAdquirirEspacio(e.idPartida, campos, "Sabana", 8, nueva()))
         (antes as Resultado.Rechazado).motivo shouldBe MotivoRechazo.HabitatNoDisponible
 
         animales(2)
         evaluar()
-        val despues = e.adquirirEspacio.ejecutar(ComandoAdquirirEspacio(e.idPartida, campos, "Sabana", 2, nueva()))
+        val despues = e.adquirirEspacio.ejecutar(ComandoAdquirirEspacio(e.idPartida, campos, "Sabana", 8, nueva()))
         despues.shouldBeInstanceOf<Resultado.Exito<*>>()
     }
 

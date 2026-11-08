@@ -4,6 +4,8 @@ import androidx.compose.runtime.compositionLocalOf
 import kotlin.jvm.JvmInline
 import com.pandazoo.ui.AppContainer
 import com.pandazoo.application.caso.AnimalMonitor
+import com.pandazoo.application.caso.EstadisticasAnimal
+import com.pandazoo.application.caso.HabitatBeneficio
 import com.pandazoo.application.caso.EspacioMonitor
 import com.pandazoo.application.caso.HabitatMonitor
 import com.pandazoo.application.caso.MonitorSatisfaccion
@@ -16,7 +18,10 @@ import com.pandazoo.application.caso.MisionVista
 import com.pandazoo.application.caso.OfertaAnimal
 import com.pandazoo.application.caso.RecompensaReclamada
 import com.pandazoo.application.caso.RecompensaVista
+import com.pandazoo.data.inicial.RegaloBienvenida
 import com.pandazoo.application.puerto.TipoRecompensa
+import com.pandazoo.application.puerto.SeveridadAviso
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.pandazoo.application.puerto.AnimalFicha
 import com.pandazoo.application.puerto.valorVenta
 import com.pandazoo.application.puerto.AnimalResumen
@@ -48,6 +53,9 @@ value class Ref(val valor: String) {
 
 data class LineaUi(val etiqueta: String, val valor: String)
 
+/** Estadísticas de un animal ya calculadas y listas para mostrar: sin fórmulas, solo datos. */
+data class EstadisticasUi(val satisfaccion: List<LineaUi>)
+
 /** `null` en una sección significa que el dato no está disponible; se informa, no se presenta como cero. */
 data class InicioUi(
     val saldo: String?,
@@ -58,7 +66,7 @@ data class InicioUi(
     val avisos: List<String>,
 )
 
-/** Datos de la cabecera global: satisfacción del parque, saldo, bambú e insumos médicos. */
+/** Datos de la cabecera global: satisfacción del parque, saldo, bambú e medicinas. */
 data class CabeceraUi(val satisfaccion: String, val saldo: String, val bambu: String, val insumos: String, val prestigio: String)
 
 /** Panel de prestigio (CU-19). Un dato no disponible se muestra como tal, nunca como cero. */
@@ -69,33 +77,47 @@ data class PrestigioUi(
     val maximoSatisfaccion: String,
     val animales: String,
     val satisfaccion: String,
-    /** Requisitos del nivel siguiente; `null` si ya se alcanzó el nivel máximo. */
-    val siguiente: String?,
+    /** Nivel siguiente y lo que exige; `null` si ya se alcanzó el nivel máximo. */
+    val siguiente: SiguienteNivelUi?,
     val avisos: List<String>,
 )
 
-/** Aviso del historial (CU-21). `tono` reutiliza color, icono y texto explícito de [TipoAviso]. */
+/** Bloque del nivel siguiente: requisitos y lo que desbloquea (nombres de especies y hábitats). */
+data class SiguienteNivelUi(
+    val nivel: String,
+    val animales: String,
+    val satisfaccion: String,
+    val especies: List<String>,
+    val habitats: List<String>,
+)
+
+/**
+ * Aviso abierto (CU-21). El color de `tono` ya comunica la severidad: no se escribe. `ids` tiene más de uno cuando se agrupan
+ * varias alertas de salud en una sola fila.
+ */
 data class AvisoItemUi(
     val id: Long,
-    val etiqueta: String,
     val texto: String,
-    val estado: String,
-    val fecha: String,
     val tono: TipoAviso,
     val critico: Boolean,
-    val pendiente: Boolean,
+    /** Los de severidad baja y media se descartan deslizando; los de severidad alta se cierran al resolverse su causa. */
+    val descartable: Boolean,
     /** Aviso de reproducción aún aceptable desde la lista: abre el formulario de la cría. */
     val reproduccion: Boolean = false,
+    val ids: List<Long> = listOf(id),
 )
 
 /** Fila del seguimiento crítico (CU-18). */
 data class CriticoUi(val ref: Ref, val titulo: String, val causa: String, val detalle: String, val urgente: Boolean)
 
-data class BeneficiosUi(val pendiente: String, val importe: Dinero, val saldo: String, val porCiclo: List<LineaUi>, val puedeReclamar: Boolean)
+data class BeneficiosUi(val pendiente: String, val importe: Dinero, val saldo: String, val puedeReclamar: Boolean)
+
+/** Nodo del desglose de beneficios (hábitat, espacio o animal); `clave` solo identifica la fila desplegada. */
+data class NodoBeneficioUi(val clave: String, val titulo: String, val valor: String, val hijos: List<NodoBeneficioUi> = emptyList())
 
 data class HabitatUi(val ref: Ref, val nombre: String, val disponible: Boolean)
 
-data class EspacioUi(val ref: Ref, val nombre: String, val detalle: String, val activo: Boolean, val ocupacion: Int = 0)
+data class EspacioUi(val ref: Ref, val nombre: String, val detalle: String, val activo: Boolean, val ocupacion: Int = 0, val conCupo: Boolean = false, val capacidad: Int = 0)
 
 data class OfertaUi(val ref: Ref, val etiqueta: String, val unidad: String, val precio: Dinero?, val insumo: Boolean = false)
 
@@ -130,6 +152,25 @@ data class MisionUi(
     val recompensa: String,
     val cumplida: Boolean,
     val reclamable: Boolean,
+    /** Avance hacia el objetivo, entre 0 y 1. */
+    val fraccion: Float = 0f,
+    /** La recompensa es un animal exclusivo: el bloque se resalta en dorado. */
+    val exclusiva: Boolean = false,
+)
+
+/** Lo que se ha conseguido al reclamar una recompensa (ventana flotante pequeña). */
+data class PremioUi(
+    val icono: ImageVector,
+    val valor: String,
+    val exclusivo: Boolean = false,
+    /** Rango del animal (Común, Poco común, Raro, Exclusivo); `null` si el premio no es un animal. */
+    val rango: String? = null,
+    val titulo: String = "Has conseguido",
+    /**
+     * Probabilidad de cada rango del sorteo (nombre del rango y porcentaje). Si no está vacía, la ventana muestra primero las
+     * probabilidades con el botón «¡SUERTE!» y solo después el animal.
+     */
+    val probabilidades: List<Pair<String, Int>> = emptyList(),
 )
 
 /** Especie en la tienda de animales. `seleccionable` es falso si está bloqueada, es exclusiva o el saldo no alcanza. */
@@ -139,10 +180,11 @@ data class OfertaAnimalUi(
     val rango: String,
     val coste: String,
     val estado: String,
-    /** Línea bajo el nombre: «rango · estado», o solo el estado en las exclusivas, que ya nombran su rango. */
+    /** Línea bajo el nombre; vacía si la especie está disponible (el precio y el color ya lo dicen). */
     val detalle: String,
     val seleccionable: Boolean,
-    val bloqueada: Boolean,
+    /** Solo se obtiene con misiones: no muestra precio. */
+    val exclusiva: Boolean,
 )
 
 /** `nombre` incluye el sufijo de desambiguación (edad u orden); la especie se muestra aparte, más pequeña y en cursiva. */
@@ -158,7 +200,7 @@ data class AnimalItemUi(
 
 data class CandidatoUi(val ref: Ref, val etiqueta: String)
 
-data class DestinoUi(val ref: Ref, val etiqueta: String)
+data class DestinoUi(val ref: Ref, val habitat: String, val espacio: String, val ocupacion: Int, val capacidad: Int)
 
 /** Ficha técnica legible; las referencias `id*` solo sirven para precargar el formulario de edición. */
 data class FichaAnimalUi(
@@ -177,9 +219,10 @@ data class FichaAnimalUi(
     val alimentacion: Int,
     val enfermo: Boolean,
     val rango: String,
+    val nivel: Int,
     /** Importe que se acreditaría al vender ahora; se envía al confirmar para detectar un cambio de nivel (CU-06, 4.a). */
     val importeVenta: Dinero,
-    val textoVenta: String,
+    val ventanaVenta: VentanaUi,
 )
 
 object Textos {
@@ -226,6 +269,8 @@ object Textos {
                 if (e.estado.name == "INACTIVO") " · De baja" else "",
             activo = e.estado.name == "ACTIVO",
             ocupacion = e.ocupacion,
+            conCupo = e.ocupacion < e.capacidadMax,
+            capacidad = e.capacidadMax,
         )
 
     fun oferta(o: OfertaRecurso) =
@@ -243,8 +288,8 @@ object Textos {
     /** Texto breve del indicador de la cabecera. */
     fun nivelPrestigio(p: PanelPrestigio): String =
         when (val a = p.actual) {
-            is Seccion.Disponible -> "Nivel ${a.valor}"
-            is Seccion.NoDisponible -> "Nivel N/D"
+            is Seccion.Disponible -> "Prestigio ${a.valor}"
+            is Seccion.NoDisponible -> "Prestigio N/D"
         }
 
     fun prestigio(p: PanelPrestigio): PrestigioUi {
@@ -257,12 +302,20 @@ object Textos {
         }
         return PrestigioUi(
             nivel = nivelPrestigio(p),
-            maximoNivel = if (!maximosDisponibles) NO_DISPONIBLE else maximos?.let { "Nivel ${it.nivel}" } ?: sinMaximos,
+            maximoNivel = if (!maximosDisponibles) NO_DISPONIBLE else maximos?.let { "Prestigio ${it.nivel}" } ?: sinMaximos,
             maximoAnimales = if (!maximosDisponibles) NO_DISPONIBLE else maximos?.animalesVivos?.toString() ?: sinMaximos,
             maximoSatisfaccion = if (!maximosDisponibles) NO_DISPONIBLE else maximos?.let { porcentaje(it.satisfaccionGlobal) } ?: sinMaximos,
             animales = dato(p.animalesVivos) { it.toString() },
             satisfaccion = dato(p.satisfaccionGlobal, ::porcentaje),
-            siguiente = p.siguiente?.let { "Nivel ${it.nivel}: ${it.animalesVivos} animales vivos y ${porcentaje(it.satisfaccionGlobal)} de satisfacción" },
+            siguiente = p.siguiente?.let {
+                SiguienteNivelUi(
+                    nivel = "Prestigio ${it.nivel}",
+                    animales = it.animalesVivos.toString(),
+                    satisfaccion = porcentaje(it.satisfaccionGlobal),
+                    especies = p.desbloqueoSiguiente?.especies.orEmpty(),
+                    habitats = p.desbloqueoSiguiente?.habitats.orEmpty(),
+                )
+            },
             avisos = listOf(p.actual, p.maximos, p.animalesVivos, p.satisfaccionGlobal).mapNotNull(::aviso).distinct(),
         )
     }
@@ -322,6 +375,7 @@ object Textos {
             MotivoRechazo.RecursoNoElegible -> "Ese recurso no está disponible en la tienda."
             MotivoRechazo.PrecioNoConfigurado -> "El recurso no tiene un precio configurado; no se puede comprar."
             MotivoRechazo.CapacidadNoPermitida -> "Esa capacidad no está disponible."
+            MotivoRechazo.CapacidadNoAmpliable -> "Un espacio solo puede ampliarse a una capacidad mayor."
             MotivoRechazo.DenominacionInvalida -> "La denominación no puede estar vacía ni superar 40 caracteres."
             MotivoRechazo.DenominacionDuplicada -> "Ya existe un espacio con esa denominación en el hábitat."
             MotivoRechazo.HabitatNoDisponible -> "El hábitat no está disponible o está bloqueado."
@@ -329,7 +383,7 @@ object Textos {
             MotivoRechazo.EspacioInactivo -> "El espacio está dado de baja y no se puede configurar."
             MotivoRechazo.SinCambios -> "No hay cambios que aplicar."
             MotivoRechazo.EspecieInexistente -> "La especie ya no existe en el catálogo."
-            MotivoRechazo.EspecieBloqueada -> "Esa especie aún está bloqueada: súbela de nivel para comprarla."
+            MotivoRechazo.EspecieBloqueada -> "Esa especie aún está bloqueada: sube tu prestigio para comprarla."
             MotivoRechazo.EspecieExclusiva -> "Las especies exclusivas solo se obtienen con misiones."
             MotivoRechazo.EspacioLleno -> "El espacio no tiene capacidad libre."
             MotivoRechazo.NombreInvalido -> "El nombre no puede estar vacío ni superar 40 caracteres."
@@ -341,6 +395,7 @@ object Textos {
                 "Para ser pareja, los dos animales deben tener al menos el nivel ${ReglasNivel.NIVEL_MINIMO_PAREJA}."
             MotivoRechazo.ParejaOcupada -> "Alguno de los dos ya tiene otra pareja. Quítala antes de elegir una nueva."
             MotivoRechazo.AmigoInvalido -> "El mejor amigo debe ser otro animal del mismo espacio."
+            MotivoRechazo.AmigoOcupado -> "Ambos animales deben estar libres: quita antes el mejor amigo actual."
             MotivoRechazo.AutoReferencia -> "Un animal no puede ser su propia pareja ni su propio mejor amigo."
             MotivoRechazo.AnimalInexistente -> "El animal ya no existe."
             MotivoRechazo.AnimalNoVivo -> "El animal ya no está en el zoo."
@@ -361,9 +416,9 @@ object Textos {
                 "Bambú insuficiente: se necesitan ${m.requerido} kg, hay ${m.disponible} kg y faltan ${m.faltante} kg."
             MotivoRechazo.AnimalSano -> "El animal no está enfermo, no necesita tratamiento."
             MotivoRechazo.ConsumoMedicoNoConfigurado ->
-                "No hay un consumo de insumos médicos configurado para este rango; no se puede tratar."
+                "No hay un consumo de medicinas configurado para este rango; no se puede tratar."
             is MotivoRechazo.InsumosInsuficientes ->
-                "Insumos médicos insuficientes: " +
+                "Medicinas insuficientes: " +
                     m.faltantes.joinToString("; ") { "${it.nombre} (necesitas ${it.necesario}, tienes ${it.disponible})" } + "."
             MotivoRechazo.SimulacionNoActiva -> "La simulación está en pausa."
             is MotivoRechazo.CicloFueraDeOrden -> "El ciclo solicitado no es el siguiente."
@@ -374,6 +429,7 @@ object Textos {
             MotivoRechazo.ProgenitoresNoValidos ->
                 "Los progenitores ya no cumplen las condiciones: deben seguir vivos, ser pareja y estar en el mismo espacio."
             MotivoRechazo.AvisoInexistente -> "El aviso ya no existe."
+            MotivoRechazo.AvisoNoDescartable -> "Los avisos de severidad alta se cierran al resolver su causa."
             MotivoRechazo.MisionInexistente -> "Esa misión ya no está vigente: su recompensa ya se reclamó."
             MotivoRechazo.MisionNoCumplida -> "La misión aún no está cumplida."
             MotivoRechazo.RecompensaNoValida -> "No se puede determinar la recompensa de esta misión; no se ha acreditado nada."
@@ -389,12 +445,64 @@ object Textos {
         recompensa = recompensa(m.recompensa),
         cumplida = m.cumplida,
         reclamable = m.reclamable,
+        fraccion = m.fraccion.toFloat(),
+        // Dorado solo cuando el animal es seguro exclusivo (prestigio múltiplo de 10).
+        exclusiva = m.recompensa.tipo == TipoRecompensa.ESPECIE &&
+            (m.recompensa.probabilidades.isEmpty() || m.recompensa.probabilidades.all { it.idRango == 5 }),
     )
 
     fun recompensa(r: RecompensaVista): String = when (r.tipo) {
         TipoRecompensa.FONDOS -> dinero(Dinero.desdeDecimal(r.cantidad))
         TipoRecompensa.ALIMENTO, TipoRecompensa.INSUMO -> "${r.cantidad.toLong()} × ${r.nombreItem ?: "recurso"}"
-        TipoRecompensa.ESPECIE -> "Un animal exclusivo aleatorio, gratis"
+        TipoRecompensa.ESPECIE ->
+            // Las probabilidades solo se muestran en la ventana de suerte; aquí solo se dice si el exclusivo es seguro.
+            if (r.probabilidades.isNotEmpty() && r.probabilidades.all { it.idRango == 5 }) {
+                "Un animal exclusivo, gratis"
+            } else {
+                "Un animal aleatorio, gratis"
+            }
+    }
+
+    /** Una ventana por recurso del regalo de bienvenida: dinero, medicinas y cada animal. */
+    fun bienvenida(r: RegaloBienvenida): List<PremioUi> {
+        val titulo = "Regalo de bienvenida"
+        val medicinas = if (r.medicinas == 1) "1 medicina" else "${r.medicinas} medicinas"
+        return listOf(
+            PremioUi(Iconos.Saldo, dinero(Dinero.desdeDecimal(r.fondos)), titulo = titulo),
+            PremioUi(Iconos.Bambu, "${r.bambu} kg de bambú", titulo = titulo),
+            PremioUi(Iconos.InsumosMedicos, medicinas, titulo = titulo),
+        ) + r.animales.map {
+            val rango = nombreRango(it.idRango)
+            PremioUi(
+                Iconos.Pata, it.nombre, exclusivo = rango == "Exclusivo", rango = rango, titulo = titulo,
+                probabilidades = sorteoVisible(it.probabilidades),
+            )
+        }
+    }
+
+    /** Solo hay ventana de suerte si el rango depende de probabilidades; con un único rango posible el animal se entrega directo. */
+    private fun sorteoVisible(t: List<com.pandazoo.domain.config.ProbabilidadRango>): List<Pair<String, Int>> =
+        if (t.size > 1) t.map { nombreRango(it.idRango) to it.porcentaje } else emptyList()
+
+    fun nombreRango(idRango: Int): String = when (idRango) {
+        1 -> "Común"
+        2 -> "Poco común"
+        3 -> "Raro"
+        4 -> "Épico"
+        else -> "Exclusivo"
+    }
+
+    fun premio(r: RecompensaReclamada): PremioUi = when (r.tipo) {
+        TipoRecompensa.FONDOS -> PremioUi(Iconos.Saldo, dinero(Dinero.desdeDecimal(r.cantidad)))
+        TipoRecompensa.ALIMENTO -> PremioUi(Iconos.Bambu, "${r.cantidad.toLong()} × ${r.nombreItem ?: "recurso"}")
+        TipoRecompensa.INSUMO -> PremioUi(Iconos.InsumosMedicos, "${r.cantidad.toLong()} × ${r.nombreItem ?: "recurso"}")
+        TipoRecompensa.ESPECIE -> {
+            val rango = r.idRango?.let(::nombreRango)
+            PremioUi(
+                Iconos.Pata, r.nombreEspecie ?: "Animal aleatorio", exclusivo = rango == "Exclusivo", rango = rango,
+                probabilidades = sorteoVisible(r.probabilidades),
+            )
+        }
     }
 
     fun recompensaReclamada(r: RecompensaReclamada): String {
@@ -411,8 +519,8 @@ object Textos {
         if (o.gratuita) {
             return OfertaAnimalUi(
                 ref = Ref(e.id), nombre = e.nombre, rango = e.rango, coste = "Gratis",
-                estado = "Gratis · concedido por misión", detalle = "${e.rango} · Gratis · concedido por misión",
-                seleccionable = true, bloqueada = false,
+                estado = "Gratis · concedido por misión", detalle = "Gratis · concedido por misión",
+                seleccionable = true, exclusiva = false,
             )
         }
         val estado = when (e.estado) {
@@ -420,15 +528,21 @@ object Textos {
             EstadoTienda.BLOQUEADA -> "Bloqueada"
             EstadoTienda.EXCLUSIVA -> "Exclusivo · solo por misión"
         }
+        // El rango se comunica con el color y la disponibilidad con la opacidad: solo se escribe lo que no se ve.
+        val detalle = when (e.estado) {
+            EstadoTienda.COMERCIAL -> if (o.asequible) "" else estado
+            EstadoTienda.BLOQUEADA -> e.nivelDesbloqueo?.let { "Prestigio $it" } ?: estado
+            EstadoTienda.EXCLUSIVA -> estado
+        }
         return OfertaAnimalUi(
             ref = Ref(e.id),
             nombre = e.nombre,
             rango = e.rango,
             coste = dinero(e.coste),
             estado = estado,
-            detalle = if (e.estado == EstadoTienda.EXCLUSIVA) estado else "${e.rango} · $estado",
+            detalle = detalle,
             seleccionable = o.asequible,
-            bloqueada = e.estado != EstadoTienda.COMERCIAL,
+            exclusiva = e.estado == EstadoTienda.EXCLUSIVA,
         )
     }
 
@@ -461,7 +575,13 @@ object Textos {
                 nombre = a.nombre + titulos[i].removePrefix(bases[i]),
                 especie = a.especie,
                 rango = a.rango,
-                detalle = "Nivel ${a.nivel} · Alimentación ${a.alimentacion}% · ${if (a.enfermo) "Enfermo" else "Sano"} · Satisfacción ${porcentaje(a.satisfaccion)}",
+                // [simplificar-3] Solo se muestran las excepciones (enfermo, hambre) junto al nivel y la satisfacción.
+                detalle = listOfNotNull(
+                    "Nivel ${a.nivel}",
+                    if (a.enfermo) "Enfermo" else null,
+                    if (a.alimentacion < ReglasCuidado.ALIMENTACION_MAXIMA) "Alimentación ${a.alimentacion}%" else null,
+                    "Satisfacción ${porcentaje(a.satisfaccion)}",
+                ).joinToString(" · "),
                 necesitaAlimento = a.vivo && a.alimentacion < ReglasCuidado.ALIMENTACION_MAXIMA,
             )
         }
@@ -480,7 +600,18 @@ object Textos {
         } else {
             "${f.ciclosNivel} de $ciclosPorNivel ciclos sanos para el nivel ${f.nivel + 1}"
         }
-        return listOf(LineaUi("Nivel", "${f.nivel} de $tope"), LineaUi("Progreso de nivel", progreso))
+        return listOf(LineaUi("Progreso de nivel", progreso))
+    }
+
+    fun estadisticas(e: EstadisticasAnimal): EstadisticasUi {
+        val s = e.satisfaccion
+        fun pct(v: Double) = porcentaje(v)
+        // Solo las afinidades: con las especies de su espacio y con su hábitat.
+        return EstadisticasUi(
+            satisfaccion = s.social.aportaciones.filter { it.nombre == "Afinidad con el espacio" }
+                .map { LineaUi("Afinidad con las especies del espacio", pct(it.grado)) } +
+                LineaUi("Afinidad con el hábitat", pct(s.desglose.pHab)),
+        )
     }
 
     fun ficha(f: AnimalFicha, catalogo: CatalogoFicha, ciclosPorNivel: Int = ReglasNivel.CICLOS_POR_NIVEL): FichaAnimalUi {
@@ -496,16 +627,20 @@ object Textos {
             vivo = f.estadoVital == "VIVO",
             lineas = listOf(
                 LineaUi("Especie", f.especie),
-                LineaUi("Hábitat", f.nombreHabitat?.let(::nombreHabitat) ?: "Sin hábitat"),
-                LineaUi("Espacio", f.nombreEspacio ?: "Sin espacio"),
-                LineaUi("Rango", f.rango),
-            ) + lineasNivel(f, ciclosPorNivel) + listOf(
+                // [simplificar-1] Hábitat y espacio en una sola línea.
+                LineaUi(
+                    "Ubicación",
+                    if (f.nombreEspacio == null) "Sin espacio"
+                    else listOfNotNull(f.nombreHabitat?.let(::nombreHabitat), f.nombreEspacio).joinToString(" · "),
+                ),
+            ) + lineasNivel(f, ciclosPorNivel) + listOfNotNull(
                 LineaUi("Valor de venta", dinero(importe)),
                 LineaUi("Alimentación", "${f.alimentacion}%"),
-                LineaUi("Salud", if (f.enfermo) "⚠ Enfermo" else "Sano"),
+                // [simplificar-2] Solo se muestra lo que no es el valor por defecto.
+                if (f.enfermo) LineaUi("Salud", "⚠ Enfermo") else null,
                 LineaUi("Satisfacción", porcentaje(f.satisfaccion)),
-                LineaUi("Pareja", f.nombrePareja ?: "Sin pareja"),
-                LineaUi("Mejor amigo", f.nombreMejorAmigo ?: "Sin mejor amigo"),
+                f.nombrePareja?.let { LineaUi("Pareja", it) },
+                f.nombreMejorAmigo?.let { LineaUi("Mejor amigo", it) },
             ),
             habilidades = f.habilidades.map(catalogo::nombreHabilidad),
             rasgos = f.rasgos.map(catalogo::nombreRasgo),
@@ -518,23 +653,49 @@ object Textos {
             alimentacion = f.alimentacion,
             enfermo = f.enfermo,
             rango = f.rango,
+            nivel = f.nivel,
             importeVenta = importe,
-            textoVenta = "Vas a vender a ${f.nombre} (nivel ${f.nivel}) por ${dinero(importe)}. " +
-                "En el nivel $equilibrio se recupera el coste de compra; por debajo se pierde dinero y por encima se gana. " +
-                "La venta no se puede deshacer.",
+            ventanaVenta = VentanaUi(
+                icono = Iconos.Saldo,
+                titulo = "Vender a ${f.nombre}",
+                datos = listOf(
+                    DatoVentana("${f.nivel}", "nivel", Iconos.Pata),
+                    DatoVentana(dinero(importe), "recibes", alerta = f.nivel < equilibrio),
+                    DatoVentana("$equilibrio", "nivel de equilibrio"),
+                ),
+                confirmar = "Confirmar venta",
+                peligro = true,
+            ),
         )
 
     fun destino(d: EspacioConHabitat) =
-        DestinoUi(Ref(d.espacio.id), "${nombreHabitat(d.nombreHabitat)} · ${d.espacio.nombre} (${d.espacio.ocupacion}/${d.espacio.capacidadMax})")
+        DestinoUi(Ref(d.espacio.id), nombreHabitat(d.nombreHabitat), d.espacio.nombre, d.espacio.ocupacion, d.espacio.capacidadMax)
 
     fun beneficios(v: ConsultarBeneficios.Vista) =
         BeneficiosUi(
             pendiente = dinero(v.pendiente),
             importe = v.pendiente,
             saldo = dinero(v.saldo),
-            porCiclo = v.porCiclo.map { LineaUi("Ciclo ${it.numeroCiclo}", "${dinero(it.importe)} · ${if (it.reclamado) "Reclamado" else "Pendiente"}") },
             puedeReclamar = v.pendiente > Dinero.CERO,
         )
+
+    fun desgloseBeneficios(l: List<HabitatBeneficio>): List<NodoBeneficioUi> =
+        l.map { h ->
+            NodoBeneficioUi(
+                clave = h.nombre,
+                titulo = nombreHabitat(h.nombre),
+                valor = dinero(h.importe),
+                hijos = h.espacios.map { e ->
+                    val etiquetas = desambiguar(e.animales.map { "${it.nombre} (${it.especie})" }, e.animales.map { it.nivel })
+                    NodoBeneficioUi(
+                        clave = "${h.nombre}|${e.nombre}",
+                        titulo = e.nombre,
+                        valor = dinero(e.importe),
+                        hijos = e.animales.mapIndexed { i, a -> NodoBeneficioUi("${h.nombre}|${e.nombre}|$i", etiquetas[i], dinero(a.importe)) },
+                    )
+                },
+            )
+        }
 
     /** Fecha UTC legible a partir de segundos Unix (calendario gregoriano, sin dependencias de plataforma). */
     fun fecha(segundos: Long): String {
@@ -553,31 +714,35 @@ object Textos {
         return "${dos(dia)}/${dos(mes)}/$anio ${dos(resto / 3_600)}:${dos((resto % 3_600) / 60)} UTC"
     }
 
-    fun aviso(a: Aviso): AvisoItemUi {
-        val (etiqueta, tono) = when (a.tipo.name) {
-            "CRITICA" -> "Crítica · Alta" to TipoAviso.ERROR
-            "OPERATIVA" -> "Operativa · Media" to TipoAviso.ADVERTENCIA
-            else -> "Informativa · Baja" to TipoAviso.INFO
-        }
-        val estado = when (a.estado) {
-            "PENDIENTE" -> "Pendiente"
-            "VISTA" -> "Vista"
-            "ACEPTADA" -> "Aceptada"
-            "RESUELTA" -> "Resuelta"
-            "DESCARTADA" -> "Descartada"
-            else -> "Estado no disponible"
-        }
-        return AvisoItemUi(
+    fun aviso(a: Aviso): AvisoItemUi =
+        AvisoItemUi(
             id = a.id,
-            etiqueta = etiqueta,
             texto = a.texto,
-            estado = estado,
-            fecha = fecha(a.fecha),
-            tono = tono,
+            tono = when (a.tipo.name) {
+                "CRITICA" -> TipoAviso.ERROR
+                "OPERATIVA" -> TipoAviso.ADVERTENCIA
+                else -> TipoAviso.INFO
+            },
             critico = a.tipo.name == "CRITICA",
-            pendiente = a.estado == "PENDIENTE",
-            reproduccion = a.codigo == "REPRODUCCION_DISPONIBLE" && (a.estado == "PENDIENTE" || a.estado == "VISTA"),
+            descartable = a.severidad != SeveridadAviso.ALTA,
+            reproduccion = a.codigo == "REPRODUCCION_DISPONIBLE" && !a.cerrado,
         )
+
+    /** Varias alertas de salud abiertas se muestran como una sola fila que lleva al seguimiento crítico. */
+    fun avisos(abiertos: List<Aviso>): List<AvisoItemUi> {
+        val salud = abiertos.filter { it.codigo == "ALERTA_SALUD" }
+        if (salud.size < 2) return abiertos.map(::aviso)
+        var agrupado = false
+        return abiertos.mapNotNull { a ->
+            when {
+                a.codigo != "ALERTA_SALUD" -> aviso(a)
+                agrupado -> null
+                else -> {
+                    agrupado = true
+                    aviso(a).copy(texto = "${salud.size} animales en estado crítico.", ids = salud.map { it.id })
+                }
+            }
+        }
     }
 
     fun criticos(l: List<RegistroCritico>): List<CriticoUi> {

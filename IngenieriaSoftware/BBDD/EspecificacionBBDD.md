@@ -9,7 +9,7 @@ Se distinguen dos niveles:
 - **Catálogo global:** `Bioma`, `Especie`, `CompatibilidadBioma`, `AfinidadEspecies`, `Alimento`, `InsumoMedico` y `Mision`.
 - **Estado de una partida:** hábitats, espacios, animales, recursos, economía, ciclos, avisos, métricas, desbloqueos, misiones y auditoría.
 
-Los identificadores son claves técnicas y nunca se muestran en la interfaz (RES-06). Los hábitats se cargan como catálogo físico de solo lectura por partida (RES-05), incluidos los que comienzan bloqueados por prestigio; el desbloqueo solo habilita su uso y no crea, edita ni elimina el hábitat. Los espacios no pueden cambiar su capacidad después de crearse (RES-04).
+Los identificadores son claves técnicas y nunca se muestran en la interfaz (RES-06). Los hábitats se cargan como catálogo físico de solo lectura por partida (RES-05), incluidos los que comienzan bloqueados por prestigio; el desbloqueo solo habilita su uso y no crea, edita ni elimina el hábitat. La capacidad de un espacio no se edita ni disminuye después de crearse: solo aumenta mediante la ampliación (RES-04, `Otros/DecisionesImplementacion.md`, sección 2.3).
 
 ### 1.1. Modelo relacional
 
@@ -43,7 +43,7 @@ Las claves compuestas que contienen `id_partida` impiden que una fila de una par
 
 `Alimento` contendrá únicamente bambú, requerido por todas las especies. `CosteAlimento` conservará su precio fijo común por kilogramo (0.50 por kilogramo en `tablas.costes_alimentos`); no se permite confirmar una compra si dicho precio no está configurado. El inventario de cada partida se mantiene en `InventarioAlimento` y su unidad es el kilogramo.
 
-La cantidad de bambú necesaria para que un animal de una especie aumente 10 puntos porcentuales su nivel de alimentación se configura por especie en `valores_y_pesos.json`, en `tablas.alimentos_por_especie`. No se añade una tabla relacional para este dato. Si falta la cantidad configurada para una especie, se rechaza la operación de alimentación sin cambios. La cantidad es un entero positivo de kilogramos (de 1 a 5 según la especie).
+La cantidad de bambú necesaria para que un animal de una especie aumente 10 puntos porcentuales su nivel de alimentación se configura por especie en `valores_y_pesos.json`, en `tablas.alimentos_por_especie`. No se añade una tabla relacional para este dato. Si falta la cantidad configurada para una especie, se rechaza la operación de alimentación sin cambios. La cantidad es un entero positivo de kilogramos (de 1 a 5 según la especie) y corresponde a un animal de nivel 1: la ración crece un 5 % por cada nivel del animal por encima del 1 (`Otros/DecisionesImplementacion.md`, sección 4.1). Además de la alimentación individual y la grupal por espacio, existe la grupal por hábitat (sección 4.2 del mismo documento).
 
 La alimentación individual de un animal vivo por debajo del 100% consume la cantidad configurada para su especie y aumenta el nivel en 10 puntos porcentuales, con un máximo del 100%. El nivel de alimentación siempre será 0 o un múltiplo de 10. La alimentación desde la ficha de un espacio incluye a todos sus animales vivos por debajo del 100% y los lleva al 100%. Para cada animal, el consumo es la cantidad configurada por especie multiplicada por el número de incrementos de 10 puntos necesarios para alcanzar el 100%; el total mostrado es la suma del consumo de todos los animales incluidos. Los animales que ya están al 100%, muertos o vendidos no forman parte del lote.
 
@@ -53,13 +53,13 @@ La operación grupal vuelve a validar el espacio, los animales, la configuració
 
 Las recompensas de animal aleatorio utilizan la lista común `recompensas_animales_aleatorios.especies` de `valores_y_pesos.json`. Cada entrada identifica una especie y su probabilidad porcentual; la suma de las probabilidades debe ser exactamente 100%. La lista contiene exactamente las nueve especies exclusivas, con probabilidades 10, 12, 14, 12, 14, 12, 6, 12 y 8 (suma 100). No se añade una tabla relacional para esta configuración. Se permite que el sorteo repita una especie ya obtenida: cada concesión habilita una nueva unidad.
 
-Al reclamar la recompensa, el sistema realiza el sorteo ponderado y persiste la especie seleccionada en el registro de `RecompensaMision`. Así, una repetición con la misma clave de idempotencia devuelve el resultado ya confirmado y no vuelve a sortear. La especie se desbloquea (`DesbloqueoEspecie`, origen `RECOMPENSA`, si aún no lo estaba) y habilita una unidad con coste cero en la tienda desde la misma transacción de reclamación, sin caducidad. La disponibilidad se representa con `RecompensaMision.unidad_pendiente = 1`; la compra de esa unidad sigue el flujo normal (CU-01), pone `unidad_pendiente = 0` en la misma transacción y retira la unidad de la tienda. Cada concesión habilita una única compra y, mientras `unidad_pendiente = 1`, la fila no se purga.
+Al reclamar la recompensa, el sistema realiza el sorteo ponderado y persiste la especie seleccionada en el registro de `RecompensaMision`. Así, una repetición con la misma clave de idempotencia devuelve el resultado ya confirmado y no vuelve a sortear. La reclamación no desbloquea la especie en la tienda (`Otros/DecisionesImplementacion.md`, sección 5.3): solo habilita una unidad con coste cero en la tienda desde la misma transacción de reclamación, sin caducidad. La disponibilidad se representa con `RecompensaMision.unidad_pendiente = 1`; la compra de esa unidad sigue el flujo normal (CU-01), pone `unidad_pendiente = 0` en la misma transacción y retira la unidad de la tienda. Cada concesión habilita una única compra y, mientras `unidad_pendiente = 1`, la fila no se purga. La misión de prestigio sortea primero el rango y después la especie, y las unidades gratuitas del regalo de bienvenida de la partida nueva se guardan en `UnidadGratuita` (`Otros/DecisionesImplementacion.md`, secciones 1 y 5.2).
 
 ### 1.4. Economía y beneficios
 
 La unidad monetaria del juego se representa con un dibujo de una moneda dorada. Los importes se expresan con dos decimales; se redondean al centésimo más cercano, con los medios hacia arriba. El resultado redondeado es el que se muestra, persiste y se utiliza en operaciones económicas posteriores. Las cantidades de inventario y de recursos configuradas son enteras y no negativas; una compra requiere una cantidad positiva.
 
-El coste de un recurso comprado es `cantidad_solicitada * precio_unitario`. El precio concreto del bambú es común por kilogramo y el precio del insumo es por unidad. Los espacios se cobran según su capacidad máxima en `CosteEspacio`; los animales se cobran por el rango de su especie en `CosteRango`. La excepción de unidad exclusiva temporal con coste cero prevalece sobre el coste ordinario. Los valores concretos están en `tablas.costes_espacios` (capacidades 2, 4, 6, 8, 10, 15 y 20), `tablas.costes_rangos`, `tablas.costes_alimentos` y `tablas.costes_insumos` de `valores_y_pesos.json`.
+El coste de un recurso comprado es `cantidad_solicitada * precio_unitario`. El precio concreto del bambú es común por kilogramo y el precio del insumo es por unidad. Los espacios se cobran según su capacidad máxima en `CosteEspacio`; los animales se cobran por el rango de su especie en `CosteRango`. La excepción de unidad exclusiva temporal con coste cero prevalece sobre el coste ordinario. El primer espacio de 6 animales de cada partida cuesta `0`; ampliar un espacio (diferencia de precio más un 25 %) y venderlo vacío (se recupera lo pagado) se describen en `Otros/DecisionesImplementacion.md`, sección 2. Los valores concretos están en `tablas.costes_espacios` (capacidades 6, 8, 10, 15, 20, 25 y 30), `tablas.costes_rangos`, `tablas.costes_alimentos` y `tablas.costes_insumos` de `valores_y_pesos.json`.
 
 La venta de un animal acredita en `Partida.fondos` el importe `V` definido en esta sección (valor de venta según nivel y rango), lo registra como `MovimientoEconomico` de tipo `VENTA` y actualiza el estado del animal a venta confirmada, todo en la misma transacción.
 
@@ -71,13 +71,13 @@ $$M_{nivel}(n) = 1 + \big(multiplicador\_nivel\_maximo(r) - 1\big) \times \frac{
 
 $$b_i = beneficio\_base\_animal\_ciclo(r) \times S_i \times M_{nivel}(n_i) \qquad\qquad B_{ciclo} = redondear_{0.01}\Big(\sum_{i \in vivos\ alojados} b_i\Big)$$
 
-`M_nivel(1) = 1` y `M_nivel(nivel_maximo) = multiplicador_nivel_maximo`; es lineal entre ambos y vale `multiplicador_nivel_maximo` también si el animal ya está en el tope. `b_i` no se redondea; solo se redondea la suma al centésimo más cercano con los medios hacia arriba. Sin animales vivos alojados, `B_ciclo = 0`. A igual satisfacción, un animal de mayor nivel aporta más beneficio. No hay multiplicadores por especie: las exclusivas usan los valores del rango 5. La satisfacción global no interviene (solo en el prestigio). Se calcula en la etapa «beneficios» del ciclo, tras las defunciones y la etapa de nivel. Un `B_ciclo` igual a `0` no genera fila en `BeneficioPendiente`. Los valores están en `tablas.rangos_especie`: beneficio base `12.00`, `24.00`, `40.00`, `64.00` y `100.00`; nivel máximo `15`, `29`, `41`, `51` y `61`; multiplicador en el tope `3.0`, `3.5`, `4.0`, `4.5` y `5.0`.
+`M_nivel(1) = 1` y `M_nivel(nivel_maximo) = multiplicador_nivel_maximo`; es lineal entre ambos y vale `multiplicador_nivel_maximo` también si el animal ya está en el tope. `b_i` no se redondea; solo se redondea la suma al centésimo más cercano con los medios hacia arriba. Sin animales vivos alojados, `B_ciclo = 0`. A igual satisfacción, un animal de mayor nivel aporta más beneficio. No hay multiplicadores por especie: las exclusivas usan los valores del rango 5. La satisfacción global no interviene (solo en el prestigio). Se calcula en la etapa «beneficios» del ciclo, tras las defunciones y la etapa de nivel. Un `B_ciclo` igual a `0` no genera fila en `BeneficioPendiente`. Los valores están en `tablas.rangos_especie`: beneficio base `6.00`, `12.00`, `20.00`, `32.00` y `50.00`; nivel máximo `15`, `29`, `41`, `51` y `61`; multiplicador en el tope `3.0`, `3.5`, `4.0`, `4.5` y `5.0`.
 
 **Valor de venta de un animal.** Con `n` el nivel del animal, `r` su rango y `n_eq(r) = redondear_medio_arriba(fraccion_equilibrio * nivel_maximo(r))` el nivel de equilibrio (`fraccion_equilibrio = 0.6667`, es decir, 2/3 del tope):
 
 $$F_{venta}(n) = \begin{cases} f_1 + (1 - f_1)\dfrac{n - 1}{n_{eq} - 1} & n \le n_{eq} \\ 1 + \big(factor\_venta\_nivel\_maximo(r) - 1\big)\dfrac{n - n_{eq}}{nivel\_maximo(r) - n_{eq}} & n > n_{eq} \end{cases} \qquad V = redondear_{0.01}\big(valor\_venta\_base(r) \times F_{venta}(n)\big)$$
 
-con `f_1 = factor_venta_nivel_1 = 0.05`. `F_venta(1) = 0.05`, `F_venta(n_eq) = 1` y `F_venta(nivel_maximo) = factor_venta_nivel_maximo`. En los rangos 1 a 4, `valor_venta_base` es igual al coste de compra de `CosteRango`; por tanto, vender en `n_eq` devuelve exactamente lo pagado, por debajo se pierde y por encima se gana. El rango 5 (exclusivas, coste `0`) usa `valor_venta_base` como valor de referencia. Valores: `valor_venta_base` `200.00`, `450.00`, `900.00`, `1800.00` y `4000.00`; `n_eq` `10`, `19`, `27`, `34` y `41`; `factor_venta_nivel_maximo` `1.5`, `1.75`, `2.0`, `2.25` y `2.5`; venta en el tope `300.00`, `787.50`, `1800.00`, `4050.00` y `10000.00`. `V` se calcula sobre el nivel del animal al confirmar la venta.
+con `f_1 = factor_venta_nivel_1 = 0.05`. `F_venta(1) = 0.05`, `F_venta(n_eq) = 1` y `F_venta(nivel_maximo) = factor_venta_nivel_maximo`. En los rangos 1 a 4, `valor_venta_base` es igual al coste de compra de `CosteRango`; por tanto, vender en `n_eq` devuelve exactamente lo pagado, por debajo se pierde y por encima se gana. El rango 5 (exclusivas, coste `0`) usa `valor_venta_base` como valor de referencia. Valores: `valor_venta_base` `40.00`, `160.00`, `450.00`, `700.00` y `4000.00`; `n_eq` `10`, `19`, `27`, `34` y `41`; `factor_venta_nivel_maximo` `1.5`, `1.75`, `2.0`, `2.25` y `2.5`; venta en el tope `60.00`, `280.00`, `900.00`, `1575.00` y `10000.00`. `V` se calcula sobre el nivel del animal al confirmar la venta.
 
 ## 2. Diccionario de datos DDL (SQLite / Room)
 
@@ -274,6 +274,7 @@ CREATE TABLE Partida (
         CHECK (satisfaccion_global_maxima IS NULL OR satisfaccion_global_maxima BETWEEN 0.00 AND 1.00),
     estado TEXT NOT NULL DEFAULT 'ACTIVA'
         CHECK (estado IN ('ACTIVA', 'PAUSADA', 'FINALIZADA')),
+    espacio_gratuito_disponible INTEGER NOT NULL DEFAULT 1 CHECK (espacio_gratuito_disponible IN (0, 1)),
     CHECK (
         (prestigio_maximo_nivel IS NULL AND animales_vivos_maximos IS NULL
             AND satisfaccion_global_maxima IS NULL)
@@ -309,6 +310,7 @@ CREATE TABLE Espacio (
     nombre TEXT NOT NULL,
     capacidad_max INTEGER NOT NULL CHECK (capacidad_max > 0),
     estado TEXT NOT NULL DEFAULT 'ACTIVO' CHECK (estado IN ('ACTIVO', 'INACTIVO')),
+    coste_pagado REAL NOT NULL DEFAULT 0 CHECK (coste_pagado >= 0 AND coste_pagado = ROUND(coste_pagado, 2)),
     UNIQUE (id_partida, id_espacio),
     UNIQUE (id_partida, id_habitat, nombre),
     FOREIGN KEY (id_partida, id_habitat) REFERENCES Habitat(id_partida, id_habitat)
@@ -486,6 +488,7 @@ CREATE TABLE ProgresoMision (
     id_mision TEXT NOT NULL,
     progreso REAL NOT NULL DEFAULT 0 CHECK (progreso >= 0),
     estado TEXT NOT NULL CHECK (estado IN ('PENDIENTE', 'CUMPLIDA', 'AGOTADA')),
+    orden_cumplida INTEGER,
     PRIMARY KEY (id_partida, id_instancia_mision),
     UNIQUE (id_partida, id_mision),
     UNIQUE (id_partida, id_instancia_mision, id_mision),
@@ -545,6 +548,24 @@ CREATE TABLE RecompensaMision (
 
 -- La fila `PENDIENTE` se crea en la transacción que marca la misión como `CUMPLIDA`, con el contenido copiado de
 -- `Mision`. En una recompensa `ESPECIE` el sorteo se realiza al reclamar (no antes) y `unidad_pendiente` pasa a 1.
+
+CREATE TABLE UnidadGratuita (
+    id_unidad INTEGER PRIMARY KEY,
+    id_partida TEXT NOT NULL,
+    id_especie TEXT NOT NULL,
+    origen TEXT NOT NULL CHECK (origen IN ('BIENVENIDA')),
+    unidad_pendiente INTEGER NOT NULL DEFAULT 1 CHECK (unidad_pendiente IN (0, 1)),
+    fecha INTEGER NOT NULL,
+    FOREIGN KEY (id_partida) REFERENCES Partida(id_partida)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+    FOREIGN KEY (id_especie) REFERENCES Especie(id_especie)
+        ON UPDATE CASCADE ON DELETE RESTRICT
+);
+
+-- `Espacio.coste_pagado` es lo que costó el espacio (compra más ampliaciones; `0` si fue el gratuito) y es lo que se recupera al venderlo.
+-- `ProgresoMision.orden_cumplida` numera (1, 2, 3…) el orden de cumplimiento dentro de la partida y se asigna una sola vez.
+-- `UnidadGratuita` guarda las unidades gratuitas del regalo de bienvenida: no desbloquean la especie. La partida usa además
+-- `Partida.espacio_gratuito_disponible` para el primer espacio de 6 animales. Ver `Otros/DecisionesImplementacion.md`, secciones 1, 2 y 5.
 
 -- Simulacion, reproduccion y avisos
 CREATE TABLE CicloSimulacion (
@@ -680,7 +701,7 @@ SQLite no puede expresar completamente estas reglas mediante restricciones de fi
 1. El espacio destino pertenece a la partida, tiene estado activo y no supera `capacidad_max` contando solo animales `VIVO`. La compatibilidad entre especie y bioma no bloquea la ubicación; su factor solo afecta al cálculo de satisfacción.
 2. La capacidad solicitada para crear un espacio debe existir en `CosteEspacio`; no se permite crear espacios con capacidades fuera de esa tabla.
 3. Un hábitat no se edita ni elimina durante la partida; solo se crea mediante la carga inicial autorizada.
-4. Los progenitores y la pareja deben ser de la misma especie, estar en la misma partida y cumplir el estado vital exigido. `id_pareja` debe ser recíproco y ambos animales deben tener al menos el nivel mínimo de pareja (`reglas_de_calculo.nivel.nivel_minimo_pareja`, `4`); `id_mejor_amigo` puede ser interespecie, pero nunca autorreferente. La afinidad no familiar se consulta por el par de especies de los animales.
+4. Los progenitores y la pareja deben ser de la misma especie, estar en la misma partida y cumplir el estado vital exigido. `id_pareja` debe ser recíproco y ambos animales deben tener al menos el nivel mínimo de pareja (`reglas_de_calculo.nivel.nivel_minimo_pareja`, `4`); `id_mejor_amigo` es recíproco como la pareja (ambos animales deben estar libres), puede ser interespecie y nunca es autorreferente. La afinidad no familiar se consulta por el par de especies de los animales.
 5. Una ficha solo se confirma con exactamente dos filas en `RasgoPersonalidad` y dos en `HabilidadSocial`; la satisfacción se calcula después de completar los datos del usuario y del sistema, antes de incorporar el animal al zoológico. Estas filas solo existen para animales `VIVO`: se borran al pasar a `MUERTO` o `VENDIDO`.
 6. Una pareja de `ReproduccionCiclo` debe ser válida y única por ciclo; la aplicación normaliza el orden de sus identificadores antes de insertar.
 7. Una concepción se hace disponible en el ciclo inmediatamente posterior al ciclo de concepción y expira tras tres ciclos disponibles; durante esa ventana no se vuelve a exigir el umbral de satisfacción de los progenitores.
@@ -689,9 +710,10 @@ SQLite no puede expresar completamente estas reglas mediante restricciones de fi
 10. Una compra, venta, traslado, nacimiento, alimentación, tratamiento, baja o reclamación valida saldo, inventario, estado y capacidad antes de escribir.
 11. Una especie exclusiva nunca se inserta como compra comercial. Un registro de `DesbloqueoEspecie` o `DesbloqueoHabitat` no se elimina ni se revoca; la ausencia del registro indica que la entidad sigue bloqueada.
 12. Las relaciones sociales se limpian al morir o vender un animal, pero nunca se limpian `id_padre` ni `id_madre`; solo la poda de la sección 5.3 puede borrar físicamente la fila de un animal inactivo.
-13. Una compra de animal exige que la especie tenga fila en `DesbloqueoEspecie`, que sea `COMERCIAL`, o bien que exista una `RecompensaMision` `RECLAMADA` de esa especie con `unidad_pendiente = 1`; en este último caso el coste es `0` y la misma transacción pone `unidad_pendiente = 0` (se consume la concesión más antigua).
+13. Una compra de animal exige que la especie tenga fila en `DesbloqueoEspecie`, que sea `COMERCIAL`, o bien que exista una `RecompensaMision` `RECLAMADA` de esa especie con `unidad_pendiente = 1`; en este último caso el coste es `0` y la misma transacción pone `unidad_pendiente = 0` (se consume la concesión más antigua). Lo mismo vale para una fila de `UnidadGratuita` con `unidad_pendiente = 1`, que se consume antes que las de `RecompensaMision`; ninguna de las dos desbloquea la especie.
 14. Tras recalcular el prestigio, para cada nivel `n <= prestigio_actual` de `tablas.desbloqueos_prestigio` cuyas especies o hábitats no tengan aún fila de desbloqueo, se insertan (origen `PRESTIGIO`), se emite un aviso informativo por entidad y se audita `ESPECIE_DESBLOQUEADA`. El aviso de ascenso de prestigio se emite solo si el nivel supera `prestigio_maximo_nivel` previo.
 15. Una misión pasa a `CUMPLIDA` en la transacción del evento que alcanza el objetivo y en esa misma transacción se crea su `RecompensaMision` `PENDIENTE`. La reclamación se resuelve según `Misiones/EspecificacionMisiones.md`, sección 4.
+16. Ampliar un espacio exige una capacidad nueva presente en `CosteEspacio` y mayor que la actual; la capacidad nunca disminuye. Vender un espacio exige que esté vacío y sin dependencias; lo borra y reembolsa `Espacio.coste_pagado` (`Otros/DecisionesImplementacion.md`, sección 2).
 
 ### 2.2. Almacenamiento y mantenimiento
 
@@ -729,26 +751,27 @@ Estas reglas completan las etapas de RF-14 y sus valores están en `reglas_de_ca
 | `Animal.estado_vital` | `VIVO` (compra o nacimiento confirmados; no se persiste ningún estado intermedio) | `VIVO` → `MUERTO` (solo por 3 ciclos críticos); `VIVO` → `VENDIDO` | `MUERTO`, `VENDIDO` |
 | `Animal.estado_salud` | `SANO` | `SANO` → `ENFERMO` por el sorteo de 2.3.1; `ENFERMO` → `SANO` al completar un tratamiento | ninguno |
 | `Partida` | `ACTIVA` | `ACTIVA` ↔ `PAUSADA` por acción explícita; `ACTIVA`/`PAUSADA` → `FINALIZADA` por acción explícita | `FINALIZADA` |
-| `Habitat`, `Espacio` | `ACTIVO` | `ACTIVO` → `INACTIVO` solo por la baja de un espacio vacío (CU-14); los hábitats no se dan de baja (RES-05) | `INACTIVO` mientras existan dependencias históricas |
+| `Habitat`, `Espacio` | `ACTIVO` | sin transiciones: un espacio vacío vendido (CU-14) se borra y no queda `INACTIVO`; los hábitats no se dan de baja (RES-05) | ninguno |
 | `EstadoSimulacion` | `ACTIVO` | `ACTIVO` ↔ `PAUSADO`; `ACTIVO`/`PAUSADO` → `RECUPERACION` al iniciar una recuperación offline y de vuelta al estado previo al completar la escritura final | ninguno |
 | `ReproduccionCiclo` | `CONCEBIDA` | `CONCEBIDA` → `CONFIRMADA` (nacimiento completo), `RECHAZADA` (rechazo explícito) o `EXPIRADA` (al confirmarse un ciclo con número mayor que `ciclo_expiracion`) | los tres |
 | `ProgresoMision` | `PENDIENTE` | `PENDIENTE` → `CUMPLIDA` al alcanzar el objetivo (permanece aunque el progreso dinámico baje después); la instancia reclamada se retira y se crea la siguiente `PENDIENTE`, o `AGOTADA` si la progresión superaría un máximo | `AGOTADA` |
 | `Mision.estado` | `ACTIVA` | catálogo `ACTIVA`/`INACTIVA`; no es un estado de progreso | — |
 | `DesbloqueoEspecie`, `DesbloqueoHabitat` | fila ausente = bloqueado | la fila se inserta una vez y nunca se elimina (RES-07) | la fila |
 
-Las transiciones no listadas están prohibidas. Una notificación `ACEPTADA`, `RESUELTA` o `DESCARTADA` no se reabre ni se reutiliza. Un aviso crítico existe como máximo una vez activo por animal (`uq_notificacion_critica_activa`) y se actualiza al confirmar cada ciclo sin crear otro; si una causa crítica desaparece, el aviso continúa mientras persista la otra. Los avisos y los cambios de estado se escriben en la transacción del evento que los provoca y un reintento no los duplica. Los avisos `PENDIENTE` (de cualquier tipo) nunca se purgan; son una cantidad acotada porque cada informativo se emite una sola vez por nivel, especie o hábitat, la operativa expira a los tres ciclos y la crítica es una por animal vivo.
+Un aviso de severidad baja o media se cierra también cuando el gestor lo descarta o cuando caduca (un ciclo la baja, tres la media): los informativos pasan a `VISTA` y los demás a `DESCARTADA`; el de severidad alta no se descarta (`Otros/DecisionesImplementacion.md`, sección 7). Las transiciones no listadas están prohibidas. Una notificación `ACEPTADA`, `RESUELTA` o `DESCARTADA` no se reabre ni se reutiliza. Un aviso crítico existe como máximo una vez activo por animal (`uq_notificacion_critica_activa`) y se actualiza al confirmar cada ciclo sin crear otro; si una causa crítica desaparece, el aviso continúa mientras persista la otra. Los avisos y los cambios de estado se escriben en la transacción del evento que los provoca y un reintento no los duplica. Los avisos `PENDIENTE` (de cualquier tipo) nunca se purgan; son una cantidad acotada porque cada informativo se emite una sola vez por nivel, especie o hábitat, la operativa expira a los tres ciclos y la crítica es una por animal vivo.
 
 ### 2.4. Inicialización de una partida
 
 Una partida nueva se crea con una única transacción (acción del sistema; no es un caso de uso del gestor) que inserta:
 
-1. `Partida` con `fondos`, `prestigio_actual = 0`, terna de máximos en `NULL` y `estado = 'ACTIVA'` según `partida_inicial` (2000.00 fondos).
-2. `InventarioAlimento` con 30 kg de bambú e `InventarioMedico` con 3 unidades de insumo médico.
+1. `Partida` con `fondos`, `prestigio_actual = 0`, terna de máximos en `NULL` y `estado = 'ACTIVA'` según `partida_inicial` (2000.00 fondos) y `espacio_gratuito_disponible = 1`.
+2. `InventarioAlimento` con 30 kg de bambú e `InventarioMedico` con 3 medicinas.
 3. Los cinco `Habitat` de `catalogos.habitats`, `ACTIVO`, con su bioma; ningún `Espacio` ni `Animal`.
 4. `DesbloqueoEspecie` (origen `INICIAL`) y `DesbloqueoHabitat` para las entidades del nivel 0 de `tablas.desbloqueos_prestigio`, sin avisos.
 5. `EstadoSimulacion` con `estado = 'ACTIVO'`, `numero_ciclo_ultimo = NULL` y `remanente_temporizador = 600`.
 6. Una instancia `PENDIENTE` de `ProgresoMision` por cada `Mision` `ACTIVA`, con `progreso = 0` y sus `ParametroProgresoMision` copiados de `parametros_base`.
 7. La fila `MetricaSatisfaccion` de nivel `PARTIDA` con valor `0`.
+8. Las unidades gratuitas del regalo de bienvenida (`UnidadGratuita`, origen `BIENVENIDA`), sorteadas según `partida_inicial.bienvenida`, en la misma transacción (`Otros/DecisionesImplementacion.md`, sección 1).
 
 Antes de crear una partida se valida la configuración completa de `valores_y_pesos.json` (todas las combinaciones de afinidad y compatibilidad, factores de `M_crit`, sumas de pesos, probabilidades de recompensa y límites de prestigio); una configuración inválida impide crearla.
 
@@ -761,8 +784,8 @@ Cada operación comienza con `BEGIN IMMEDIATE`, valida sus precondiciones, aplic
 | Compra de animal, creación de espacio, compra de recursos | `Animal`/`Espacio`/inventario, rasgos, habilidades, `MovimientoEconomico`, `AuditoriaEvento` | `id_partida + tipo_operacion + id_solicitud` (`tipo_operacion` distingue `COMPRA_ANIMAL`, `COMPRA_ESPACIO` y `COMPRA_RECURSO` alimento/insumo) |
 | Traslado o cambio de espacio | `Animal`, métricas, `AuditoriaEvento` | `id_partida + TRASLADO + id_solicitud` |
 | Alimentación individual / tratamiento | inventario, `Animal`, avisos, métricas, auditoría | `id_partida + tipo_accion + id_animal + id_solicitud` |
-| Alimentación grupal | inventario, `Animal`, avisos, métricas, auditoría | `id_partida + ALIMENTACION_GRUPAL + id_espacio + id_solicitud` (la solicitud fija el conjunto objetivo y las cantidades) |
-| Venta, baja de espacio, edición de ficha | entidad afectada, métricas, auditoría | `id_partida + tipo_operacion + id_solicitud` |
+| Alimentación grupal (por espacio o por hábitat) | inventario, `Animal`, avisos, métricas, auditoría | `id_partida + ALIMENTACION_GRUPAL + id_espacio + id_solicitud`, o `id_partida + ALIMENTACION_HABITAT + id_habitat + id_solicitud` por hábitat (la solicitud fija el conjunto objetivo y las cantidades) |
+| Venta, venta de espacio vacío (antes baja), ampliación de espacio, descarte de aviso, edición de ficha | entidad afectada, `Partida.fondos` y `MovimientoEconomico` cuando hay dinero, métricas, auditoría | `id_partida + tipo_operacion + id_solicitud` |
 | Defunción o transición automática de un ciclo | `Animal`, avisos, auditoría | `id_partida + numero_ciclo + id_animal + tipo_transicion` |
 | Ciclo periódico u offline | `CicloSimulacion`, animales, economía, reproducción, avisos, métricas, estado de simulación | `id_partida + numero` |
 | Generación de beneficio | `BeneficioPendiente`, auditoría | `id_partida + BENEFICIO + numero_ciclo` (un solo beneficio por ciclo confirmado) |
@@ -783,8 +806,9 @@ La clave de idempotencia solo se almacena como texto en `AuditoriaEvento` (todas
 |---|---|---|
 | `COMPRA_ESPACIO`, `COMPRA_ANIMAL`, `COMPRA_RECURSO` | `ESPACIO`, `ANIMAL`, `INVENTARIO` | CU-03, CU-01, CU-07 |
 | `VENTA_ANIMAL`, `TRASLADO_ANIMAL`, `EDICION_ANIMAL` | `ANIMAL` | CU-06, CU-04, CU-05 |
-| `ALIMENTACION_INDIVIDUAL`, `ALIMENTACION_GRUPAL`, `TRATAMIENTO` | `ANIMAL` o `ESPACIO` | CU-13, CU-09 |
-| `BAJA_ESPACIO` | `ESPACIO` | CU-14 |
+| `ALIMENTACION_INDIVIDUAL`, `ALIMENTACION_GRUPAL`, `ALIMENTACION_HABITAT`, `TRATAMIENTO` | `ANIMAL`, `ESPACIO` o `HABITAT` | CU-13, CU-09 |
+| `BAJA_ESPACIO` (venta del espacio vacío), `AMPLIACION_ESPACIO` | `ESPACIO` | CU-14, CU-03 |
+| `AVISO_DESCARTADO` | `NOTIFICACION` | CU-21 |
 | `DEFUNCION`, `CAMBIO_ESTADO_SALUD` | `ANIMAL` | `CICLO_PERIODICO`, `RECUPERACION_OFFLINE` o `SISTEMA` |
 | `CICLO_CONFIRMADO`, `CICLO_REVERTIDO` | `CICLO` | CU-11, CU-12 |
 | `REPRODUCCION_CONFIRMADA`, `REPRODUCCION_RECHAZADA` | `REPRODUCCION` | CU-10 |
@@ -865,13 +889,13 @@ Las métricas no guardan histórico: cada recálculo sobrescribe el valor vigent
 
 ### 4.4. Prestigio
 
-El prestigio actual es un nivel entero. El nivel `1` tiene dos umbrales base configurables: cantidad de animales vivos alojados y satisfacción global mínima. Para cada nivel posterior, cada umbral sin redondear se obtiene multiplicando el umbral sin redondear del nivel anterior por su multiplicador específico; ambos multiplicadores deben ser mayores que `1`. Para comparar la cantidad actual de animales, el umbral calculado se redondea al entero más cercano, con los medios hacia arriba. El siguiente umbral de animales se calcula usando el valor sin redondear, no el entero usado para comparar. El umbral de satisfacción y su progresión conservan precisión completa. Los valores base y multiplicadores se parametrizan en `valores_y_pesos.json`: nivel 1 con `2` animales y satisfacción `0.30`; multiplicadores `1.40` (animales) y `1.10` (satisfacción); `nivel_maximo = 10`. Límites de configuración: el umbral base de animales es un entero mayor o igual que `1`; la satisfacción base está en `(0, 1]`; cada multiplicador cumple `1 < m <= 3.00`; y el umbral de satisfacción de cada nivel hasta `nivel_maximo` debe ser menor o igual que `1.00` (si no, la configuración es inválida). La tabla `tablas.niveles_prestigio` es la expansión de la fórmula y debe coincidir con ella.
+El prestigio actual es un nivel entero. El nivel `1` tiene dos umbrales base configurables: cantidad de animales vivos alojados y satisfacción global mínima. Para cada nivel posterior, cada umbral sin redondear se obtiene multiplicando el umbral sin redondear del nivel anterior por su multiplicador específico; ambos multiplicadores deben ser mayores que `1`. Para comparar la cantidad actual de animales, el umbral calculado se redondea al entero más cercano, con los medios hacia arriba. El siguiente umbral de animales se calcula usando el valor sin redondear, no el entero usado para comparar. El umbral de satisfacción y su progresión conservan precisión completa. Los valores base y multiplicadores se parametrizan en `valores_y_pesos.json`: nivel 1 con `2` animales y satisfacción `0.30`; multiplicadores `1.40` (animales) y `1.10` (satisfacción), que ya no generan la tabla vigente; `nivel_maximo = 100`. La tabla `tablas.niveles_prestigio` (100 niveles, escrita a mano) es la que se aplica (`Otros/DecisionesImplementacion.md`, sección 6). Límites de configuración: el umbral base de animales es un entero mayor o igual que `1`; la satisfacción base está en `(0, 1]`; cada multiplicador cumple `1 < m <= 3.00`; y el umbral de satisfacción de cada nivel hasta `nivel_maximo` debe ser menor o igual que `1.00` (si no, la configuración es inválida). La tabla `tablas.niveles_prestigio` es la expansión de la fórmula y debe coincidir con ella.
 
-El nivel actual es el mayor nivel cuyos dos umbrales se cumplen simultáneamente. Si ninguno se cumple, el prestigio actual es `0`. La cantidad cuenta animales con `estado_vital = 'VIVO'` e `id_espacio` no nulo. La satisfacción global es la media directa de la satisfacción de todos los animales vivos alojados; si no hay ninguno, su valor es `0`. El prestigio puede disminuir cuando dejan de cumplirse los umbrales y se recalcula únicamente en los eventos de RF-35.
+El nivel actual es el mayor nivel cuyos dos umbrales se cumplen simultáneamente. Si ninguno se cumple, el prestigio actual es `0`. La cantidad cuenta animales con `estado_vital = 'VIVO'` e `id_espacio` no nulo. La satisfacción global es la media directa de la satisfacción de todos los animales vivos alojados; si no hay ninguno, su valor es `0`. El prestigio no disminuye nunca: si dejan de cumplirse los umbrales, se conserva el nivel ya alcanzado (`Otros/DecisionesImplementacion.md`, sección 6). Se recalcula únicamente en los eventos de RF-35.
 
 El máximo histórico se compone de tres máximos independientes: nivel de prestigio, cantidad de animales vivos y satisfacción global. Cada componente se actualiza cuando el valor actual supera su máximo registrado; por tanto, la terna puede combinar máximos obtenidos en momentos distintos. Una partida nueva tiene prestigio actual `0` y todavía no tiene una terna de máximo histórico. El esquema representa esa ausencia mediante los tres campos `NULL`; la terna se inicializa cuando se alcanza por primera vez un máximo y, a partir de ahí, cada componente se actualiza independientemente.
 
-Los desbloqueos por nivel se definen en `tablas.desbloqueos_prestigio`: el nivel `0` (6 especies comerciales y 2 hábitats) se concede al crear la partida y los niveles `1` a `10` desbloquean el resto de las 38 especies comerciales y los otros 8 hábitats. Al alcanzar un nivel, se desbloquea todo lo de los niveles menores o iguales que aún no lo estuviera (también tras un salto de varios niveles). Las especies exclusivas solo se desbloquean por recompensa de misión.
+Los desbloqueos por nivel se definen en `tablas.desbloqueos_prestigio`: el nivel `0` (6 especies comerciales y 2 hábitats) se concede al crear la partida y los niveles `1` a `100` desbloquean las otras 32 especies comerciales y los otros 3 hábitats, mezclando rangos. Al alcanzar un nivel, se desbloquea todo lo de los niveles menores o iguales que aún no lo estuviera (también tras un salto de varios niveles). Las especies exclusivas solo se desbloquean por recompensa de misión.
 
 Se notifica un ascenso únicamente cuando supera el nivel máximo histórico previo. Si un recálculo avanza varios niveles, se emite un solo aviso por el nivel más alto alcanzado. No se repite el aviso al recuperar un nivel ya alcanzado anteriormente. Los avisos por desbloqueo de especies siguen sujetos a RF-43.
 
@@ -879,7 +903,7 @@ Se notifica un ascenso únicamente cuando supera el nivel máximo histórico pre
 
 Un animal muerto o vendido conserva únicamente una versión mínima: `id_animal`, `id_partida`, `id_especie`, `nombre`, `estado_vital`, `id_padre` e `id_madre`. Se establece `estado_vital` a `MUERTO` o `VENDIDO`, `id_espacio` a `NULL`, se anulan los vínculos sociales mutables y se borran sus filas de `RasgoPersonalidad` y `HabilidadSocial`. No se permite el borrado físico de animales con descendencia; la poda de animales sin vínculo genealógico necesario se describe en la sección 5.3.
 
-Un espacio vacío puede pasar a `INACTIVO` tras confirmación del usuario, pero no se elimina físicamente si existen operaciones pendientes o auditorías dentro de su ventana que lo referencien. Los animales inactivos no referencian espacios (`id_espacio` es `NULL`) y las métricas de un espacio sin animales vivos no existen. La capacidad máxima permanece inmutable.
+Un espacio vacío puede venderse tras confirmación del usuario: se borra físicamente (con su métrica y sus avisos) y se reembolsa lo pagado, salvo que existan operaciones pendientes que lo referencien, en cuyo caso se rechaza. Ya no hay baja lógica: ningún espacio queda `INACTIVO`. Los animales inactivos no referencian espacios (`id_espacio` es `NULL`) y las métricas de un espacio sin animales vivos no existen. La capacidad máxima solo puede aumentar (ampliación, `Otros/DecisionesImplementacion.md`, sección 2.3).
 
 ### 5.1. Cobertura del modelo
 

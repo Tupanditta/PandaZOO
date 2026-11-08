@@ -5,6 +5,10 @@ import com.pandazoo.application.error.Resultado
 import com.pandazoo.application.operacion.EjecutorOperacion
 import com.pandazoo.application.operacion.Operacion
 import com.pandazoo.application.puerto.AnimalCritico
+import com.pandazoo.application.puerto.AnimalRepositorio
+import com.pandazoo.application.puerto.ZooRepositorio
+import com.pandazoo.domain.animal.ReglasNivel
+import com.pandazoo.domain.economia.Redondeo
 import com.pandazoo.application.puerto.Aviso
 import com.pandazoo.application.puerto.AvisoRepositorio
 import com.pandazoo.application.puerto.BeneficioCiclo
@@ -89,6 +93,39 @@ class ConsultarBeneficios(
     }
 }
 
+/** Beneficio que genera un animal en un ciclo con su nivel y satisfacción actuales. */
+data class AnimalBeneficio(val nombre: String, val especie: String, val nivel: Int, val importe: Dinero)
+
+data class EspacioBeneficio(val nombre: String, val importe: Dinero, val animales: List<AnimalBeneficio>)
+
+data class HabitatBeneficio(val nombre: String, val importe: Dinero, val espacios: List<EspacioBeneficio>)
+
+/**
+ * Desglose del beneficio por ciclo por hábitat, espacio y animal. Solo lectura: aplica la misma fórmula que el ciclo
+ * (`b_i = base · S_i · M_nivel`) a lo persistido. Cada total se redondea desde la suma sin redondear de sus animales.
+ */
+class ConsultarDesgloseBeneficios(private val zoo: ZooRepositorio, private val animales: AnimalRepositorio) {
+    fun ejecutar(idPartida: IdPartida): List<HabitatBeneficio> =
+        zoo.habitats(idPartida).mapNotNull { h ->
+            // Cada espacio con su suma sin redondear, para que el total del hábitat no acumule redondeos.
+            val espacios = zoo.espacios(idPartida, h.id).mapNotNull { e ->
+                val filas = animales.animalesDeEspacio(idPartida, e.id).filter { it.vivo }
+                    .map { it to ReglasNivel.beneficioAnimal(it.parametros, it.satisfaccion, it.nivel) }
+                if (filas.isEmpty()) {
+                    null
+                } else {
+                    val total = filas.sumOf { it.second }
+                    total to EspacioBeneficio(
+                        e.nombre,
+                        Redondeo.dinero(total),
+                        filas.map { (a, b) -> AnimalBeneficio(a.nombre, a.especie, a.nivel, Redondeo.dinero(b)) },
+                    )
+                }
+            }
+            if (espacios.isEmpty()) null else HabitatBeneficio(h.nombre, Redondeo.dinero(espacios.sumOf { it.first }), espacios.map { it.second })
+        }
+}
+
 // ---------------------------------------------------------------------------------------------------- CU-18
 
 data class RegistroCritico(
@@ -144,6 +181,38 @@ class AbrirAviso(
                 avisos.marcarVista(c.idPartida, c.idAviso, ciclos.estadoMotor(c.idPartida)?.numeroUltimo ?: 0)
             }
             Resultado.Exito(AvisoAbierto(requireNotNull(avisos.aviso(c.idPartida, c.idAviso))))
+        }
+    }
+}
+
+data class ComandoDescartarAviso(val idPartida: IdPartida, val idAviso: Long, val idSolicitud: String)
+
+/**
+ * Descarta un aviso de severidad baja o media (deslizándolo). Los de severidad alta se cierran solos al resolverse su
+ * causa. Los de severidad baja caducan al pasar un ciclo y los de severidad media a los tres (`RetencionSql`).
+ */
+class DescartarAviso(
+    private val ejecutor: EjecutorOperacion,
+    private val avisos: AvisoRepositorio,
+    private val ciclos: CicloRepositorio,
+) {
+    fun ejecutar(c: ComandoDescartarAviso): Resultado<Unit> {
+        val op = Operacion<Unit>(
+            idPartida = c.idPartida,
+            tipo = "AVISO_DESCARTADO",
+            entidad = "NOTIFICACION",
+            origen = "CU-21",
+            idSolicitud = c.idSolicitud,
+            huella = "aviso=${c.idAviso}",
+            codificar = { "" },
+            decodificar = { },
+            idEntidad = { c.idAviso.toString() },
+        )
+        return ejecutor.ejecutar(op) {
+            val actual = avisos.aviso(c.idPartida, c.idAviso) ?: return@ejecutar Resultado.Rechazado(MotivoRechazo.AvisoInexistente)
+            if (actual.severidad == SeveridadAviso.ALTA) return@ejecutar Resultado.Rechazado(MotivoRechazo.AvisoNoDescartable)
+            avisos.descartar(c.idPartida, c.idAviso, ciclos.estadoMotor(c.idPartida)?.numeroUltimo ?: 0)
+            Resultado.Exito(Unit)
         }
     }
 }

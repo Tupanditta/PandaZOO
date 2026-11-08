@@ -109,7 +109,10 @@ data class MultiplicadoresCfg(
 )
 
 @Serializable
-data class RecompensasAnimalesCfg(val especies: List<RecompensaEspecieCfg>)
+data class RecompensasAnimalesCfg(
+    val especies: List<RecompensaEspecieCfg>,
+    @SerialName("sorteo_prestigio") val sorteoPrestigio: SorteoPrestigioCfg = SorteoPrestigioCfg(),
+)
 
 @Serializable
 data class RecompensaEspecieCfg(
@@ -300,4 +303,39 @@ data class PartidaInicialCfg(
     @SerialName("estado_partida") val estadoPartida: String,
     @SerialName("remanente_temporizador_segundos") val remanente: Int,
     @SerialName("estado_simulacion") val estadoSimulacion: String,
+    @SerialName("espacio_gratuito") val espacioGratuito: EspacioGratuitoCfg = EspacioGratuitoCfg(),
+    val bienvenida: BienvenidaCfg = BienvenidaCfg(),
+)
+
+/** Capacidad del primer espacio que se adquiere sin coste. */
+@Serializable
+data class EspacioGratuitoCfg(val capacidad: Int = 6)
+
+/** Animales de regalo de la partida nueva: especies distintas, sorteadas sin tener en cuenta el prestigio. */
+@Serializable
+data class BienvenidaCfg(
+    @SerialName("animales_comunes") val comunes: Int = 3,
+    @SerialName("animales_poco_comunes") val pocoComunes: Int = 1,
+    /** Un animal por tabla: rango según las probabilidades y después especie al azar dentro del rango. */
+    val sorteos: List<List<ProbabilidadRango>> = listOf(
+        listOf(ProbabilidadRango(3, 40), ProbabilidadRango(2, 60)),
+        listOf(ProbabilidadRango(2, 50), ProbabilidadRango(4, 30), ProbabilidadRango(5, 20)),
+    ),
+)
+
+/** Probabilidad porcentual de que un animal sorteado sea de un rango. */
+@Serializable
+data class ProbabilidadRango(
+    @SerialName("id_rango") val idRango: Int,
+    @SerialName("probabilidad_porcentual") val porcentaje: Int,
+)
+
+/** Tablas de rango de la recompensa de prestigio. */
+@Serializable
+data class SorteoPrestigioCfg(
+    val base: List<ProbabilidadRango> =
+        listOf(ProbabilidadRango(2, 50), ProbabilidadRango(3, 25), ProbabilidadRango(4, 15), ProbabilidadRango(5, 10)),
+    @SerialName("multiplo_5") val multiplo5: List<ProbabilidadRango> =
+        listOf(ProbabilidadRango(2, 30), ProbabilidadRango(3, 40), ProbabilidadRango(4, 20), ProbabilidadRango(5, 10)),
+    @SerialName("multiplo_10") val multiplo10: List<ProbabilidadRango> = listOf(ProbabilidadRango(5, 100)),
 )

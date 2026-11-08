@@ -195,12 +195,21 @@ class AvisoSql(private val bd: BaseDatos) : AvisoRepositorio {
         return (bd.uno("SELECT changes()") { it.entero(0) } ?: 0) > 0
     }
 
+    override fun descartar(idPartida: IdPartida, id: Long, numeroCiclo: Int): Boolean {
+        bd.escribir(
+            "UPDATE Notificacion SET estado = CASE WHEN tipo = 'INFORMATIVA' THEN 'VISTA' ELSE 'DESCARTADA' END, " +
+                "ciclo_cierre = MAX(numero_ciclo, ?) WHERE id_partida = ? AND id_notificacion = ? AND ciclo_cierre IS NULL",
+            numeroCiclo, idPartida, id,
+        )
+        return (bd.uno("SELECT changes()") { it.entero(0) } ?: 0) > 0
+    }
+
     private fun aviso(f: com.pandazoo.data.db.Fila): Aviso {
         val codigo = f.texto(4)
         val idEntidad = f.textoONulo(6)
         val texto = when (codigo) {
             "ALERTA_SALUD" -> textoAlerta(f)
-            "PRESTIGIO_ASCENSO" -> "Has alcanzado el nivel de prestigio ${idEntidad ?: ""}.".replace(" .", ".")
+            "PRESTIGIO_ASCENSO" -> "Has alcanzado el prestigio ${idEntidad ?: ""}.".replace(" .", ".")
             "ESPECIE_DESBLOQUEADA" -> "Nueva especie disponible: ${f.textoONulo(14) ?: "una especie"}."
             "HABITAT_DESBLOQUEADO" -> "Nuevo hábitat disponible: ${(f.textoONulo(15) ?: "un hábitat").removePrefix("Hábitat ").trim()}."
             "REPRODUCCION_DISPONIBLE" -> textoReproduccion(f)
@@ -216,6 +225,7 @@ class AvisoSql(private val bd: BaseDatos) : AvisoRepositorio {
             fecha = f.largo(7),
             numeroCiclo = f.entero(8),
             idAnimal = if (codigo == "ALERTA_SALUD") idEntidad else null,
+            cerrado = !f.esNulo(19),
         )
     }
 
@@ -248,7 +258,7 @@ class AvisoSql(private val bd: BaseDatos) : AvisoRepositorio {
         const val SELECT =
             "SELECT n.id_notificacion, n.tipo, n.severidad, n.estado, n.codigo, n.entidad, n.id_entidad, n.fecha, n.numero_ciclo, " +
                 "a.nombre, a.estado_vital, a.ciclos_desnutricion, a.ciclos_enfermedad, a.nivel_alimentacion, s.nombre_comun, h.nombre, " +
-                "pa.nombre, pb.nombre, ps.nombre_comun " +
+                "pa.nombre, pb.nombre, ps.nombre_comun, n.ciclo_cierre " +
                 "FROM Notificacion n " +
                 "LEFT JOIN Animal a ON n.codigo = 'ALERTA_SALUD' AND a.id_partida = n.id_partida AND a.id_animal = n.id_entidad " +
                 "LEFT JOIN Especie s ON n.codigo = 'ESPECIE_DESBLOQUEADA' AND s.id_especie = n.id_entidad " +
@@ -262,6 +272,12 @@ class AvisoSql(private val bd: BaseDatos) : AvisoRepositorio {
 }
 
 class RetencionSql(private val bd: BaseDatos) : RetencionRepositorio {
+    private companion object {
+        /** Ciclos que dura un aviso de severidad media. */
+        const val CICLOS_AVISO_MEDIO = 3
+    }
+
+
     override fun purgar(idPartida: IdPartida, numeroCiclo: Int, retencion: VentanasRetencion): Int {
         var total = 0
 
@@ -288,6 +304,13 @@ class RetencionSql(private val bd: BaseDatos) : RetencionRepositorio {
         borrar(
             "DELETE FROM RecompensaMision WHERE id_partida = ? AND estado IN ('RECLAMADA', 'ANULADA') AND unidad_pendiente = 0 AND numero_ciclo < ?",
             idPartida, numeroCiclo - retencion.recompensasCerradas,
+        )
+        // Caducidad: los avisos de severidad baja duran un ciclo y los de severidad media tres. Los de severidad alta se cierran
+        // al resolverse su causa, y la oferta de una cría tiene su propia caducidad (`expirarVencidas`).
+        bd.escribir(
+            "UPDATE Notificacion SET estado = CASE WHEN tipo = 'INFORMATIVA' THEN 'VISTA' ELSE 'DESCARTADA' END, ciclo_cierre = ? " +
+                "WHERE id_partida = ? AND ciclo_cierre IS NULL AND codigo <> 'REPRODUCCION_DISPONIBLE' AND ((severidad = 'BAJA' AND numero_ciclo < ?) OR (severidad = 'MEDIA' AND numero_ciclo <= ?))",
+            numeroCiclo, idPartida, numeroCiclo, numeroCiclo - CICLOS_AVISO_MEDIO,
         )
         // Avisos: los PENDIENTE nunca se purgan; los cerrados salen por antigüedad de cierre o por exceso de filas.
         borrar(

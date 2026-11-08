@@ -46,4 +46,9 @@ interface PanelPrestigioRepositorio {
 
     /** Métrica global de satisfacción persistida, o `null` si no existe. */
     fun satisfaccionGlobal(idPartida: IdPartida): Double?
+
+    fun nombreEspecie(idEspecie: String): String?
+
+    /** Nombre del hábitat de código [codigo], sin la palabra «Hábitat». */
+    fun nombreHabitat(idPartida: IdPartida, codigo: String): String?
 }

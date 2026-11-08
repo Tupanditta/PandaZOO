@@ -32,7 +32,7 @@ class Sprint4UiTest {
     private fun prueba(bloque: ComposeUiTest.(AppContainer) -> Unit) =
         runComposeUiTest {
             val bd = BaseDatos.enMemoria()
-            val contenedor = AppContainer.crear(bd) { ConfiguracionDePrueba.texto }
+            val contenedor = AppContainer.crear(bd, conBienvenida = false) { ConfiguracionDePrueba.texto }
             setContent {
                 CompositionLocalProvider(LocalContenedor provides contenedor) {
                     PandaZooTema { PandaZooNavegacion() }
@@ -74,7 +74,7 @@ class Sprint4UiTest {
     }
 
     private fun espacio(c: AppContainer, nombre: String): String {
-        c.adquirirEspacio.ejecutar(ComandoAdquirirEspacio(c.idPartida, "${c.idPartida}/bosque_templado", nombre, 4, "sol-$nombre"))
+        c.adquirirEspacio.ejecutar(ComandoAdquirirEspacio(c.idPartida, "${c.idPartida}/bosque_templado", nombre, 8, "sol-$nombre"))
         return c.consultarZoo.espacios(c.idPartida, "${c.idPartida}/bosque_templado").first { it.nombre == nombre }.id
     }
 
@@ -106,7 +106,7 @@ class Sprint4UiTest {
 
             pulsar("Alimentar")
             esperar("Confirmar alimentación")
-            esperar("subirá del 60 % al 70 %", subcadena = true)
+            esperar("60% → 70%")
             sinIdentificadoresTecnicos(c)
             onNodeWithText("Cancelar").performClick()
             alimentacion(c, "Pincho") shouldBe 60
@@ -114,7 +114,7 @@ class Sprint4UiTest {
 
             pulsar("Alimentar")
             onNodeWithText("Confirmar alimentación").performClick()
-            esperar("Alimentación al 70 %", subcadena = true)
+            esperar("70%")
             alimentacion(c, "Pincho") shouldBe 70
             (bambu(c) < 30) shouldBe true
             sinIdentificadoresTecnicos(c)
@@ -128,9 +128,22 @@ class Sprint4UiTest {
             irAlEspacio()
             esperar("Pincho")
             onNodeWithText("Pincho").performClick()
-            esperar("La alimentación ya está al 100 %.")
+            esperar("Alimentar")
             onNodeWithText("Alimentar").performScrollTo().assertIsNotEnabled()
             onAllNodesWithText("Aplicar tratamiento").fetchSemanticsNodes().size shouldBe 0
+        }
+
+    @Test
+    fun `la ficha muestra directamente las afinidades con datos ya calculados`() =
+        prueba { c ->
+            val sp = espacio(c, "Madriguera")
+            DatosDePrueba(c.bd, c.ids).animal(c.idPartida, sp, "erizo", "Pincho")
+            c.recalcularSatisfaccion.alConsolidar(c.idPartida)
+            irAlEspacio()
+            esperar("Pincho")
+            onNodeWithText("Pincho").performClick()
+            esperar("Afinidad con las especies del espacio")
+            esperar("Afinidad con el hábitat")
         }
 
     @Test
@@ -145,7 +158,7 @@ class Sprint4UiTest {
 
             pulsar("Aplicar tratamiento")
             esperar("Confirmar tratamiento")
-            esperar("el animal quedará sano", subcadena = true)
+            esperar("Medicina", subcadena = true)
             sinIdentificadoresTecnicos(c)
             onNodeWithText("Confirmar tratamiento").performClick()
             esperar("Tratamiento aplicado", subcadena = true)
@@ -165,7 +178,7 @@ class Sprint4UiTest {
             onNodeWithText("Rey").performClick()
             pulsar("Aplicar tratamiento")
             onNodeWithText("Confirmar tratamiento").performClick()
-            esperar("Insumos médicos insuficientes", subcadena = true)
+            esperar("Medicinas insuficientes", subcadena = true)
             c.bd.uno("SELECT estado_salud FROM Animal") { it.texto(0) } shouldBe "ENFERMO"
             c.bd.uno("SELECT cantidad FROM InventarioMedico") { it.entero(0) } shouldBe 1
         }
@@ -183,18 +196,18 @@ class Sprint4UiTest {
 
             pulsar("Alimentar a todos")
             esperar("Confirmar alimentación")
-            esperar("a 2 animales", subcadena = true)
-            esperar("Total de bambú: ", subcadena = true)
+            esperar("animales")
+            esperar("en almacén")
             sinIdentificadoresTecnicos(c)
             onNodeWithText("Cancelar").performClick()
             alimentacion(c, "Pincho") shouldBe 70
 
             pulsar("Alimentar a todos")
             onNodeWithText("Confirmar alimentación").performClick()
-            esperar("Se ha alimentado a 2 animales", subcadena = true)
+            // Con la alimentación completa la lista deja de mostrarla: se espera a que desaparezca.
+            waitUntil(timeoutMillis = 10_000) { onAllNodesWithText("Alimentación", substring = true).fetchSemanticsNodes().isEmpty() }
             alimentacion(c, "Pincho") shouldBe 100
             alimentacion(c, "Espina") shouldBe 100
-            esperar("Todos los animales están al 100 % de alimentación.")
             onNodeWithText("Alimentar a todos").performScrollTo().assertIsNotEnabled()
             sinIdentificadoresTecnicos(c)
         }
@@ -209,7 +222,7 @@ class Sprint4UiTest {
             esperar("Alimentar a todos")
             pulsar("Alimentar a todos")
             onNodeWithText("Confirmar alimentación").performClick()
-            esperar("Bambú insuficiente", subcadena = true)
+            textos().none { it.contains("Bambú insuficiente") } shouldBe true // sin aviso por falta de bambú
             alimentacion(c, "Pincho") shouldBe 0
             bambu(c) shouldBe 1
         }

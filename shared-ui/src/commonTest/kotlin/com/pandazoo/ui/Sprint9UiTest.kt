@@ -31,7 +31,7 @@ class Sprint9UiTest {
     private fun prueba(bloque: ComposeUiTest.(AppContainer) -> Unit) =
         runComposeUiTest {
             val bd = BaseDatos.enMemoria()
-            val contenedor = AppContainer.crear(bd) { ConfiguracionDePrueba.texto }
+            val contenedor = AppContainer.crear(bd, conBienvenida = false) { ConfiguracionDePrueba.texto }
             setContent {
                 CompositionLocalProvider(LocalContenedor provides contenedor) {
                     PandaZooTema { PandaZooNavegacion() }
@@ -104,7 +104,7 @@ class Sprint9UiTest {
             onNodeWithText("Reclamar recompensa").performScrollTo().performClick()
             esperar("Confirmar reclamación")
             onNodeWithText("Confirmar reclamación").performClick()
-            esperar("Has recibido", subcadena = true)
+            esperar("Has conseguido")
             fondos(c) shouldBe antes + Dinero.desdeDecimal(300.0)
             // La misión se renueva con el objetivo progresado (5 + 5 = 10).
             esperar("Ten 10 animales en el zoo.")

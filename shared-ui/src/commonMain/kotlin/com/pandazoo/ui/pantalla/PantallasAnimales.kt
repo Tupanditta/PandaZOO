@@ -11,10 +11,13 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.window.Dialog
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -69,24 +72,7 @@ private fun Elegir(titulo: String, sin: String, candidatos: List<CandidatoUi>, e
     candidatos.forEach { cand -> Opcion(elegido == cand.ref, cand.etiqueta) { alElegir(cand.ref) } }
 }
 
-@Composable
-private fun Confirmacion(
-    titulo: String,
-    texto: String,
-    confirmar: String,
-    cancelar: String,
-    alConfirmar: () -> Unit,
-    alCancelar: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = alCancelar,
-        title = { Text(titulo) },
-        text = { Text(texto) },
-        confirmButton = { TextButton(onClick = alConfirmar) { Text(confirmar) } },
-        dismissButton = { TextButton(onClick = alCancelar) { Text(cancelar) } },
-    )
-}
-
+/** Ventana de confirmación sin cifras: solo icono, título y los dos botones. */
 // ---------------------------------------------------------------------------------------------------- CU-01
 
 /** CU-01, paso 2: escoger la especie entre las disponibles en la tienda de animales. */
@@ -101,16 +87,19 @@ fun PantallaTiendaAnimales(alVolver: () -> Unit, alElegir: (Ref) -> Unit) {
             FichaSaldo(saldo)
             if (ofertas.none { it.seleccionable }) AvisoUi("No hay animales que puedas comprar ahora.", TipoAviso.ADVERTENCIA)
             ofertas.forEach { o ->
+                val tono = tonoRango(o.rango)
                 Ficha(
                     Modifier.clickable(enabled = o.seleccionable) { alElegir(o.ref) },
-                    filete = if (o.seleccionable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                    filete = tono.filete,
+                    fondo = tono.contenedor,
                     atenuada = !o.seleccionable,
+                    rango = o.rango,
                 ) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(o.nombre, style = MaterialTheme.typography.titleMedium)
-                        Text(if (o.bloqueada) "—" else o.coste, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        NombreRango(o.nombre, o.rango, modifier = Modifier.weight(1f))
+                        Text(if (o.exclusiva) "—" else o.coste, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 12.dp))
                     }
-                    Text(o.detalle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (o.detalle.isNotEmpty()) Text(o.detalle, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -119,9 +108,10 @@ fun PantallaTiendaAnimales(alVolver: () -> Unit, alElegir: (Ref) -> Unit) {
 
 /** CU-01, pasos 3 a 7: hábitat, espacio con cupo, ficha técnica y confirmación. */
 @Composable
-fun PantallaComprarAnimal(especie: Ref, alVolver: () -> Unit) {
+fun PantallaComprarAnimal(especie: Ref, espacioFijo: Ref? = null, alVolver: () -> Unit) {
     val c = LocalContenedor.current
-    val vm: ComprarAnimalViewModel = viewModel(key = "comprar-animal-${especie.valor}", factory = fabrica { ComprarAnimalViewModel(c, especie) })
+    val vm: ComprarAnimalViewModel = viewModel(key = "comprar-animal-${especie.valor}-${espacioFijo?.valor}", factory = fabrica { ComprarAnimalViewModel(c, especie, espacioFijo) })
+    val ubicacionFija by vm.ubicacionFija.collectAsState()
     val oferta by vm.oferta.collectAsState()
     val saldo by vm.saldo.collectAsState()
     val habitats by vm.habitats.collectAsState()
@@ -143,7 +133,8 @@ fun PantallaComprarAnimal(especie: Ref, alVolver: () -> Unit) {
         Column(Modifier.padding(pad).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             FichaSaldo(saldo)
             oferta?.let { o ->
-                Ficha(filete = MaterialTheme.colorScheme.secondary) {
+                val tono = tonoRango(o.rango)
+                Ficha(filete = tono.filete, fondo = tono.contenedor, rango = o.rango) {
                     Fila("Especie", o.nombre)
                     Fila("Rango", o.rango)
                     Fila("Coste", o.coste)
@@ -151,15 +142,25 @@ fun PantallaComprarAnimal(especie: Ref, alVolver: () -> Unit) {
                 if (!o.seleccionable) AvisoUi("Esta especie no se puede comprar ahora: ${o.estado.lowercase()}.", TipoAviso.ADVERTENCIA)
             }
 
-            Text("Hábitat", style = MaterialTheme.typography.titleMedium)
-            if (habitats.isEmpty()) {
-                AvisoUi("No hay ningún espacio con capacidad libre. Compra un espacio antes de adquirir animales.", TipoAviso.ADVERTENCIA)
-            }
-            habitats.forEach { h -> Opcion(habitatElegido == h.ref, h.nombre) { vm.elegirHabitat(h.ref) } }
+            if (espacioFijo != null) {
+                // Compra desde un espacio: hábitat y espacio ya vienen escritos y no se pueden cambiar.
+                ubicacionFija?.let { u ->
+                    Ficha(filete = MaterialTheme.colorScheme.tertiary) {
+                        Fila("Hábitat", u.habitat)
+                        Fila("Espacio", u.espacio)
+                    }
+                }
+            } else {
+                Text("Hábitat", style = MaterialTheme.typography.titleMedium)
+                if (habitats.isEmpty()) {
+                    AvisoUi("No hay ningún espacio con capacidad libre. Compra un espacio antes de adquirir animales.", TipoAviso.ADVERTENCIA)
+                }
+                habitats.forEach { h -> Opcion(habitatElegido == h.ref, h.nombre) { vm.elegirHabitat(h.ref) } }
 
-            if (habitatElegido != null) {
-                Text("Espacio", style = MaterialTheme.typography.titleMedium)
-                espacios.forEach { e -> Opcion(espacioElegido == e.ref, "${e.nombre} — ${e.detalle}") { vm.elegirEspacio(e.ref) } }
+                if (habitatElegido != null) {
+                    Text("Espacio", style = MaterialTheme.typography.titleMedium)
+                    espacios.forEach { e -> Opcion(espacioElegido == e.ref, "${e.nombre} — ${e.detalle}") { vm.elegirEspacio(e.ref) } }
+                }
             }
 
             if (espacioElegido != null) {
@@ -196,33 +197,35 @@ fun PantallaComprarAnimal(especie: Ref, alVolver: () -> Unit) {
 
 /** RF-08, tercer nivel: animales de un espacio, con acceso a su configuración y a la baja del espacio vacío. */
 @Composable
-fun PantallaAnimales(espacio: Ref, alVolver: () -> Unit, alAnimal: (Ref) -> Unit, alConfigurar: () -> Unit) {
+fun PantallaAnimales(espacio: Ref, alVolver: () -> Unit, alAnimal: (Ref) -> Unit, alConfigurar: () -> Unit, alComprar: () -> Unit) {
     val c = LocalContenedor.current
     val vm: AnimalesViewModel = viewModel(key = "animales-${espacio.valor}", factory = fabrica { AnimalesViewModel(c, espacio) })
     val actual by vm.actual.collectAsState()
     val animales by vm.animales.collectAsState()
     val ofreciendoBaja by vm.ofreciendoBaja.collectAsState()
+    val reembolso by vm.reembolso.collectAsState()
     val dadoDeBaja by vm.dadoDeBaja.collectAsState()
     val mensaje by vm.mensaje.collectAsState()
     val grupal by vm.confirmandoGrupal.collectAsState()
     LaunchedEffect(dadoDeBaja) { if (dadoDeBaja) alVolver() }
     Marco(actual?.nombre ?: "Espacio", alVolver) { pad ->
         Column(Modifier.padding(pad).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            actual?.let { Ficha(filete = MaterialTheme.colorScheme.tertiary) { Text(it.detalle) } }
+            actual?.let { Ficha(filete = MaterialTheme.colorScheme.tertiary) { OcupacionEspacio(it) } }
             if (actual?.activo == true) {
                 OutlinedButton(onClick = alConfigurar, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Configurar espacio") }
             }
-            if (animales.isEmpty()) Text("Este espacio no tiene animales.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (actual?.activo == true && actual?.conCupo == true) {
+                BotonPrincipal("Comprar un animal para este espacio", alComprar)
+            }
             if (animales.isNotEmpty()) {
                 val hayHambre = animales.any { it.necesitaAlimento }
                 BotonPrincipal("Alimentar a todos", vm::pedirAlimentarGrupo, enabled = hayHambre)
-                if (!hayHambre) Text("Todos los animales están al 100 % de alimentación.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             animales.forEach { a ->
                 val tono = tonoRango(a.rango)
-                Ficha(Modifier.clickable { alAnimal(a.ref) }, filete = tono.filete, fondo = tono.contenedor) {
+                Ficha(Modifier.clickable { alAnimal(a.ref) }, filete = tono.filete, fondo = tono.contenedor, rango = a.rango) {
                     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(a.nombre, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                        NombreRango(a.nombre, a.rango)
                         Text(
                             a.especie,
                             style = MaterialTheme.typography.labelMedium,
@@ -236,27 +239,23 @@ fun PantallaAnimales(espacio: Ref, alVolver: () -> Unit, alAnimal: (Ref) -> Unit
                 }
             }
             if (actual?.activo == true && actual?.ocupacion == 0) {
-                OutlinedButton(onClick = vm::pedirBaja, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Dar de baja el espacio") }
+                BotonPrincipal("Vender espacio", vm::pedirBaja)
             }
             MensajeUi(mensaje)
         }
     }
     grupal?.let {
-        Confirmacion(
-            titulo = "Alimentar a todos",
-            texto = it.texto,
-            confirmar = "Confirmar alimentación",
-            cancelar = "Cancelar",
-            alConfirmar = vm::confirmarGrupal,
-            alCancelar = vm::cancelarGrupal,
-        )
+        VentanaFlotante(it.ventana, alConfirmar = vm::confirmarGrupal, alCancelar = vm::cancelarGrupal)
     }
     if (ofreciendoBaja) {
-        Confirmacion(
-            titulo = "Dar de baja el espacio",
-            texto = "La baja es lógica: el espacio deja de ofrecerse y se conserva su histórico. ¿Confirmas la baja?",
-            confirmar = "Confirmar baja",
-            cancelar = "Cancelar",
+        VentanaFlotante(
+            VentanaUi(
+                icono = Iconos.Papelera,
+                titulo = "Vender espacio",
+                datos = listOf(DatoVentana(Textos.dinero(reembolso), "recuperas", Iconos.Saldo)),
+                confirmar = "Confirmar venta del espacio",
+                peligro = true,
+            ),
             alConfirmar = vm::confirmarBaja,
             alCancelar = vm::cancelarBaja,
         )
@@ -272,9 +271,9 @@ fun PantallaFichaAnimal(animal: Ref, alVolver: () -> Unit, alEditar: () -> Unit,
     val vm: FichaAnimalViewModel = viewModel(key = "ficha-${animal.valor}", factory = fabrica { FichaAnimalViewModel(c, animal) })
     val ficha by vm.ficha.collectAsState()
     val confirmando by vm.confirmandoVenta.collectAsState()
-    val ofertaBaja by vm.ofertaBaja.collectAsState()
     val terminado by vm.terminado.collectAsState()
     val mensaje by vm.mensaje.collectAsState()
+    val estadisticas by vm.estadisticas.collectAsState()
     val alimentando by vm.confirmandoAlimentar.collectAsState()
     val tratando by vm.confirmandoTratar.collectAsState()
     LaunchedEffect(terminado) { if (terminado) alVolver() }
@@ -285,18 +284,31 @@ fun PantallaFichaAnimal(animal: Ref, alVolver: () -> Unit, alEditar: () -> Unit,
                 Text("El animal ya no está en el zoo.", color = MaterialTheme.colorScheme.onBackground)
             } else {
                 val tono = tonoRango(f.rango)
-                Ficha(filete = tono.filete, fondo = tono.contenedor) { f.lineas.forEach { Fila(it.etiqueta, it.valor) } }
-                Ficha(filete = MaterialTheme.colorScheme.secondary) {
-                    TituloFicha("Habilidades sociales")
-                    Text(f.habilidades.joinToString(", ").ifEmpty { "Sin habilidades" })
-                    TituloFicha("Rasgos de personalidad")
-                    Text(f.rasgos.joinToString(", ").ifEmpty { "Sin rasgos" })
+                Ficha(filete = tono.filete, fondo = tono.contenedor, rango = f.rango) {
+                    NombreRango("${f.nombre} · Nivel ${f.nivel}", f.rango, MaterialTheme.typography.headlineSmall)
+                    f.lineas.forEach { Fila(it.etiqueta, it.valor) }
+                }
+                // [simplificar-2] Sin habilidades ni rasgos no se muestra la tarjeta ni sus títulos.
+                if (f.habilidades.isNotEmpty() || f.rasgos.isNotEmpty()) {
+                    Ficha(filete = MaterialTheme.colorScheme.secondary) {
+                        if (f.habilidades.isNotEmpty()) {
+                            TituloFicha("Habilidades sociales")
+                            Text(f.habilidades.joinToString(", "))
+                        }
+                        if (f.rasgos.isNotEmpty()) {
+                            TituloFicha("Rasgos de personalidad")
+                            Text(f.rasgos.joinToString(", "))
+                        }
+                    }
                 }
                 if (f.vivo) {
-                    BotonPrincipal("Alimentar", vm::pedirAlimentar, enabled = f.alimentacion < ReglasCuidado.ALIMENTACION_MAXIMA)
-                    if (f.alimentacion >= ReglasCuidado.ALIMENTACION_MAXIMA) {
-                        Text("La alimentación ya está al 100 %.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // [simplificar-6] Las afinidades se muestran directamente, sin botón desplegable.
+                    estadisticas?.let { est ->
+                        Ficha(filete = MaterialTheme.colorScheme.tertiary) {
+                            est.satisfaccion.forEach { Fila(it.etiqueta, it.valor) }
+                        }
                     }
+                    BotonPrincipal("Alimentar", vm::pedirAlimentar, enabled = f.alimentacion < ReglasCuidado.ALIMENTACION_MAXIMA)
                     if (f.enfermo) BotonPrincipal("Aplicar tratamiento", vm::pedirTratamiento)
                     BotonPrincipal("Editar ficha", alEditar)
                     BotonPrincipal("Trasladar", alReubicar)
@@ -310,44 +322,13 @@ fun PantallaFichaAnimal(animal: Ref, alVolver: () -> Unit, alEditar: () -> Unit,
         }
     }
     alimentando?.let {
-        Confirmacion(
-            titulo = "Alimentar",
-            texto = it,
-            confirmar = "Confirmar alimentación",
-            cancelar = "Cancelar",
-            alConfirmar = vm::alimentar,
-            alCancelar = vm::cancelarAlimentar,
-        )
+        VentanaFlotante(it, alConfirmar = vm::alimentar, alCancelar = vm::cancelarAlimentar)
     }
     tratando?.let {
-        Confirmacion(
-            titulo = "Aplicar tratamiento",
-            texto = it,
-            confirmar = "Confirmar tratamiento",
-            cancelar = "Cancelar",
-            alConfirmar = vm::tratar,
-            alCancelar = vm::cancelarTratamiento,
-        )
+        VentanaFlotante(it, alConfirmar = vm::tratar, alCancelar = vm::cancelarTratamiento)
     }
     if (confirmando) {
-        Confirmacion(
-            titulo = "Vender animal",
-            texto = ficha?.textoVenta ?: "Vas a vender este animal. La venta no se puede deshacer.",
-            confirmar = "Confirmar venta",
-            cancelar = "Cancelar",
-            alConfirmar = vm::vender,
-            alCancelar = vm::cancelarVenta,
-        )
-    }
-    ofertaBaja?.let { origen ->
-        Confirmacion(
-            titulo = "Espacio vacío",
-            texto = "El espacio ha quedado sin animales. ¿Quieres darlo de baja?",
-            confirmar = "Dar de baja",
-            cancelar = "Mantener",
-            alConfirmar = { vm.darDeBaja(origen) },
-            alCancelar = vm::mantenerEspacio,
-        )
+        ficha?.let { VentanaFlotante(it.ventanaVenta, alConfirmar = vm::vender, alCancelar = vm::cancelarVenta) }
     }
 }
 
@@ -424,29 +405,35 @@ fun PantallaReubicar(animal: Ref, alVolver: () -> Unit) {
     val vm: ReubicarViewModel = viewModel(key = "reubicar-${animal.valor}", factory = fabrica { ReubicarViewModel(c, animal) })
     val nombre by vm.nombre.collectAsState()
     val destinos by vm.destinos.collectAsState()
-    val ofertaBaja by vm.ofertaBaja.collectAsState()
     val terminado by vm.terminado.collectAsState()
     val mensaje by vm.mensaje.collectAsState()
     var destino by remember { mutableStateOf<Ref?>(null) }
+    var abiertos by remember { mutableStateOf(emptySet<String>()) }
     LaunchedEffect(terminado) { if (terminado) alVolver() }
     Marco("Trasladar a $nombre".trim(), alVolver) { pad ->
         Column(Modifier.padding(pad).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Espacio de destino", style = MaterialTheme.typography.titleMedium)
             if (destinos.isEmpty()) AvisoUi("No hay otro espacio activo con capacidad libre.", TipoAviso.ADVERTENCIA)
-            destinos.forEach { d -> Opcion(destino == d.ref, d.etiqueta) { destino = d.ref } }
+            // Como el monitor de satisfacción: hábitat desplegable y, dentro, sus espacios con la capacidad.
+            destinos.groupBy { it.habitat }.forEach { (habitat, espacios) ->
+                val abierto = habitat in abiertos
+                Ficha(Modifier.clickable { abiertos = if (abierto) abiertos - habitat else abiertos + habitat }, filete = MaterialTheme.colorScheme.primary) {
+                    FilaNodo(abierto, habitat, "${espacios.sumOf { it.capacidad - it.ocupacion }} plazas libres", true)
+                }
+                if (abierto) espacios.forEach { d ->
+                    val elegido = destino == d.ref
+                    Ficha(
+                        Modifier.padding(start = 16.dp).clickable { destino = d.ref },
+                        filete = if (elegido) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
+                        fondo = if (elegido) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                    ) {
+                        FilaNodo(false, d.espacio, "${d.ocupacion}/${d.capacidad}", false)
+                    }
+                }
+            }
             BotonPrincipal("Confirmar traslado", { destino?.let(vm::reubicar) }, enabled = destino != null)
             MensajeUi(mensaje)
         }
-    }
-    ofertaBaja?.let { origen ->
-        Confirmacion(
-            titulo = "Espacio vacío",
-            texto = "El espacio de origen ha quedado sin animales. ¿Quieres darlo de baja?",
-            confirmar = "Dar de baja",
-            cancelar = "Mantener",
-            alConfirmar = { vm.darDeBaja(origen) },
-            alCancelar = vm::mantenerEspacio,
-        )
     }
 }
 

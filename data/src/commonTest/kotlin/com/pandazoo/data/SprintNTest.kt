@@ -182,16 +182,16 @@ class SprintNTest {
         val bajo = animal(sp, "Bajo", nivel = 1)
         val alto = animal(sp, "Alto", nivel = 15)
         listOf(bajo, alto).forEach { fijarSatisfaccion(it, 0.5) }
-        // Rango 1, base 12: 6,00 en el nivel 1 y 18,00 en el 15.
-        exito(ciclo()).beneficio shouldBe d(24.0)
+        // Rango 1, base 6: 3,00 en el nivel 1 y 9,00 en el 15.
+        exito(ciclo()).beneficio shouldBe d(12.0)
     }
 
     @Test
     fun `TN_6 el beneficio usa el nivel posterior a la etapa de nivel`() {
         val a = animal(espacio(), nivel = 1, ciclos = 71)
         fijarSatisfaccion(a, 1.0)
-        // Sube al nivel 2 en este ciclo: M = 1 + 2 · 1 / 14 = 1,142857 → 12 · 1,142857 = 13,71.
-        exito(ciclo()).beneficio shouldBe d(13.71)
+        // Sube al nivel 2 en este ciclo: M = 1 + 2 · 1 / 14 = 1,142857 → 6 · 1,142857 = 6,86.
+        exito(ciclo()).beneficio shouldBe d(6.86)
     }
 
     @Test
@@ -199,7 +199,7 @@ class SprintNTest {
         val a = animal(espacio())
         fijarSatisfaccion(a, 0.5)
         e.bd.escribir("UPDATE MetricaSatisfaccion SET valor = 0.0 WHERE nivel = 'PARTIDA'")
-        exito(ciclo()).beneficio shouldBe d(6.0)
+        exito(ciclo()).beneficio shouldBe d(3.0)
     }
 
     @Test
@@ -276,7 +276,7 @@ class SprintNTest {
     // ---- TN.13 equilibrio económico ----
 
     @Test
-    fun `TN_13 la compra de los rangos 1 a 4 se amortiza en 72 ciclos con satisfaccion 0_5 y en 90 con 0_4`() {
+    fun `TN_13 la compra de los rangos 1 a 4 se amortiza con satisfaccion 0_5 y 0_4`() {
         val t = e.cfg.tablas
         val precioBambu = t.costesAlimentos.first { it.idAlimento == "bambu" }.precio
         val resultados = (1..4).map { rango ->
@@ -302,9 +302,9 @@ class SprintNTest {
         }
         println("TN.13 ciclos de amortización (rango, S=0.5, S=0.4): $resultados")
         resultados.forEach { (rango, con05, con04) ->
+            check(rango in 1..4)
             (con05 <= 72) shouldBe true
             (con04 <= 90) shouldBe true
-            check(rango in 1..4)
         }
     }
 
@@ -334,8 +334,8 @@ class SprintNTest {
 
     @Test
     fun `TN_14 valores de venta en el nivel 1 y en el tope por rango`() {
-        val esperadosTope = listOf(300.0, 787.5, 1800.0, 4050.0, 10000.0)
-        val esperadosNivel1 = listOf(10.0, 22.5, 45.0, 90.0, 200.0)
+        val esperadosTope = listOf(60.0, 280.0, 900.0, 1575.0, 10000.0)
+        val esperadosNivel1 = listOf(2.0, 8.0, 22.5, 35.0, 200.0)
         for (rango in 1..5) {
             val maximo = e.cfg.tablas.rangos.first { it.id == rango }.nivelMaximo
             val especie = e.cfg.especies.first { it.idRango == rango }.id
@@ -353,29 +353,29 @@ class SprintNTest {
         val antes = e.fondos()
         val comando = ComandoVenderAnimal(e.idPartida, a, "venta-1")
         val primero = exito(e.venderAnimal.ejecutar(comando))
-        primero.importe shouldBe d(200.0)
+        primero.importe shouldBe d(40.0)
         val repetido = e.venderAnimal.ejecutar(comando) as Resultado.Exito
         repetido.repetido shouldBe true
-        repetido.valor.importe shouldBe d(200.0)
-        e.fondos() shouldBe antes + d(200.0)
+        repetido.valor.importe shouldBe d(40.0)
+        e.fondos() shouldBe antes + d(40.0)
         e.contar("MovimientoEconomico", "tipo = 'VENTA'") shouldBe 1
-        e.contar("MovimientoEconomico", "tipo = 'VENTA' AND importe = 200.0") shouldBe 1
+        e.contar("MovimientoEconomico", "tipo = 'VENTA' AND importe = 40.0") shouldBe 1
     }
 
     @Test
     fun `TN_14 se rechaza la venta si el importe confirmado ya no coincide sin cambiar nada`() {
         val a = animal(espacio(), nivel = 9, ciclos = 71)
         val visto = e.consultarAnimales.ficha(e.idPartida, a)!!.valorVenta() // importe mostrado al confirmar, en el nivel 9
-        visto shouldBe d(178.89)
+        visto shouldBe d(35.78)
         cicloAlimentado(a) // el animal sube al nivel 10 y el importe cambia
         nivel(a) shouldBe (10 to 0)
         val antes = e.fondos()
         val motivo = rechazo(e.venderAnimal.ejecutar(ComandoVenderAnimal(e.idPartida, a, nueva(), visto)))
-        motivo shouldBe MotivoRechazo.ImporteVentaCambiado(d(200.0))
+        motivo shouldBe MotivoRechazo.ImporteVentaCambiado(d(40.0))
         e.fondos() shouldBe antes
         vital(a) shouldBe "VIVO"
         // Con el importe actualizado se vende.
-        exito(e.venderAnimal.ejecutar(ComandoVenderAnimal(e.idPartida, a, nueva(), d(200.0)))).importe shouldBe d(200.0)
+        exito(e.venderAnimal.ejecutar(ComandoVenderAnimal(e.idPartida, a, nueva(), d(40.0)))).importe shouldBe d(40.0)
     }
 
     @Test

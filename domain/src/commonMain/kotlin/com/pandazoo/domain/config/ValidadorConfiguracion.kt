@@ -14,7 +14,7 @@ class ConfiguracionInvalidaException(val errores: List<String>) :
  * (`EspecificacionBBDD.md` 2.4, `design.md` 4.2). Devuelve la lista de errores; vacía si es válida.
  */
 object ValidadorConfiguracion {
-    private val CAPACIDADES_ESPACIO = setOf(2, 4, 6, 8, 10, 15, 20)
+    private val CAPACIDADES_ESPACIO = setOf(6, 8, 10, 15, 20, 25, 30)
     private val NIVELES_ALIMENTACION = (0..100 step 10).map { it.toString() }.toSet()
     private val OPERACIONES = setOf("SUMAR", "RESTAR", "MULTIPLICAR", "DIVIDIR")
     private val TIPOS_RECOMPENSA = setOf("FONDOS", "ALIMENTO", "INSUMO", "ESPECIE")
@@ -77,7 +77,7 @@ object ValidadorConfiguracion {
         c.habitats.filter { it.idBioma !in biomas }.forEach { e += "hábitat ${it.codigo}: bioma inexistente ${it.idBioma}" }
         if (c.habitats.map { it.idBioma }.toSet() != biomas) e += "debe existir exactamente un hábitat por bioma"
         if (c.alimentos.none { it.id == ALIMENTO_BAMBU }) e += "falta el alimento bambú"
-        if (c.insumos.isEmpty()) e += "falta el insumo médico"
+        if (c.insumos.isEmpty()) e += "falta la medicina"
         if (c.rasgos.size < 2) e += "se necesitan al menos 2 rasgos de personalidad"
         if (c.habilidades.size < 2) e += "se necesitan al menos 2 habilidades sociales"
     }
@@ -319,6 +319,12 @@ object ValidadorConfiguracion {
         ).filter { it.second <= 0 }.forEach { e += "retención: ${it.first} debe ser positivo" }
     }
 
+    private fun validarTablaRango(tabla: List<ProbabilidadRango>, nombre: String, e: MutableList<String>) {
+        if (tabla.sumOf { it.porcentaje } != 100 || tabla.any { it.idRango !in 2..5 || it.porcentaje <= 0 }) {
+            e += "sorteo de rango $nombre: debe sumar 100 con rangos 2 a 5"
+        }
+    }
+
     private fun validarPartidaInicial(cfg: ConfiguracionJuego, e: MutableList<String>) {
         val p = cfg.partidaInicial
         if (!importeValido(p.fondos)) e += "partida inicial: fondos inválidos"
@@ -326,6 +332,14 @@ object ValidadorConfiguracion {
         if (p.remanente != 600) e += "partida inicial: el remanente debe ser 600 s"
         if (p.estadoPartida != "ACTIVA") e += "partida inicial: estado de partida debe ser ACTIVA"
         if (p.estadoSimulacion != "ACTIVO") e += "partida inicial: estado de simulación debe ser ACTIVO"
+        if (p.espacioGratuito.capacidad !in CAPACIDADES_ESPACIO) e += "partida inicial: capacidad del espacio gratuito inválida"
+        val b = p.bienvenida
+        if (b.comunes < 0 || b.pocoComunes < 0) e += "partida inicial: bienvenida inválida"
+        b.sorteos.forEach { validarTablaRango(it, "bienvenida", e) }
+        val sp = cfg.recompensasAnimales.sorteoPrestigio
+        validarTablaRango(sp.base, "prestigio base", e)
+        validarTablaRango(sp.multiplo5, "prestigio múltiplo de 5", e)
+        validarTablaRango(sp.multiplo10, "prestigio múltiplo de 10", e)
         val alimentos = cfg.catalogos.alimentos.map { it.id }.toSet()
         val insumos = cfg.catalogos.insumos.map { it.id }.toSet()
         p.inventarioAlimento.filter { it.key !in alimentos || it.value < 0 }.forEach { e += "partida inicial: alimento inválido ${it.key}" }

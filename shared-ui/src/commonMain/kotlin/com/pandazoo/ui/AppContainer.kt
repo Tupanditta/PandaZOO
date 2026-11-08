@@ -2,6 +2,7 @@ package com.pandazoo.ui
 
 import com.pandazoo.application.caso.AlimentarAnimal
 import com.pandazoo.application.caso.AlimentarEspacio
+import com.pandazoo.application.caso.AlimentarHabitat
 import com.pandazoo.application.caso.ConsultarCuidado
 import com.pandazoo.application.caso.TratarAnimal
 import com.pandazoo.data.repositorio.CuidadoSql
@@ -11,7 +12,9 @@ import com.pandazoo.application.caso.EtapaMisiones
 import com.pandazoo.application.caso.ReclamarRecompensa
 import com.pandazoo.data.repositorio.MisionSql
 import com.pandazoo.domain.mision.EspecieElegible
+import com.pandazoo.domain.mision.SorteoAnimales
 import com.pandazoo.application.caso.AbrirAviso
+import com.pandazoo.application.caso.DescartarAviso
 import com.pandazoo.application.ciclo.MotorCiclos
 import com.pandazoo.application.error.Resultado
 import kotlinx.coroutines.CoroutineScope
@@ -44,7 +47,10 @@ import com.pandazoo.application.caso.EtapaReproduccion
 import com.pandazoo.data.repositorio.ReproduccionSql
 import com.pandazoo.application.caso.AdquirirAnimal
 import com.pandazoo.application.caso.AdquirirEspacio
+import com.pandazoo.application.caso.AmpliarEspacio
 import com.pandazoo.application.caso.ConsultarAnimales
+import com.pandazoo.application.caso.ConsultarEstadisticasAnimal
+import com.pandazoo.application.caso.ConsultarGuiaConvivencia
 import com.pandazoo.application.caso.ConsultarTiendaAnimales
 import com.pandazoo.application.caso.DarDeBajaEspacio
 import com.pandazoo.application.caso.EditarFicha
@@ -75,9 +81,8 @@ import com.pandazoo.application.puerto.GeneradorId
 import com.pandazoo.application.puerto.Reloj
 import com.pandazoo.data.config.CargadorConfiguracion
 import com.pandazoo.data.db.BaseDatos
-import com.pandazoo.data.depuracion.DatosDePrueba
-import com.pandazoo.data.depuracion.ResumenCarga
 import com.pandazoo.data.inicial.InicializadorPartida
+import com.pandazoo.data.inicial.RegaloBienvenida
 import com.pandazoo.data.repositorio.AuditoriaSql
 import com.pandazoo.data.repositorio.CatalogoSql
 import com.pandazoo.data.repositorio.EconomiaSql
@@ -98,8 +103,8 @@ class AppContainer(
     val ids: GeneradorId,
     azar: Azar,
     cfg: ConfiguracionJuego,
-    /** Modo de depuración: habilita el generador de datos de prueba. Siempre falso en una versión de usuario. */
-    val depuracion: Boolean = false,
+    /** Regalo de una partida recién creada, pendiente de mostrarse; `null` si la partida ya existía. */
+    val regaloBienvenida: RegaloBienvenida? = null,
 ) {
     private val economia = EconomiaSql(bd)
     private val inventario = InventarioSql(bd)
@@ -108,7 +113,7 @@ class AppContainer(
     private val ejecutor = EjecutorOperacion(bd, AuditoriaSql(bd), reloj)
 
     val consultarInventario = ConsultarInventarioFinanzas(economia, inventario)
-    val consultarTienda = ConsultarTienda(catalogo)
+    val consultarTienda = ConsultarTienda(catalogo, zoo)
     val consultarZoo = ConsultarZoo(zoo)
     val adquirirInsumos = AdquirirInsumos(ejecutor, economia, inventario, catalogo, reloj)
     val adquirirEspacio = AdquirirEspacio(ejecutor, economia, zoo, catalogo, ids, reloj)
@@ -119,6 +124,7 @@ class AppContainer(
     private val misionesRepo = MisionSql(bd)
     private val seguimientoMisiones = ActualizarMisiones(misionesRepo)
     val recalcularSatisfaccion = RecalcularSatisfaccion(SatisfaccionSql(bd), ReglaSatisfaccion(cfg), bd, reloj, recalcularPrestigio, seguimientoMisiones)
+    val consultarGuiaConvivencia = ConsultarGuiaConvivencia(cfg, ReglaSatisfaccion(cfg))
     val consultarPrestigio = ConsultarPrestigio(PanelPrestigioSql(bd), reglasPrestigio)
     val configurarEspacio = ConfigurarEspacio(ejecutor, zoo, recalcularSatisfaccion)
 
@@ -129,16 +135,19 @@ class AppContainer(
     val editarFicha = EditarFicha(ejecutor, animales, catalogoFicha, recalcularSatisfaccion)
     val reubicarAnimal = ReubicarAnimal(ejecutor, zoo, animales, recalcularSatisfaccion)
     val venderAnimal = VenderAnimal(ejecutor, economia, zoo, animales, reloj, recalcularSatisfaccion, seguimientoMisiones)
-    val darDeBajaEspacio = DarDeBajaEspacio(ejecutor, zoo)
+    val darDeBajaEspacio = DarDeBajaEspacio(ejecutor, zoo, economia, reloj)
+    val ampliarEspacio = AmpliarEspacio(ejecutor, economia, zoo, catalogo, reloj)
     val consultarTiendaAnimales = ConsultarTiendaAnimales(animales, economia, misionesRepo)
     val consultarAnimales = ConsultarAnimales(animales, zoo)
+    val consultarEstadisticasAnimal = ConsultarEstadisticasAnimal(SatisfaccionSql(bd), animales, ReglaSatisfaccion(cfg))
 
     // Sprint 4: cuidado animal.
     private val cuidado = CuidadoSql(bd)
     val alimentarAnimal = AlimentarAnimal(ejecutor, animales, cuidado, inventario, recalcularSatisfaccion)
     val alimentarEspacio = AlimentarEspacio(ejecutor, zoo, animales, cuidado, inventario, recalcularSatisfaccion)
+    val alimentarHabitat = AlimentarHabitat(ejecutor, zoo, animales, cuidado, inventario, recalcularSatisfaccion)
     val tratarAnimal = TratarAnimal(ejecutor, animales, cuidado, inventario, recalcularSatisfaccion)
-    val consultarCuidado = ConsultarCuidado(animales, cuidado, inventario)
+    val consultarCuidado = ConsultarCuidado(animales, cuidado, inventario, zoo)
     val consultarMonitor = ConsultarMonitorSatisfaccion(MonitorSql(bd))
 
     // Sprint 5: ciclo de simulación, beneficios y avisos.
@@ -157,17 +166,20 @@ class AppContainer(
     val ciclosPorNivel: Int = cfg.reglas.nivel.ciclosPorNivel
     val reclamarBeneficios = ReclamarBeneficios(ejecutor, economia, beneficios, ciclos, reloj)
     val consultarBeneficios = ConsultarBeneficios(beneficios, economia)
+    val consultarDesgloseBeneficios = com.pandazoo.application.caso.ConsultarDesgloseBeneficios(zoo, animales)
     val consultarSeguimiento = ConsultarSeguimientoCritico(SeguimientoSql(bd))
     private val avisosRepo = AvisoSql(bd)
     val consultarAvisos = ConsultarHistorialAvisos(avisosRepo)
     val abrirAviso = AbrirAviso(ejecutor, avisosRepo, ciclos)
+    val descartarAviso = DescartarAviso(ejecutor, avisosRepo, ciclos)
 
     // Sprint 9: misiones y recompensas.
     val reclamarRecompensa = ReclamarRecompensa(
         ejecutor, misionesRepo, economia, inventario, ciclos, seguimientoMisiones, azar, reloj,
         cfg.recompensasAnimales.especies.map { EspecieElegible(it.idEspecie, it.probabilidad) },
+        SorteoAnimales.desde(cfg),
     )
-    val consultarMisiones = ConsultarMisiones(misionesRepo)
+    val consultarMisiones = ConsultarMisiones(misionesRepo, SorteoAnimales.desde(cfg))
 
     // Sprint 7: reproducción.
     val aceptarReproduccion = AceptarReproduccion(ejecutor, reproduccion, ciclos, animales, zoo, catalogoFicha, ids, recalcularSatisfaccion)
@@ -231,71 +243,21 @@ class AppContainer(
         _ultimoDiferido.value = null
     }
 
-    /** Solo en modo de depuración: ejecuta el siguiente ciclo sin esperar (adelanta el temporizador). */
-    fun adelantarCiclo(): Boolean {
-        check(depuracion) { "Adelantar ciclos solo existe en modo de depuración" }
-        return ejecutarCiclo.siguiente(idPartida) is Resultado.Exito
-    }
-    private val datosDePrueba = DatosDePrueba(bd, ids)
-
-    /** Solo en modo de depuración: carga de referencia y recálculo. Devuelve `false` si ya había animales. */
-    fun generarCargaDePrueba(): Boolean {
-        check(depuracion) { "El generador de datos de prueba solo existe en modo de depuración" }
-        return bd.ejecutar {
-            val resumen = datosDePrueba.cargaReferencia(idPartida)
-            if (resumen != null) recalcularSatisfaccion.alConsolidar(idPartida, AlcanceRecalculo.Parque)
-            resumen != null
-        }
-    }
-
-    /**
-     * Solo en modo de depuración: añade un panda gratis a la partida activa, en el primer espacio con cupo.
-     * Devuelve `false` si no hay espacio con cupo o la especie no existe.
-     */
-    fun anadirPanda(): Boolean {
-        check(depuracion) { "Añadir un panda directo solo existe en modo de depuración" }
-        return bd.ejecutar {
-            if (animales.especieTienda(idPartida, "panda") == null) return@ejecutar false
-            val espacio = zoo.espaciosConCupo(idPartida).firstOrNull()?.espacio ?: return@ejecutar false
-            animales.crear(
-                idPartida,
-                NuevoAnimal(
-                    id = ids.nuevo(),
-                    idEspecie = "panda",
-                    idEspacio = espacio.id,
-                    nombre = "Panda",
-                    habilidades = catalogoFicha.habilidades.take(ReglasAnimal.HABILIDADES_POR_FICHA).map { it.id },
-                    rasgos = catalogoFicha.rasgos.take(ReglasAnimal.RASGOS_POR_FICHA).map { it.id },
-                    idPareja = null,
-                    idMejorAmigo = null,
-                ),
-            )
-            recalcularSatisfaccion.alConsolidar(idPartida, AlcanceRecalculo.Espacios(setOf(espacio.id)))
-            true
-        }
-    }
-
-    /** Solo en modo de depuración: borra la carga de referencia (no toca animales ni espacios del usuario). */
-    fun eliminarCargaDePrueba(): ResumenCarga {
-        check(depuracion) { "El generador de datos de prueba solo existe en modo de depuración" }
-        return bd.ejecutar {
-            val resumen = datosDePrueba.eliminarCargaReferencia(idPartida)
-            recalcularSatisfaccion.alConsolidar(idPartida, AlcanceRecalculo.Parque)
-            resumen
-        }
-    }
-
     companion object {
         /**
          * Crea el contenedor sobre una base de datos ya abierta por el contenedor de plataforma. La configuración
          * se valida siempre (la regla de satisfacción la necesita) y, si no hay partida activa, crea una nueva.
          */
-        fun crear(bd: BaseDatos, depuracion: Boolean = false, textoConfiguracion: () -> String): AppContainer {
+        fun crear(bd: BaseDatos, conBienvenida: Boolean = true, textoConfiguracion: () -> String): AppContainer {
             val reloj = RelojSistema()
             val ids = GeneradorUuid()
             val cfg = CargadorConfiguracion.desdeTexto(textoConfiguracion())
-            val idPartida = bd.partidaActiva() ?: InicializadorPartida(bd, reloj, ids).crearPartida(cfg)
-            return AppContainer(bd, idPartida, reloj, ids, AzarSistema(), cfg, depuracion)
+            val azar = AzarSistema()
+            val existente = bd.partidaActiva()
+            val inicializador = InicializadorPartida(bd, reloj, ids, azar)
+            val nueva = if (existente == null && conBienvenida) inicializador.crearPartidaConBienvenida(cfg) else null
+            val idPartida = existente ?: nueva?.idPartida ?: inicializador.crearPartida(cfg)
+            return AppContainer(bd, idPartida, reloj, ids, azar, cfg, nueva?.regalo)
         }
     }
 }

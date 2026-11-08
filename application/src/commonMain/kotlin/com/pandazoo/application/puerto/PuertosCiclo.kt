@@ -123,6 +123,8 @@ data class Aviso(
     val numeroCiclo: Int,
     /** Id del animal de una alerta de salud; solo sirve para navegar a su ficha. */
     val idAnimal: String?,
+    /** Ya no está abierto: se descartó, caducó, se aceptó o se resolvió su causa. */
+    val cerrado: Boolean = false,
 )
 
 interface AvisoRepositorio {
@@ -133,6 +135,9 @@ interface AvisoRepositorio {
 
     /** `PENDIENTE` pasa a `VISTA`. Devuelve `false` si ya no estaba pendiente. */
     fun marcarVista(idPartida: IdPartida, id: Long, numeroCiclo: Int): Boolean
+
+    /** Cierra un aviso abierto y deja de mostrarse (`DESCARTADA`; los informativos quedan `VISTA`). Devuelve `false` si ya estaba cerrado. */
+    fun descartar(idPartida: IdPartida, id: Long, numeroCiclo: Int): Boolean
 }
 
 /** Purga acotada por la ventana de retención (`EspecificacionBBDD.md`, 5.2). */

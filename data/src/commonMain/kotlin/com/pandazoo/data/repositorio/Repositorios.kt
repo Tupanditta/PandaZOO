@@ -103,7 +103,7 @@ class InventarioSql(private val bd: BaseDatos) : InventarioRepositorio {
 
 class CatalogoSql(private val bd: BaseDatos) : CatalogoRepositorio {
     override fun recursosElegibles(): List<OfertaRecurso> {
-        // El bambú es elegible si alguna especie del catálogo lo demanda; el insumo médico es universal.
+        // El bambú es elegible si alguna especie del catálogo lo demanda; el medicina es universal.
         val alimentos = bd.leer(
             "SELECT a.id_alimento, a.nombre, c.importe_por_kilogramo FROM Alimento a " +
                 "LEFT JOIN CosteAlimento c ON c.id_alimento = a.id_alimento " +
@@ -134,17 +134,33 @@ class ZooSql(private val bd: BaseDatos) : ZooRepositorio {
         bd.uno("$SELECT_HABITAT WHERE h.id_partida = ? AND h.id_habitat = ?", idPartida, idHabitat) { habitat(it) }
 
     override fun espacios(idPartida: IdPartida, idHabitat: String): List<Espacio> =
-        bd.leer("$SELECT_ESPACIO WHERE e.id_partida = ? AND e.id_habitat = ? ORDER BY e.nombre", idPartida, idHabitat) {
+        bd.leer("$SELECT_ESPACIO WHERE e.id_partida = ? AND e.id_habitat = ? AND e.estado = 'ACTIVO' ORDER BY e.nombre", idPartida, idHabitat) {
             espacio(it)
         }
 
     override fun espacio(idPartida: IdPartida, idEspacio: String): Espacio? =
         bd.uno("$SELECT_ESPACIO WHERE e.id_partida = ? AND e.id_espacio = ?", idPartida, idEspacio) { espacio(it) }
 
-    override fun crearEspacio(idPartida: IdPartida, idEspacio: String, idHabitat: String, nombre: String, capacidadMax: Int) =
+    override fun crearEspacio(idPartida: IdPartida, idEspacio: String, idHabitat: String, nombre: String, capacidadMax: Int, costePagado: Dinero) =
         bd.escribir(
-            "INSERT INTO Espacio (id_espacio, id_partida, id_habitat, nombre, capacidad_max, estado) VALUES (?, ?, ?, ?, ?, 'ACTIVO')",
-            idEspacio, idPartida, idHabitat, nombre, capacidadMax,
+            "INSERT INTO Espacio (id_espacio, id_partida, id_habitat, nombre, capacidad_max, estado, coste_pagado) VALUES (?, ?, ?, ?, ?, 'ACTIVO', ?)",
+            idEspacio, idPartida, idHabitat, nombre, capacidadMax, costePagado.paraBd(),
+        )
+
+    override fun costePagado(idPartida: IdPartida, idEspacio: String): Dinero =
+        bd.uno("SELECT coste_pagado FROM Espacio WHERE id_partida = ? AND id_espacio = ?", idPartida, idEspacio) { Dinero.desdeBd(it.decimal(0)) }
+            ?: Dinero.CERO
+
+    override fun espacioGratuitoDisponible(idPartida: IdPartida): Boolean =
+        (bd.uno("SELECT espacio_gratuito_disponible FROM Partida WHERE id_partida = ?", idPartida) { it.entero(0) } ?: 0) == 1
+
+    override fun consumirEspacioGratuito(idPartida: IdPartida) =
+        bd.escribir("UPDATE Partida SET espacio_gratuito_disponible = 0 WHERE id_partida = ?", idPartida)
+
+    override fun ampliarEspacio(idPartida: IdPartida, idEspacio: String, capacidadMax: Int, costeAdicional: Dinero) =
+        bd.escribir(
+            "UPDATE Espacio SET capacidad_max = ?, coste_pagado = ROUND(coste_pagado + ?, 2) WHERE id_partida = ? AND id_espacio = ?",
+            capacidadMax, costeAdicional.paraBd(), idPartida, idEspacio,
         )
 
     override fun reconfigurarEspacio(idPartida: IdPartida, idEspacio: String, nombre: String, idHabitat: String) =
@@ -180,8 +196,11 @@ class ZooSql(private val bd: BaseDatos) : ZooRepositorio {
         return aviso || concepcion
     }
 
-    override fun darDeBaja(idPartida: IdPartida, idEspacio: String) =
-        bd.escribir("UPDATE Espacio SET estado = 'INACTIVO' WHERE id_partida = ? AND id_espacio = ?", idPartida, idEspacio)
+    override fun darDeBaja(idPartida: IdPartida, idEspacio: String) {
+        bd.escribir("DELETE FROM MetricaSatisfaccion WHERE id_partida = ? AND id_espacio = ?", idPartida, idEspacio)
+        bd.escribir("DELETE FROM Notificacion WHERE id_partida = ? AND entidad = 'ESPACIO' AND id_entidad = ?", idPartida, idEspacio)
+        bd.escribir("DELETE FROM Espacio WHERE id_partida = ? AND id_espacio = ?", idPartida, idEspacio)
+    }
 
     private fun habitat(f: Fila) =
         Habitat(f.texto(0), f.texto(1), f.texto(2), EstadoEntidad.valueOf(f.texto(3)), f.entero(4) == 1)
@@ -231,7 +250,7 @@ class SatisfaccionSql(private val bd: BaseDatos) : SatisfaccionRepositorio {
     override fun espacios(idPartida: IdPartida): List<EspacioSatisfaccion> =
         bd.leer(
             "SELECT e.id_espacio, e.id_habitat, h.id_bioma FROM Espacio e " +
-                "JOIN Habitat h ON h.id_partida = e.id_partida AND h.id_habitat = e.id_habitat WHERE e.id_partida = ?",
+                "JOIN Habitat h ON h.id_partida = e.id_partida AND h.id_habitat = e.id_habitat WHERE e.id_partida = ? AND e.estado = 'ACTIVO'",
             idPartida,
         ) { EspacioSatisfaccion(it.texto(0), it.texto(1), it.texto(2)) }
 

@@ -31,7 +31,7 @@ class Sprint2UiTest {
     private fun prueba(bloque: ComposeUiTest.(AppContainer) -> Unit) =
         runComposeUiTest {
             val bd = BaseDatos.enMemoria()
-            val contenedor = AppContainer.crear(bd, depuracion = true) { ConfiguracionDePrueba.texto }
+            val contenedor = AppContainer.crear(bd, conBienvenida = false) { ConfiguracionDePrueba.texto }
             setContent {
                 CompositionLocalProvider(LocalContenedor provides contenedor) {
                     PandaZooTema { PandaZooNavegacion() }

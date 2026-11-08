@@ -48,6 +48,14 @@ object ReglasCuidado {
     /** Nivel tras una ración individual: suma 10 puntos con tope en el 100 %. */
     fun nivelTrasRacion(nivel: Int): Int = (nivel + INCREMENTO_PUNTOS).coerceAtMost(ALIMENTACION_MAXIMA)
 
-    /** Kilogramos para llevar un animal al 100 %. */
-    fun kilosHastaMaximo(nivel: Int, kgPorIncremento: Int): Int = incrementosHastaMaximo(nivel) * kgPorIncremento
+    /** Cada nivel de animal por encima del 1 suma un 5 % al bambú que pide cada ración. */
+    private const val VEINTAVOS_BASE = 20
+
+    /** Kilogramos de una ración (+10 puntos): la cantidad base de la especie crece con el nivel del animal, redondeada hacia arriba. */
+    fun kilosPorRacion(kgPorIncremento: Int, nivelAnimal: Int = 1): Int =
+        (kgPorIncremento * (VEINTAVOS_BASE - 1 + nivelAnimal.coerceAtLeast(1)) + VEINTAVOS_BASE - 1) / VEINTAVOS_BASE
+
+    /** Kilogramos para llevar un animal al 100 % desde su alimentación actual [nivel]. */
+    fun kilosHastaMaximo(nivel: Int, kgPorIncremento: Int, nivelAnimal: Int = 1): Int =
+        incrementosHastaMaximo(nivel) * kilosPorRacion(kgPorIncremento, nivelAnimal)
 }

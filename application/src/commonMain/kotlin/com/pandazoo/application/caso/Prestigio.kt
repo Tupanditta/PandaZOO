@@ -51,7 +51,8 @@ class RecalcularPrestigio(
             val censo = repositorio.censo(idPartida)
             val ahora = reloj.ahoraSegundos()
 
-            val nivel = reglas.nivelActual(censo.animalesVivos, censo.satisfaccionGlobal)
+            // El nivel de prestigio no baja: si las estadísticas son menores, simplemente se conserva.
+            val nivel = maxOf(previo.actual, reglas.nivelActual(censo.animalesVivos, censo.satisfaccionGlobal))
             val maximos = reglas.actualizarMaximos(previo.maximos, nivel, censo.animalesVivos, censo.satisfaccionGlobal)
             val nuevo = EstadoPrestigio(nivel, maximos)
             if (nuevo != previo) repositorio.guardar(idPartida, nuevo)
@@ -117,7 +118,12 @@ data class PanelPrestigio(
     val satisfaccionGlobal: Seccion<Double>,
     /** `null` si el nivel actual ya es el máximo o el nivel actual no está disponible. */
     val siguiente: UmbralesSiguiente?,
+    /** Lo que abre el nivel siguiente, con nombres legibles; `null` si no hay nivel siguiente. */
+    val desbloqueoSiguiente: DesbloqueoLegible? = null,
 )
+
+/** Especies y hábitats que desbloquea un nivel, por nombre. */
+data class DesbloqueoLegible(val especies: List<String>, val habitats: List<String>)
 
 /** CU-19 Consultar prestigio: lee valores persistidos, no recalcula, no abre transacción y no audita (RF-47). */
 class ConsultarPrestigio(
@@ -140,7 +146,7 @@ class ConsultarPrestigio(
             null
         }
         val actual: Seccion<Int> =
-            estado?.let { Seccion.Disponible(it.actual) } ?: Seccion.NoDisponible("El nivel de prestigio actual no está disponible.")
+            estado?.let { Seccion.Disponible(it.actual) } ?: Seccion.NoDisponible("El prestigio actual no está disponible.")
         val maximos: Seccion<MaximosHistoricos?> =
             estado?.let { Seccion.Disponible(it.maximos) } ?: Seccion.NoDisponible("El máximo histórico no está disponible.")
         val animales: Seccion<Int> = try {
@@ -156,6 +162,12 @@ class ConsultarPrestigio(
         }
         val siguiente = estado?.let { reglas.siguiente(it.actual) }
             ?.let { UmbralesSiguiente(it.nivel, it.umbralAnimalesComparacion, it.umbralSatisfaccion) }
-        return PanelPrestigio(actual, maximos, animales, satisfaccion, siguiente)
+        val desbloqueo = estado?.let { reglas.desbloqueoDe(it.actual + 1) }?.let { d ->
+            DesbloqueoLegible(
+                especies = d.especies.map { repositorio.nombreEspecie(it) ?: it },
+                habitats = d.habitats.map { repositorio.nombreHabitat(idPartida, it) ?: it },
+            )
+        }
+        return PanelPrestigio(actual, maximos, animales, satisfaccion, siguiente, desbloqueo)
     }
 }

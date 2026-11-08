@@ -62,12 +62,12 @@
 ### CU-13:
 * **Actor Principal:** Gestor del Zoo
 * **Nombre:** Alimentar Espécimen
-* **Objetivo:** Alimentar con bambú a un animal desde su ficha o a todos los animales vivos por debajo del 100% de un espacio desde la ficha de este, deduciendo del inventario la cantidad necesaria.
+* **Objetivo:** Alimentar con bambú a un animal desde su ficha o a todos los animales vivos por debajo del 100% de un espacio o de un hábitat, deduciendo del inventario la cantidad necesaria.
 
 ### CU-14:
 * **Actor Principal:** Gestor del Zoo
-* **Nombre:** Dar de Baja Espacio Vacío
-* **Objetivo:** Confirmar la baja lógica de un espacio vacío sin romper referencias históricas ni operaciones pendientes
+* **Nombre:** Vender Espacio Vacío
+* **Objetivo:** Vender un espacio vacío y recuperar lo que costó, sin romper operaciones pendientes
 
 ### CU-15:
 * **Actor Principal:** Gestor del Zoo
@@ -77,7 +77,7 @@
 ### CU-16:
 * **Actor Principal:** Gestor del Zoo
 * **Nombre:** Consultar Inventario y Finanzas
-* **Objetivo:** Visualizar el stock de raciones, insumos médicos universales, los beneficios pendientes de reclamar y el balance monetario disponible.
+* **Objetivo:** Visualizar el stock de raciones, medicinas universales (insumo médico), los beneficios pendientes de reclamar y el balance monetario disponible.
 
 ### CU-17:
 * **Actor Principal:** Gestor del Zoo
@@ -98,6 +98,16 @@
 * **Actor Principal:** Gestor del Zoo
 * **Nombre:** Consultar Misiones y Progreso
 * **Objetivo:** consultar las misiones activas, sus objetivos, progreso y recompensas disponibles.
+
+### CU-22:
+* **Actor Principal:** Gestor del Zoo
+* **Nombre:** Consultar Guía de Convivencia
+* **Objetivo:** consultar cómo encajan las especies entre sí y con cada hábitat, en tres niveles, sin mostrar valores numéricos.
+
+### CU-23:
+* **Actor Principal:** Gestor del Zoo
+* **Nombre:** Consultar Estadísticas de un Animal
+* **Objetivo:** consultar de dónde sale la satisfacción de un animal y cuánto beneficio genera.
 
 ### CU-21:
 * **Actor Principal:** Gestor del Zoo

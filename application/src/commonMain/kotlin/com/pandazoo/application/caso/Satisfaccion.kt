@@ -1,9 +1,12 @@
 package com.pandazoo.application.caso
 
+import com.pandazoo.application.puerto.AnimalRepositorio
 import com.pandazoo.application.puerto.MonitorRepositorio
 import com.pandazoo.application.puerto.Reloj
 import com.pandazoo.application.puerto.SatisfaccionRepositorio
 import com.pandazoo.application.puerto.Transaccion
+import com.pandazoo.domain.animal.ReglasNivel
+import com.pandazoo.domain.satisfaccion.DetalleSatisfaccion
 import com.pandazoo.domain.modelo.IdPartida
 import com.pandazoo.domain.modelo.Seccion
 import com.pandazoo.domain.satisfaccion.IndiceVivos
@@ -178,4 +181,42 @@ class ConsultarMonitorSatisfaccion(private val repositorio: MonitorRepositorio) 
         } catch (e: Exception) {
             false
         }
+}
+
+/** Datos ya calculados del beneficio de un animal en un ciclo, para mostrarlos sin fórmulas. */
+data class BeneficioAnimal(
+    val beneficioBase: Double,
+    val nivel: Int,
+    val multiplicadorNivel: Double,
+    val satisfaccion: Double,
+    val porCiclo: Double,
+)
+
+/** Estadísticas de un animal vivo y alojado: de dónde sale cada parte de su satisfacción y su beneficio. */
+data class EstadisticasAnimal(val satisfaccion: DetalleSatisfaccion, val beneficio: BeneficioAnimal)
+
+/**
+ * Consulta de estadísticas de un animal. Calcula el desglose con el estado confirmado (como el recálculo) y no
+ * modifica nada: ni transacción, ni auditoría, ni contador de recálculos.
+ */
+class ConsultarEstadisticasAnimal(
+    private val repositorio: SatisfaccionRepositorio,
+    private val animales: AnimalRepositorio,
+    private val regla: ReglaSatisfaccion,
+) {
+    /** `null` si el animal no existe, no está vivo o no está alojado en un espacio. */
+    fun ejecutar(idPartida: IdPartida, idAnimal: String): EstadisticasAnimal? {
+        val vivos = repositorio.animalesVivosAlojados(idPartida)
+        val animal = vivos.firstOrNull { it.id == idAnimal } ?: return null
+        val ficha = animales.ficha(idPartida, idAnimal) ?: return null
+        val espacio = repositorio.espacios(idPartida).firstOrNull { it.id == animal.idEspacio } ?: return null
+        val detalle = regla.detalle(animal, espacio.idBioma, vivos.filter { it.idEspacio == animal.idEspacio }, IndiceVivos(vivos))
+        val p = ficha.parametros
+        val multiplicador = ReglasNivel.multiplicador(ficha.nivel, p.nivelMaximo, p.multiplicadorNivelMaximo)
+        val satisfaccion = detalle.desglose.valor
+        return EstadisticasAnimal(
+            satisfaccion = detalle,
+            beneficio = BeneficioAnimal(p.beneficioBase, ficha.nivel, multiplicador, satisfaccion, ReglasNivel.beneficioAnimal(p, satisfaccion, ficha.nivel)),
+        )
+    }
 }

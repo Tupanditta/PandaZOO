@@ -89,4 +89,10 @@ class PanelPrestigioSql(private val bd: BaseDatos) : PanelPrestigioRepositorio {
     override fun animalesVivosAlojados(idPartida: IdPartida): Int = bd.vivosAlojados(idPartida)
 
     override fun satisfaccionGlobal(idPartida: IdPartida): Double? = bd.satisfaccionDelParque(idPartida)
+
+    override fun nombreEspecie(idEspecie: String): String? =
+        bd.uno("SELECT nombre_comun FROM Especie WHERE id_especie = ?", idEspecie) { it.texto(0) }
+
+    override fun nombreHabitat(idPartida: IdPartida, codigo: String): String? =
+        bd.uno("SELECT nombre FROM Habitat WHERE id_partida = ? AND codigo = ?", idPartida, codigo) { it.texto(0).removePrefix("Hábitat ").trim() }
 }

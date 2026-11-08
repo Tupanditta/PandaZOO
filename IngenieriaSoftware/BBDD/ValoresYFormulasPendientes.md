@@ -29,7 +29,7 @@ $$S_{soc} = w_{pareja}C_{pareja} + w_{amigo}C_{amigo} + w_{padre}C_{padre} + w_{
 con:
 
 - $C_{pareja} = 1$ si tiene pareja, $0$ si no
-- $C_{amigo} = 1$ si tiene mejor amigo, $0$ si no
+- $C_{amigo} = 1$ si tiene mejor amigo, $0$ si no (el vínculo es recíproco, igual que el de pareja: `Otros/DecisionesImplementacion.md`, sección 3)
 - $C_{padre} = 1$ si tiene padre, $0$ si no
 - $C_{madre} = 1$ si tiene madre, $0$ si no
 - $C_{hermanos} = \min(1, \frac{num\_hermanos}{tope\_hermanos})$
@@ -70,31 +70,31 @@ Los espacios y hábitats sin animales vivos quedan sin métrica. La partida sin 
 | Elemento | Estado | Definición |
 |---|---|---|
 | Prestigio actual | DEFINIDO | Es el mayor nivel cuyos dos requisitos se cumplen (animales vivos alojados y satisfacción global mínima); si ninguno, `0`. Una partida nueva comienza en `0`. Reglas de redondeo de RF-35. |
-| Umbrales y multiplicadores | DEFINIDO | Nivel 1: `2` animales y satisfacción `0.30`. Multiplicadores: `1.40` (animales) y `1.10` (satisfacción). `nivel_maximo = 10`; umbral del nivel 10: `41.32` (comparación `41`) animales y satisfacción `0.7074`. |
+| Umbrales y multiplicadores | DEFINIDO | Nivel 1: `2` animales y satisfacción `0.30`. Multiplicadores: `1.40` (animales) y `1.10` (satisfacción). Los multiplicadores ya no generan la tabla vigente: `nivel_maximo = 100` y `tablas.niveles_prestigio` (100 niveles, escrita a mano) fija los umbrales, desde `2` animales y `0.30` en el nivel 1 hasta `200` animales y satisfacción `1.00` en el nivel 100. El prestigio nunca baja (`Otros/DecisionesImplementacion.md`, sección 6). |
 | Límites de configuración | DEFINIDO | Umbral base de animales: entero `>= 1`. Satisfacción base: `(0, 1]`. Multiplicadores: `1 < m <= 3.00`. El umbral de satisfacción de cada nivel hasta `nivel_maximo` debe ser `<= 1.00`; si no, la configuración es inválida. |
 | Número total de animales albergados | DEFINIDO | Animales con `estado_vital = 'VIVO'` e `id_espacio` no nulo. |
 | Satisfacción global | DEFINIDO | Media directa de los animales vivos alojados; `0` si no hay ninguno. |
 | Prestigio máximo | DEFINIDO | Tres máximos independientes (nivel, animales, satisfacción), inicializados al alcanzarse el primero. |
-| Desbloqueo por prestigio | DEFINIDO | `tablas.desbloqueos_prestigio`: nivel 0 (inicial) con 6 especies y 2 hábitats; niveles 1 a 10 con el resto (38 especies comerciales y 10 hábitats en total). Se desbloquea todo lo de los niveles `<=` prestigio actual; es permanente (RES-07) y emite un aviso informativo por entidad. Las exclusivas solo se desbloquean por recompensa. |
+| Desbloqueo por prestigio | DEFINIDO | `tablas.desbloqueos_prestigio`: nivel 0 (inicial) con 6 especies y 2 hábitats; niveles 1 a 100 con el resto, mezclando rangos (38 especies comerciales y 5 hábitats en total). Se desbloquea todo lo de los niveles `<=` prestigio actual; es permanente (RES-07) y emite un aviso informativo por entidad. Las exclusivas solo se desbloquean por recompensa. |
 
 ## 4. Economía y beneficios
 
 | Cálculo o valor | Estado | Definición |
 |---|---|---|
-| Coste total de compra | DEFINIDO | Espacio por `capacidad_max`: `2`→100, `4`→180, `6`→250, `8`→320, `10`→400, `15`→550, `20`→700. Animal por rango: 200, 450, 900 y 1800 (rangos 1 a 4); el rango 5 vale `0.00` (solo la unidad concedida por recompensa). Bambú `0.50` por kilogramo; insumo médico `10.00` por unidad. Importes con dos decimales, medios hacia arriba. |
+| Coste total de compra | DEFINIDO | Espacio por `capacidad_max`: `6`→325, `8`→415, `10`→520, `15`→715, `20`→910, `25`→1105, `30`→1300; el primer espacio de 6 animales de la partida cuesta `0.00`. Ampliar un espacio cuesta la diferencia de precio más un 25 % y venderlo vacío devuelve lo pagado. Animal por rango: 40, 160, 450 y 700 (rangos 1 a 4); el rango 5 vale `0.00` (solo la unidad concedida por recompensa). Bambú `0.50` por kilogramo; medicina `10.00` por unidad. Importes con dos decimales, medios hacia arriba. |
 | Importe de venta | DEFINIDO | Según nivel y rango (RF-06, RF-52): véase «Valor de venta». |
-| Consumo de alimento | DEFINIDO | Único alimento: bambú, en kilogramos enteros: `1` a `5` kg por cada incremento de 10 puntos, según el tamaño de la especie (`tablas.alimentos_por_especie`). Descenso por ciclo ordinario: 20 puntos. La alimentación grupal consume el total en una operación atómica. |
-| Consumo médico | DEFINIDO | Un único insumo médico universal; cantidad por tratamiento según el rango: `1`, `2`, `3`, `4` y `5` unidades (rangos 1 a 5). |
-| Beneficio o ingreso generado | DEFINIDO | `B_ciclo = redondear(suma, sobre cada animal vivo alojado, de beneficio_base_animal_ciclo(rango) * S_i * M_nivel(nivel))`, con `M_nivel(n) = 1 + (multiplicador_nivel_maximo - 1) * (n - 1) / (nivel_maximo - 1)`; beneficio base por rango `12.00`, `24.00`, `40.00`, `64.00` y `100.00`; `0` sin animales. Sin multiplicadores por especie. Se genera una vez por ciclo confirmado. |
+| Consumo de alimento | DEFINIDO | Único alimento: bambú, en kilogramos enteros: `1` a `5` kg por cada incremento de 10 puntos, según el tamaño de la especie (`tablas.alimentos_por_especie`). La cantidad es la de un animal de nivel 1 y crece un 5 % por cada nivel por encima del 1, redondeada hacia arriba. Descenso por ciclo ordinario: 20 puntos. La alimentación grupal (por espacio o por hábitat) consume el total en una operación atómica. |
+| Consumo médico | DEFINIDO | Una única medicina universal; cantidad por tratamiento según el rango: `1`, `2`, `3`, `4` y `5` unidades (rangos 1 a 5). |
+| Beneficio o ingreso generado | DEFINIDO | `B_ciclo = redondear(suma, sobre cada animal vivo alojado, de beneficio_base_animal_ciclo(rango) * S_i * M_nivel(nivel))`, con `M_nivel(n) = 1 + (multiplicador_nivel_maximo - 1) * (n - 1) / (nivel_maximo - 1)`; beneficio base por rango `6.00`, `12.00`, `20.00`, `32.00` y `50.00`; `0` sin animales. Sin multiplicadores por especie. Se genera una vez por ciclo confirmado. |
 | Beneficio acumulado | DEFINIDO | Cada ciclo añade el beneficio generado al pendiente; las mutaciones entre ciclos no lo cambian; las salidas solo afectan al futuro. |
 | Reclamación de beneficio | DEFINIDO | Acredita una sola vez el pendiente, marca los registros reclamados y deja el pendiente en `0` (RF-11). |
-| Saldos e inventarios | DEFINIDO | No negativos. Partida nueva: `2000.00` de fondos, `30` kg de bambú y `3` insumos médicos (`partida_inicial`). |
+| Saldos e inventarios | DEFINIDO | No negativos. Partida nueva: `2000.00` de fondos, `30` kg de bambú y `3` medicinas (`partida_inicial`), más el regalo de bienvenida de animales gratuitos y el primer espacio de 6 animales gratis (`Otros/DecisionesImplementacion.md`, secciones 1 y 2). |
 
 ## 5. Reproducción
 
 | Cálculo o valor | Estado | Definición |
 |---|---|---|
-| Valor de venta | DEFINIDO | `V = redondear(valor_venta_base(rango) * F_venta(nivel))`, lineal a tramos: `0.05` en el nivel 1, `1` (coste de compra) en el nivel de equilibrio `redondear(2/3 * nivel_maximo)` y `factor_venta_nivel_maximo` (`1.5` a `2.5`) en el tope. Valores base `200`, `450`, `900`, `1800` y `4000` (rango 5, referencia). RF-52. |
+| Valor de venta | DEFINIDO | `V = redondear(valor_venta_base(rango) * F_venta(nivel))`, lineal a tramos: `0.05` en el nivel 1, `1` (coste de compra) en el nivel de equilibrio `redondear(2/3 * nivel_maximo)` y `factor_venta_nivel_maximo` (`1.5` a `2.5`) en el tope. Valores base `40`, `160`, `450`, `700` y `4000` (rango 5, referencia). RF-52. |
 | Pareja válida | DEFINIDO | Misma especie, misma partida, referencias válidas, pareja recíproca, sin autorreferencia, ambos con al menos el nivel mínimo de pareja (`4`) y estado permitido. |
 | Umbral de satisfacción reproductiva | DEFINIDO | Por rango: `0.60`, `0.65`, `0.70`, `0.75` y `0.80`; comparación `>=` con la satisfacción sin redondear. |
 | Probabilidad de reproducción | DEFINIDO | `max(0, probabilidad inicial - penalización * hijos vivos comunes)`. Probabilidad inicial por rango: `0.04`, `0.03`, `0.02`, `0.015`, `0.01`; penalización por hijo: `0.010`, `0.008`, `0.006`, `0.005`, `0.004`. Concepción si `aleatorio < probabilidad`. |
@@ -110,7 +110,7 @@ Los espacios y hábitats sin animales vivos quedan sin métrica. La partida sin 
 | Periodicidad del ciclo | DEFINIDO | 10 minutos (RF-14). |
 | Número de ciclos offline y remanente | DEFINIDO | Fórmulas de RF-21 y RF-24 con tope `retencion.max_ciclos_offline = 1008`. |
 | Descenso de alimentación | DEFINIDO | 20 puntos por ciclo ordinario; en offline, con los límites de RF-22. |
-| Enfermedad | DEFINIDO | Un animal vivo, alojado y sano enferma si `aleatorio < probabilidad_enfermedad(rango) * (1 - satisfaccion_actual)`. Probabilidad por rango: `0.010`, `0.010`, `0.015`, `0.015`, `0.020`. En offline el sorteo se detiene al enfermar y rigen los límites de RF-23. |
+| Enfermedad | DEFINIDO | Un animal vivo, alojado y sano enferma si `aleatorio < probabilidad_enfermedad(rango) * (1 - satisfaccion_actual)`. Probabilidad por rango: `0.020`, `0.020`, `0.025`, `0.025`, `0.030`. En offline el sorteo se detiene al enfermar y rigen los límites de RF-23. |
 | Ciclos críticos | DEFINIDO | El ciclo que deja al animal con alimentación `0%` o enfermo cuenta como el primero; contadores independientes; defunción al llegar a `3`. |
 | Nivel del animal | DEFINIDO | Sustituye a la edad y a la longevidad. Nivel inicial `1` (compra, recompensa y cría); `+1` cada `72` ciclos en que el animal sigue vivo, sano y con alimentación mayor que `0`; tope por rango en `tablas.rangos_especie[].nivel_maximo` (`15`, `29`, `41`, `51`, `61`, es decir, 7, 14, 20, 25 y 30 días); nunca disminuye; nivel mínimo de pareja `4`. Sin muerte por vejez. Detalle: RF-51 y `EspecificacionBBDD.md`, secciones 1.4 y 2.3.1. |
 | Orden del ciclo | DEFINIDO | Alimentación, salud, ciclos críticos, defunciones, nivel, reproducción, beneficios, misiones, métricas y persistencia (RF-14). |
@@ -119,7 +119,7 @@ Los espacios y hábitats sin animales vivos quedan sin métrica. La partida sin 
 
 | Elemento | Estado | Definición |
 |---|---|---|
-| Capacidad positiva | DEFINIDO | `capacidad_max > 0`, inmutable y presente en `CosteEspacio` (2, 4, 6, 8, 10, 15 o 20). |
+| Capacidad positiva | DEFINIDO | `capacidad_max > 0` y presente en `CosteEspacio` (6, 8, 10, 15, 20, 25 o 30); solo puede aumentar mediante la ampliación (`Otros/DecisionesImplementacion.md`, sección 2.3). |
 | Aforo usado | DEFINIDO | Animales `VIVO` con espacio asignado, contados dentro de la transacción. |
 | Compatibilidad especie-bioma | DEFINIDO | 235 factores: `1.00` primario, `0.75` secundario, `0.40` neutro y `0.20` incompatible por clima. |
 | Compatibilidad del espacio | DEFINIDO | Bioma del hábitat del espacio y especie; factor de satisfacción, no condición de ubicación. |
@@ -151,8 +151,8 @@ Todos están completos en `valores_y_pesos.json`:
 - 5 biomas y 5 hábitats (uno por bioma).
 - 47 especies (38 comerciales y 9 exclusivas), cinco rangos, pesos de satisfacción y sociales, `tope_hermanos` y kilogramos de bambú por incremento; cada rango incluye además beneficio base, nivel máximo y multiplicador de nivel máximo.
 - 235 compatibilidades especie-bioma, 1128 afinidades entre pares de especies (incluidas las diagonales) y 47 curvas de `M_crit`.
-- Un alimento (bambú) y un insumo médico, con sus precios y cantidades.
-- 12 misiones con parámetros, progresión y recompensas, y la lista de recompensas de animal aleatorio.
+- Un alimento (bambú) y una medicina (identificador `insumo_medico`), con sus precios y cantidades.
+- 12 misiones con parámetros, progresión y recompensas, la lista de recompensas de animal aleatorio y sus tablas de sorteo por rango (`sorteo_prestigio`, `partida_inicial.bienvenida`).
 - Catálogos cerrados de 10 rasgos de personalidad y 10 habilidades sociales (descriptivos; no intervienen en ninguna fórmula).
 - Estados y transiciones: `EspecificacionBBDD.md`, sección 2.3.2. Valores iniciales de la partida: sección 2.4 y `partida_inicial`.
 

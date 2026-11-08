@@ -47,6 +47,10 @@ object ReglasMision {
         "satisfaccion_minima_especie" to "satisfaccion_minima",
     )
 
+    /** Misión de prestigio: siempre concede un animal, con el rango sorteado según el prestigio requerido. */
+    const val MISION_PRESTIGIO = "subir_prestigio"
+    const val PARAMETRO_PRESTIGIO = "nivel_prestigio_requerido"
+
     /** Tipos de misión conocidos. */
     val tipos: Set<String> get() = OBJETIVO.keys
 

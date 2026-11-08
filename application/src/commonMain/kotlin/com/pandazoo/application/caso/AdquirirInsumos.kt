@@ -24,7 +24,7 @@ data class ComandoAdquirirInsumos(
 
 data class CompraRealizada(val coste: Dinero, val saldo: Dinero, val existenciasTotales: Int)
 
-/** CU-07 Adquirir insumos: bambú o insumos médicos (RF-10, RF-31, RF-50, RES-12). */
+/** CU-07 Adquirir insumos: bambú o medicinas (RF-10, RF-31, RF-50, RES-12). */
 class AdquirirInsumos(
     private val ejecutor: EjecutorOperacion,
     private val economia: EconomiaRepositorio,

@@ -37,7 +37,7 @@ class Sprint3UiTest {
     private fun prueba(bloque: ComposeUiTest.(AppContainer) -> Unit) =
         runComposeUiTest {
             val bd = BaseDatos.enMemoria()
-            val contenedor = AppContainer.crear(bd) { ConfiguracionDePrueba.texto }
+            val contenedor = AppContainer.crear(bd, conBienvenida = false) { ConfiguracionDePrueba.texto }
             setContent {
                 CompositionLocalProvider(LocalContenedor provides contenedor) {
                     PandaZooTema { PandaZooNavegacion() }
@@ -79,7 +79,7 @@ class Sprint3UiTest {
         }
     }
 
-    private fun espacio(c: AppContainer, nombre: String, habitat: String = "bosque_templado", capacidad: Int = 4): String {
+    private fun espacio(c: AppContainer, nombre: String, habitat: String = "bosque_templado", capacidad: Int = 8): String {
         c.adquirirEspacio.ejecutar(ComandoAdquirirEspacio(c.idPartida, "${c.idPartida}/$habitat", nombre, capacidad, "sol-$nombre"))
         return c.consultarZoo.espacios(c.idPartida, "${c.idPartida}/$habitat").first { it.nombre == nombre }.id
     }
@@ -110,16 +110,17 @@ class Sprint3UiTest {
             onNodeWithContentDescription("Abrir tienda").performClick()
             pulsar("Comprar animales")
             esperar("Tienda de animales")
-            esperar("Bloqueada", subcadena = true)
+            esperar("Prestigio 1", subcadena = true) // las bloqueadas indican el nivel que las desbloquea
             esperar("Exclusivo · solo por misión", subcadena = true)
+            textos().none { it.contains("Bloqueada") || it.contains("Disponible") } shouldBe true
             sinIdentificadoresTecnicos(c)
 
             onNodeWithText("Erizo").performClick()
             esperar("Comprar Erizo")
             esperar("Bosque templado")
             onNodeWithText("Bosque templado").performClick()
-            esperar("Madriguera — Ocupación 0/4")
-            onNodeWithText("Madriguera — Ocupación 0/4").performClick()
+            esperar("Madriguera — Ocupación 0/8")
+            onNodeWithText("Madriguera — Ocupación 0/8").performClick()
 
             esperar("Nombre del animal")
             onNodeWithText("Confirmar compra").performScrollTo().assertIsNotEnabled() // ficha incompleta
@@ -129,7 +130,7 @@ class Sprint3UiTest {
             onNodeWithText("Confirmar compra").performScrollTo().assertIsEnabled().performClick()
 
             esperar("Tienda de animales") // vuelve a la tienda tras comprar
-            fondos(c) shouldBe antes - Dinero.desdeDecimal(200.0)
+            fondos(c) shouldBe antes - Dinero.desdeDecimal(40.0)
 
             onNodeWithContentDescription("Volver").performClick()
             onNodeWithContentDescription("Volver").performClick()
@@ -138,11 +139,9 @@ class Sprint3UiTest {
             sinIdentificadoresTecnicos(c)
             onNodeWithText("Pincho").performClick()
 
-            esperar("1 de 15") // nivel inicial y tope del rango Común
+            esperar("Pincho · Nivel 1") // nivel inicial junto al nombre
             esperar("0 de 72 ciclos sanos para el nivel 2")
-            esperar("Común")
             esperar("100%")
-            esperar("Sano")
             esperar("Cuidador, Líder")
             esperar("Curioso, Tímido")
             sinIdentificadoresTecnicos(c)
@@ -160,8 +159,8 @@ class Sprint3UiTest {
             onNodeWithText("Erizo").performClick()
             esperar("Bosque templado")
             onNodeWithText("Bosque templado").performClick()
-            esperar("Madriguera — Ocupación 1/4")
-            onNodeWithText("Madriguera — Ocupación 1/4").performClick()
+            esperar("Madriguera — Ocupación 1/8")
+            onNodeWithText("Madriguera — Ocupación 1/8").performClick()
             esperar("Nombre del animal")
             onNodeWithText("Nombre del animal").performTextInput("Pincho")
             elegirCuatroEtiquetas()
@@ -192,7 +191,7 @@ class Sprint3UiTest {
     fun `T3_14 editar la ficha trasladar y vender con baja del espacio vacio`() =
         prueba { c ->
             val origen = espacio(c, "Madriguera")
-            val refugio = espacio(c, "Refugio")
+            val refugio = espacio(c, "Cobijo")
             DatosDePrueba(c.bd, c.ids).animal(c.idPartida, origen, "erizo", "Pincho")
             irAlEspacio()
             esperar("Pincho")
@@ -207,38 +206,44 @@ class Sprint3UiTest {
             onNodeWithText("Guardar").performScrollTo().assertIsEnabled().performClick()
             esperar("Cuidador, Líder")
 
-            // Trasladar al otro espacio: el de origen queda vacío y se ofrece su baja.
+            // Trasladar al otro espacio: el de origen queda vacío.
             pulsar("Trasladar")
             esperar("Espacio de destino")
-            esperar("Bosque templado · Refugio (0/4)")
+            esperar("Bosque templado", subcadena = true)
             onNodeWithText("Confirmar traslado").performScrollTo().assertIsNotEnabled()
-            onNodeWithText("Bosque templado · Refugio (0/4)").performClick()
+            onNodeWithText("Bosque templado", substring = true).performClick()
+            esperar("Cobijo")
+            esperar("0/8")
+            onNodeWithText("Cobijo").performClick()
             onNodeWithText("Confirmar traslado").performScrollTo().assertIsEnabled().performClick()
-            esperar("Espacio vacío")
             sinIdentificadoresTecnicos(c)
-            onNodeWithText("Mantener").performClick()
             esperar("Cuidador, Líder")
             c.consultarZoo.espacio(c.idPartida, origen)!!.estado.name shouldBe "ACTIVO"
 
-            // Vender: exige confirmación con el importe según el nivel, lo acredita y ofrece la baja del espacio vacío.
+            // Vender: exige confirmación con el importe según el nivel, lo acredita y deja vacío el espacio, que entonces puede venderse.
             val antes = fondos(c)
+            val reembolsoOrigen = c.consultarZoo.costePagado(c.idPartida, origen)
             pulsar("Vender")
-            esperar("Vender animal")
-            esperar("Vas a vender a Pincho (nivel 1) por 🪙 10.00", subcadena = true)
-            esperar("En el nivel 10 se recupera el coste de compra", subcadena = true)
+            esperar("Vender a Pincho")
+            esperar("🪙 2.00", subcadena = true)
+            esperar("nivel de equilibrio")
             onNodeWithText("Cancelar").performClick()
             c.bd.uno("SELECT COUNT(*) FROM Animal WHERE estado_vital = 'VIVO'") { it.entero(0) } shouldBe 1
             pulsar("Vender")
             onNodeWithText("Confirmar venta").performClick()
-            esperar("Espacio vacío")
-            onNodeWithText("Dar de baja").performClick()
 
-            // Tras la venta se vuelve a la pantalla del espacio original, activo y vacío.
-            esperar("Este espacio no tiene animales.")
+            // Tras la venta se vuelve a la pantalla del espacio original, ya vacío: ahí aparece el botón para venderlo.
+            esperar("Vender espacio")
             c.bd.uno("SELECT estado_vital FROM Animal") { it.texto(0) } shouldBe "VENDIDO"
-            fondos(c) shouldBe antes + Dinero.desdeDecimal(10.0)
-            c.consultarZoo.espacio(c.idPartida, refugio)!!.estado.name shouldBe "INACTIVO"
-            c.consultarZoo.espacio(c.idPartida, origen)!!.estado.name shouldBe "ACTIVO"
+            fondos(c) shouldBe antes + Dinero.desdeDecimal(2.0)
+            c.consultarZoo.espacio(c.idPartida, refugio)!!.estado.name shouldBe "ACTIVO" // el vacío no se da de baja solo
+            esperar("Vender espacio")
+            onNodeWithText("Vender espacio").performClick()
+            esperar("recuperas")
+            onNodeWithText("Confirmar venta del espacio").performClick()
+            esperar("Cobijo") // vuelve a la lista del hábitat, donde el espacio vendido ya no figura
+            c.consultarZoo.espacio(c.idPartida, origen) shouldBe null
+            fondos(c) shouldBe antes + Dinero.desdeDecimal(2.0) + reembolsoOrigen // vender el espacio devuelve lo que costó
             sinIdentificadoresTecnicos(c)
         }
 
@@ -247,15 +252,15 @@ class Sprint3UiTest {
         prueba { c ->
             val sp = espacio(c, "Madriguera")
             irAlEspacio()
-            esperar("Dar de baja el espacio")
-            onNodeWithText("Dar de baja el espacio").performClick()
-            esperar("Confirmar baja")
+            esperar("Vender espacio")
+            onNodeWithText("Vender espacio").performClick()
+            esperar("Confirmar venta del espacio")
             onNodeWithText("Cancelar").performClick()
             c.consultarZoo.espacio(c.idPartida, sp)!!.estado.name shouldBe "ACTIVO"
-            onNodeWithText("Dar de baja el espacio").performClick()
-            onNodeWithText("Confirmar baja").performClick()
-            esperar("De baja", subcadena = true) // vuelve a la lista del hábitat, donde figura de baja
-            c.consultarZoo.espacio(c.idPartida, sp)!!.estado.name shouldBe "INACTIVO"
+            onNodeWithText("Vender espacio").performClick()
+            onNodeWithText("Confirmar venta del espacio").performClick()
+            esperar("Comprar espacio") // vuelve al hábitat, donde ya no figura
+            c.consultarZoo.espacio(c.idPartida, sp) shouldBe null
         }
 
     @Test
@@ -265,12 +270,11 @@ class Sprint3UiTest {
             DatosDePrueba(c.bd, c.ids).animal(c.idPartida, sp, "erizo", "Veterano", nivel = 15)
             DatosDePrueba(c.bd, c.ids).animal(c.idPartida, sp, "erizo", "Novato", nivel = 8, ciclosNivel = 30)
             irAlEspacio()
-            esperar("Nivel 15 · Alimentación 100%", subcadena = true)
+            esperar("Nivel 15 · Satisfacción", subcadena = true)
             onNodeWithText("Veterano").performClick()
-            esperar("15 de 15")
+            esperar("Veterano · Nivel 15")
             esperar("Nivel máximo alcanzado")
-            esperar("Común")
-            esperar("🪙 300.00") // venta en el tope del rango 1
+            esperar("🪙 60.00") // venta en el tope del rango 1
             textos().forEach { t ->
                 t.contains("Edad", ignoreCase = true) shouldBe false
                 t.contains("años") shouldBe false
@@ -278,7 +282,7 @@ class Sprint3UiTest {
             sinIdentificadoresTecnicos(c)
             onNodeWithContentDescription("Volver").performClick()
             onNodeWithText("Novato").performClick()
-            esperar("8 de 15")
+            esperar("Novato · Nivel 8")
             esperar("30 de 72 ciclos sanos para el nivel 9")
             esperar("🪙 ", subcadena = true)
             sinIdentificadoresTecnicos(c)

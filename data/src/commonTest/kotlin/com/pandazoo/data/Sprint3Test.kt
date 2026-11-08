@@ -106,7 +106,7 @@ class Sprint3Test {
     fun `la tienda distingue bloqueadas comerciales desbloqueadas y exclusivas`() {
         val tienda = e.consultarTiendaAnimales.ejecutar(e.idPartida).associateBy { it.especie.id }
         tienda.getValue("erizo").especie.estado shouldBe EstadoTienda.COMERCIAL
-        tienda.getValue("erizo").especie.coste shouldBe d("200.00")
+        tienda.getValue("erizo").especie.coste shouldBe d("40.00")
         tienda.getValue("erizo").asequible shouldBe true
         tienda.getValue("leon").especie.estado shouldBe EstadoTienda.BLOQUEADA
         tienda.getValue("leon").asequible shouldBe false
@@ -117,7 +117,7 @@ class Sprint3Test {
 
     @Test
     fun `una especie comercial deja de ser asequible cuando el saldo no cubre su coste`() {
-        e.bd.escribir("UPDATE Partida SET fondos = ? WHERE id_partida = ?", d("199.99").paraBd(), e.idPartida)
+        e.bd.escribir("UPDATE Partida SET fondos = ? WHERE id_partida = ?", d("39.99").paraBd(), e.idPartida)
         e.consultarTiendaAnimales.ejecutar(e.idPartida).first { it.especie.id == "erizo" }.asequible shouldBe false
     }
 
@@ -127,14 +127,14 @@ class Sprint3Test {
     fun `T3_1 compra valida cambia saldo aforo animal satisfaccion y auditoria juntos`() {
         val sp = espacio()
         val r = exito(comprar(sp, "Pincho"))
-        r.coste shouldBe d("200.00")
-        r.saldo shouldBe d("1800.00")
-        e.fondos() shouldBe d("1800.00")
+        r.coste shouldBe d("40.00")
+        r.saldo shouldBe d("1960.00")
+        e.fondos() shouldBe d("1960.00")
         e.consultarZoo.espacio(e.idPartida, sp)!!.ocupacion shouldBe 1
         e.contar("Animal") shouldBe 1
         e.contar("RasgoPersonalidad") shouldBe 2
         e.contar("HabilidadSocial") shouldBe 2
-        e.contar("MovimientoEconomico", "tipo = 'COMPRA' AND importe = 200.0") shouldBe 1
+        e.contar("MovimientoEconomico", "tipo = 'COMPRA' AND importe = 40.0") shouldBe 1
         (satisfaccion(r.idAnimal) > 0.0) shouldBe true // se calculó con la ficha completa
         e.contar("MetricaSatisfaccion", "nivel = 'ESPACIO'") shouldBe 1
         e.auditoriaDe("COMPRA_ANIMAL").map { it.first } shouldContainExactly listOf("CONFIRMADO")
@@ -144,9 +144,9 @@ class Sprint3Test {
     fun `T3_1 sin saldo sin cupo especie bloqueada o ficha incompleta no cambia nada`() {
         val sp = espacio(capacidad = 2)
         e.recalcular.alConsolidar(e.idPartida, AlcanceRecalculo.Parque)
-        e.bd.escribir("UPDATE Partida SET fondos = ? WHERE id_partida = ?", d("199.99").paraBd(), e.idPartida)
+        e.bd.escribir("UPDATE Partida SET fondos = ? WHERE id_partida = ?", d("39.99").paraBd(), e.idPartida)
         var antes = instantanea()
-        rechazo(comprar(sp, "Pincho")) shouldBe MotivoRechazo.SaldoInsuficiente(d("200.00"), d("199.99"))
+        rechazo(comprar(sp, "Pincho")) shouldBe MotivoRechazo.SaldoInsuficiente(d("40.00"), d("39.99"))
         instantanea() shouldBe antes
 
         e.bd.escribir("UPDATE Partida SET fondos = ? WHERE id_partida = ?", d("1000.00").paraBd(), e.idPartida)
@@ -167,7 +167,7 @@ class Sprint3Test {
     @Test
     fun `T3_1 saldo exactamente igual al coste permite la compra`() {
         val sp = espacio()
-        e.bd.escribir("UPDATE Partida SET fondos = ? WHERE id_partida = ?", d("200.00").paraBd(), e.idPartida)
+        e.bd.escribir("UPDATE Partida SET fondos = ? WHERE id_partida = ?", d("40.00").paraBd(), e.idPartida)
         exito(comprar(sp, "Pincho")).saldo shouldBe d("0.00")
     }
 
@@ -264,12 +264,12 @@ class Sprint3Test {
     }
 
     @Test
-    fun `una especie desconocida o un espacio inexistente o inactivo se rechazan`() {
+    fun `una especie desconocida o un espacio inexistente o dado de baja se rechazan`() {
         val sp = espacio()
         rechazo(comprar(sp, "X", especie = "dragon")) shouldBe MotivoRechazo.EspecieInexistente
         rechazo(comprar("no-existe", "X")) shouldBe MotivoRechazo.EspacioInexistente
         exito(baja(sp))
-        rechazo(comprar(sp, "X")) shouldBe MotivoRechazo.EspacioInactivo
+        rechazo(comprar(sp, "X")) shouldBe MotivoRechazo.EspacioInexistente
     }
 
     // ---- T3.6 compatibilidad ----
@@ -359,12 +359,44 @@ class Sprint3Test {
         campo(a, "id_pareja") shouldBe b
         campo(b, "id_pareja") shouldBe a
         campo(a, "id_mejor_amigo") shouldBe nut
-        campo(nut, "id_mejor_amigo") shouldBe null // el mejor amigo no es recíproco
+        campo(nut, "id_mejor_amigo") shouldBe a // el mejor amigo es recíproco, aunque sea de otra especie
 
         // Con pareja asignada no se puede pasar directamente a otra.
         val c = existente(sp, "erizo", "Gamma")
         rechazo(editar(a, "Alfa", pareja = c, amigo = nut)) shouldBe MotivoRechazo.ParejaOcupada
         rechazo(editar(c, "Gamma", pareja = b)) shouldBe MotivoRechazo.ParejaOcupada
+    }
+
+    @Test
+    fun `el mejor amigo es reciproco y exige que los dos esten libres`() {
+        val sp = espacio()
+        val a = existente(sp, "erizo", "Alfa")
+        val b = existente(sp, "nutria", "Beta")
+        val c = existente(sp, "capibara", "Gamma")
+        exito(editar(a, "Alfa", amigo = b))
+        campo(a, "id_mejor_amigo") shouldBe b
+        campo(b, "id_mejor_amigo") shouldBe a
+
+        // Ni quien ya tiene amigo puede elegir otro, ni se puede elegir a quien ya tiene uno.
+        rechazo(editar(a, "Alfa", amigo = c)) shouldBe MotivoRechazo.AmigoOcupado
+        rechazo(editar(c, "Gamma", amigo = b)) shouldBe MotivoRechazo.AmigoOcupado
+
+        // Al quitarlo quedan libres los dos y ya se puede elegir otro.
+        exito(editar(a, "Alfa", amigo = null))
+        campo(a, "id_mejor_amigo") shouldBe null
+        campo(b, "id_mejor_amigo") shouldBe null
+        exito(editar(c, "Gamma", amigo = b))
+        campo(b, "id_mejor_amigo") shouldBe c
+    }
+
+    @Test
+    fun `comprar un animal con mejor amigo enlaza a los dos y rechaza a quien ya tiene amigo`() {
+        val sp = espacio()
+        val a = existente(sp, "erizo", "Alfa")
+        val nuevo = exito(comprar(sp, "Nuevo", especie = "nutria", amigo = a)).idAnimal
+        campo(a, "id_mejor_amigo") shouldBe nuevo
+        campo(nuevo, "id_mejor_amigo") shouldBe a
+        rechazo(comprar(sp, "Otro", especie = "nutria", amigo = a)) shouldBe MotivoRechazo.AmigoOcupado
     }
 
     @Test
@@ -393,6 +425,19 @@ class Sprint3Test {
         exito(editar(a, "Alfa Nuevo", pareja = b)) // solo renombra: el vínculo existente se conserva
         campo(a, "nombre") shouldBe "Alfa Nuevo"
         campo(a, "id_pareja") shouldBe b
+    }
+
+    @Test
+    fun `trasladar a un animal rompe la amistad con su mejor amigo`() {
+        val sp = espacio()
+        val lejos = espacio("Lejos")
+        val a = existente(sp, "erizo", "Alfa")
+        val b = existente(sp, "erizo", "Beta")
+        exito(editar(a, "Alfa", amigo = b))
+        campo(b, "id_mejor_amigo") shouldBe a
+        exito(reubicar(b, lejos))
+        campo(a, "id_mejor_amigo") shouldBe null
+        campo(b, "id_mejor_amigo") shouldBe null
     }
 
     // ---- T3.8 campos protegidos ----
@@ -463,7 +508,7 @@ class Sprint3Test {
         existente(lleno, "nutria", "B")
         val antes = instantanea()
         rechazo(reubicar(id, lleno)) shouldBe MotivoRechazo.EspacioLleno
-        rechazo(reubicar(id, inactivo)) shouldBe MotivoRechazo.EspacioInactivo
+        rechazo(reubicar(id, inactivo)) shouldBe MotivoRechazo.EspacioInexistente
         rechazo(reubicar(id, origen)) shouldBe MotivoRechazo.DestinoIgualAOrigen
         rechazo(reubicar(id, "no-existe")) shouldBe MotivoRechazo.EspacioInexistente
         rechazo(reubicar("fantasma", lleno)) shouldBe MotivoRechazo.AnimalInexistente
@@ -510,7 +555,7 @@ class Sprint3Test {
 
         val r = exito(vender(padre))
         r.origenVacio shouldBe false
-        r.importe shouldBe Dinero.desdeDecimal(73.33) // erizo (rango 1, base 200) en el nivel 4: 200 · (0.05 + 0.95 · 3 / 9)
+        r.importe shouldBe Dinero.desdeDecimal(14.67) // erizo (rango 1, base 40) en el nivel 4: 40 · (0.05 + 0.95 · 3 / 9)
         e.fondos() shouldBe fondos + r.importe
         campo(padre, "estado_vital") shouldBe "VENDIDO"
         campo(padre, "id_espacio") shouldBe null
@@ -519,7 +564,7 @@ class Sprint3Test {
         campo(cria, "id_mejor_amigo") shouldBe null
         campo(cria, "id_padre") shouldBe padre // la genealogía se conserva
         e.consultarZoo.espacio(e.idPartida, sp)!!.ocupacion shouldBe 2
-        e.contar("MovimientoEconomico", "tipo = 'VENTA' AND importe = 73.33") shouldBe 1
+        e.contar("MovimientoEconomico", "tipo = 'VENTA' AND importe = 14.67") shouldBe 1
         e.contar("RasgoPersonalidad", "id_animal = '$padre'") shouldBe 0
         (satisfaccion(cria) < satisfaccionCria) shouldBe true // perdió padre y amigo vivos: se recalculó
     }
@@ -594,14 +639,13 @@ class Sprint3Test {
     }
 
     @Test
-    fun `T3_12 un espacio vacio y limpio se da de baja de forma logica y conserva todo`() {
+    fun `T3_12 un espacio vacio y limpio se da de baja y desaparece de la base de datos`() {
         val sp = espacio(capacidad = 6)
         exito(baja(sp))
-        val e1 = e.consultarZoo.espacio(e.idPartida, sp)!!
-        e1.estado.name shouldBe "INACTIVO"
-        e1.capacidadMax shouldBe 6
-        e.contar("Espacio", "id_espacio = '$sp'") shouldBe 1
-        rechazo(baja(sp)) shouldBe MotivoRechazo.EspacioInactivo
+        e.consultarZoo.espacio(e.idPartida, sp) shouldBe null
+        e.contar("Espacio", "id_espacio = '$sp'") shouldBe 0
+        e.contar("MetricaSatisfaccion", "id_espacio = '$sp'") shouldBe 0
+        rechazo(baja(sp)) shouldBe MotivoRechazo.EspacioInexistente
         rechazo(baja("no-existe")) shouldBe MotivoRechazo.EspacioInexistente
     }
 
@@ -622,7 +666,7 @@ class Sprint3Test {
         val segunda = comprar(sp, "Pincho", id = "fija")
         (segunda as Resultado.Exito<*>).repetido shouldBe true
         exito(segunda) shouldBe exito(primera)
-        e.fondos() shouldBe d("1800.00")
+        e.fondos() shouldBe d("1960.00")
         e.contar("Animal") shouldBe 1
         e.contar("MovimientoEconomico") shouldBe 1
         // La misma clave con otra ficha es un conflicto y no cambia nada.

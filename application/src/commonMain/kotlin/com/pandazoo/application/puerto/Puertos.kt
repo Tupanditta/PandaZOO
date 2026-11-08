@@ -92,7 +92,13 @@ interface ZooRepositorio {
 
     fun espacio(idPartida: IdPartida, idEspacio: String): Espacio?
 
-    fun crearEspacio(idPartida: IdPartida, idEspacio: String, idHabitat: String, nombre: String, capacidadMax: Int)
+    fun crearEspacio(idPartida: IdPartida, idEspacio: String, idHabitat: String, nombre: String, capacidadMax: Int, costePagado: Dinero)
+
+    /** Lo que costó el espacio al comprarlo (cero si fue el gratuito); es lo que se recupera al venderlo. */
+    fun costePagado(idPartida: IdPartida, idEspacio: String): Dinero
+
+    /** Sube la capacidad del espacio y suma [costeAdicional] a lo pagado por él. */
+    fun ampliarEspacio(idPartida: IdPartida, idEspacio: String, capacidadMax: Int, costeAdicional: Dinero)
 
     fun reconfigurarEspacio(idPartida: IdPartida, idEspacio: String, nombre: String, idHabitat: String)
 
@@ -102,8 +108,14 @@ interface ZooRepositorio {
     /** Operaciones pendientes o avisos abiertos que dependen del espacio e impiden su baja lógica (CU-14, RF-07). */
     fun tieneDependencias(idPartida: IdPartida, idEspacio: String): Boolean
 
-    /** Baja lógica: pasa a `INACTIVO` conservando capacidad y referencias. */
+    /** Baja: el espacio vacío se borra, junto con sus métricas y avisos. */
     fun darDeBaja(idPartida: IdPartida, idEspacio: String)
+
+    /** El primer espacio de la capacidad gratuita aún no se ha adquirido. */
+    fun espacioGratuitoDisponible(idPartida: IdPartida): Boolean
+
+    /** Marca como usado el espacio gratuito (se invoca en la misma transacción que la creación). */
+    fun consumirEspacioGratuito(idPartida: IdPartida)
 }
 
 enum class ResultadoAuditoria { CONFIRMADO, RECHAZADO, REVERTIDO }
@@ -187,6 +199,8 @@ data class EspecieTienda(
     val estado: EstadoTienda,
     /** Coste ordinario fijo del rango (`CosteRango`). */
     val coste: Dinero,
+    /** Nivel de prestigio que desbloquea la especie; `null` en las exclusivas. */
+    val nivelDesbloqueo: Int? = null,
 )
 
 /** Animal con lo necesario para validar vínculos, traslados y ventas. */
@@ -277,7 +291,7 @@ interface AnimalRepositorio {
     fun espaciosRelacionados(idPartida: IdPartida, idAnimal: String): Set<String>
 }
 
-/** Insumo médico y unidades que exige el tratamiento de un rango. */
+/** Medicina y unidades que exige el tratamiento de un rango. */
 data class ConsumoMedico(val idInsumo: String, val nombre: String, val cantidad: Int)
 
 /** Lectura y escritura del cuidado manual (CU-13, CU-09). Las cantidades salen siempre del catálogo persistido. */

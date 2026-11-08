@@ -19,7 +19,7 @@ rectangle "PandaZOO" {
 	usecase "CU-11\nEjecutar ciclo de Simulación" as CU11
 	usecase "CU-12\nProcesar Simulación en Diferido" as CU12
 	usecase "CU-13\nAlimentar Espécimen" as CU13
-	usecase "CU-14\nDar de Baja Espacio Vacío" as CU14
+	usecase "CU-14\nVender Espacio Vacío" as CU14
 	usecase "CU-15\nReclamar Recompensa de Misión" as CU15
 	usecase "CU-16\nConsultar Inventario y Finanzas" as CU16
 	usecase "CU-17\nConsultar Monitor de Satisfacción" as CU17
@@ -27,6 +27,8 @@ rectangle "PandaZOO" {
 	usecase "CU-19\nConsultar Prestigio" as CU19
 	usecase "CU-20\nConsultar Misiones y Progreso" as CU20
 	usecase "CU-21\nConsultar Historial de Avisos" as CU21
+	usecase "CU-22\nConsultar Guía de Convivencia" as CU22
+	usecase "CU-23\nConsultar Estadísticas de un Animal" as CU23
 }
 
 ACT01 -- CU01
@@ -50,5 +52,7 @@ ACT01 -- CU18
 ACT01 -- CU19
 ACT01 -- CU20
 ACT01 -- CU21
+ACT01 -- CU22
+ACT01 -- CU23
 @enduml
 ```

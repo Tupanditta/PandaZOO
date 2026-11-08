@@ -14,7 +14,7 @@ Si una decisión de este documento choca con un requisito, gana el requisito (RF
 | Código compartido | Kotlin Multiplatform: dominio, aplicación, datos y UI se escriben una vez | RES-14, RNF-15 |
 | Lenguaje | Kotlin en todos los módulos y tests; la PWA añade solo HTML, un manifiesto y un service worker de unas 30 líneas | Una sola base de código |
 | Persistencia | SQLite. Android y JVM: `androidx.sqlite` con el SQLite empaquetado (`sqlite-bundled`). Web (iOS): sql.js, el mismo SQLite compilado a WebAssembly, con la base entera copiada a IndexedDB tras cada confirmación. Ambos motores se ocultan tras la interfaz `ConexionSql` de `:data`, y `androidx.sqlite` no existe para JavaScript | `EspecificacionBBDD.md`, sección 2; RNF-16 |
-| Interfaz | Compose Multiplatform con Material 3, solo componentes técnicos: tablas, listas, métricas y formularios | RES-01; sin renderizado 2D/3D ni animaciones espaciales. Identidad visual (paleta natural, tema claro y oscuro, fichas) definida en `Interfaz/EspecificacionInterfaz.md` |
+| Interfaz | Compose Multiplatform con Material 3, solo componentes técnicos: tablas, listas, métricas y formularios | RES-01; sin renderizado 2D/3D ni animaciones espaciales. Identidad visual (paleta natural, tema claro y oscuro, fichas, ventanas flotantes, tipografías Fraunces y Nunito incrustadas) definida en `Interfaz/EspecificacionInterfaz.md` |
 | Configuración del juego | `valores_y_pesos.json`, empaquetado como recurso compartido de `:shared-ui` y leído con `kotlinx.serialization` | Es la fuente única de valores (`ValoresYFormulasPendientes.md`) |
 | Android | SDK mínimo API 26; SDK de compilación y objetivo: el último estable disponible, fijado en el catálogo de versiones | Cubre el rango de 4.7" a 6.7" |
 | iOS | PWA: Safari de iOS 15 o superior, target Kotlin/JS (`js`), alojada como sitio estático (GitHub Pages) e instalada en la pantalla de inicio. Se eligió JS y no Wasm porque Kotlin/Wasm exige WasmGC (Safari 18.2) | Gratuita, sin App Store ni Mac, cubre los iPhone de 4.7" a 6.7" en uso |
@@ -40,7 +40,7 @@ Proyecto Gradle multi-módulo en Kotlin Multiplatform. La dirección de las depe
 :data         (KMP)  SQLite (androidx.sqlite), repositorios, carga del JSON, reloj y azar reales
    │
    ▼
-:application  (KMP)  Casos de uso transaccionales CU-01 a CU-21, puertos (interfaces)
+:application  (KMP)  Casos de uso transaccionales CU-01 a CU-23, puertos (interfaces)
    │
    ▼
 :domain       (KMP)  Entidades, reglas y fórmulas puras, sin API de Android, iOS ni JVM
@@ -96,7 +96,7 @@ UI (evento de usuario)
 - El ciclo es una función del dominio, `EjecutarCiclo(estado, numeroCiclo, reloj, azar)`, que ejecuta las etapas en el orden de RF-14. Cada etapa es una función separada y testeable.
 - `:shared-ui/temporizador` mantiene un único temporizador de corrutina ligado al remanente `R`. Se mide con el reloj monótono común (`TimeSource.Monotonic`). Al vencer, invoca CU-11 y reprograma 600 s. No hay otro temporizador ni sondeo.
 - Con la app en segundo plano el temporizador se cancela. Al volver a primer plano se ejecuta CU-12 (regla de reloj de `sprints.md`, sección 5.2). La señal de primer y segundo plano la aporta cada contenedor de plataforma a través de una interfaz común. No hay servicios, `WorkManager` ni tareas de fondo de iOS (decisión D7).
-- El modo de depuración que adelanta ciclos existe solo en las compilaciones de depuración y llama al mismo caso de uso CU-11.
+- No hay modo de depuración en la aplicación: se retiraron el botón de adelantar ciclos y el generador de datos de prueba (`Otros/DecisionesImplementacion.md`, sección 11). Los ciclos solo los ejecuta CU-11, ya sea por el temporizador o por la recuperación de CU-12.
 
 ---
 
@@ -154,7 +154,7 @@ Todas con versión fija en `libs.versions.toml`. Se usa una librería solo si re
 - El **DDL de `EspecificacionBBDD.md`, sección 2, es la fuente de verdad** del esquema, incluidos `CHECK`, claves compuestas por `id_partida`, `WITHOUT ROWID` e índices. Se mantiene como script SQL versionado en `:data` y se aplica al crear la base de datos.
 - No hay entidades de mapeo ni segunda definición del esquema: los repositorios ejecutan SQL sobre la conexión. Un **test de esquema** (T0.3) comprueba que cada `CHECK` y cada clave foránea rechazan datos inválidos.
 - El acceso a la base es una única conexión de `androidx.sqlite` con el SQLite empaquetado, protegida por un candado reentrante (`expect/actual`) y abierta con `PRAGMA foreign_keys = ON`. Las transacciones son `BEGIN IMMEDIATE` y mantienen el candado de principio a fin.
-- La versión de la base de datos se guarda en `PRAGMA user_version`. Cualquier cambio de esquema posterior al Sprint 0 incluye migración y su test.
+- La versión de la base de datos se guarda en `PRAGMA user_version`. Cualquier cambio de esquema posterior al Sprint 0 incluye migración y su test. La versión vigente es la `12`; la lista de migraciones y el DDL añadido desde la versión 3 están en `Otros/DecisionesImplementacion.md`, sección 10. La migración 9 es la única que borra la partida.
 
 ### 4.2. Configuración
 

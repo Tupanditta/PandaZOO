@@ -16,6 +16,8 @@ import com.pandazoo.ui.generated.resources.Res
 import com.pandazoo.ui.navegacion.PandaZooNavegacion
 import com.pandazoo.ui.pantalla.LocalContenedor
 import com.pandazoo.ui.pantalla.PandaZooTema
+import com.pandazoo.ui.pantalla.Textos
+import com.pandazoo.ui.pantalla.VentanaPremio
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.ExperimentalResourceApi
@@ -28,7 +30,6 @@ import org.jetbrains.compose.resources.ExperimentalResourceApi
 @Composable
 fun PandaZooRaiz(
     abrirBaseDatos: suspend () -> BaseDatos,
-    depuracion: Boolean = false,
     /**
      * Señal síncrona de primer y segundo plano que aporta el contenedor cuando el ciclo de vida de Compose no basta
      * (la web: al cerrar o suspender la pestaña no hay tiempo de esperar a una corrutina). Recibe el receptor del
@@ -40,7 +41,7 @@ fun PandaZooRaiz(
     LaunchedEffect(Unit) {
         // La configuración se lee del recurso compartido: crea la partida nueva y alimenta la regla de satisfacción.
         val texto = Res.readBytes("files/valores_y_pesos.json").decodeToString()
-        contenedor = withContext(Dispatchers.Default) { AppContainer.crear(abrirBaseDatos(), depuracion) { texto } }
+        contenedor = withContext(Dispatchers.Default) { AppContainer.crear(abrirBaseDatos()) { texto } }
     }
     PandaZooTema {
         val c = contenedor
@@ -56,7 +57,17 @@ fun PandaZooRaiz(
                 val baja = registrarVisibilidad { visible -> if (visible) c.alPrimerPlano() else c.alSegundoPlano() }
                 onDispose(baja)
             }
-            CompositionLocalProvider(LocalContenedor provides c) { PandaZooNavegacion() }
+            CompositionLocalProvider(LocalContenedor provides c) {
+                PandaZooNavegacion()
+                VentanasBienvenida(c)
+            }
         }
     }
+}
+
+/** Ventanas del regalo de bienvenida: una por recurso, de una en una; al cerrar una aparece la siguiente. */
+@Composable
+internal fun VentanasBienvenida(c: AppContainer) {
+    var pendientes by remember(c) { mutableStateOf(c.regaloBienvenida?.let(Textos::bienvenida).orEmpty()) }
+    pendientes.firstOrNull()?.let { VentanaPremio(it) { pendientes = pendientes.drop(1) } }
 }

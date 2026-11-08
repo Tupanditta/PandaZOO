@@ -50,6 +50,9 @@ class ReglasPrestigio(
     /** Se avisa del ascenso solo si el nivel supera el máximo histórico previo (RF-43). */
     fun avisaAscenso(maximoPrevio: Int?, nuevoNivel: Int): Boolean = nuevoNivel > 0 && nuevoNivel > (maximoPrevio ?: 0)
 
+    /** Lo que abre exactamente el nivel [nivel], o `null` si no abre nada. */
+    fun desbloqueoDe(nivel: Int): DesbloqueoNivel? = desbloqueos.firstOrNull { it.nivel == nivel }
+
     /** Desbloqueos de todos los niveles menores o iguales que [nivel], también tras un salto de varios niveles. */
     fun desbloqueosHasta(nivel: Int): List<DesbloqueoNivel> = desbloqueos.filter { it.nivel <= nivel }
 

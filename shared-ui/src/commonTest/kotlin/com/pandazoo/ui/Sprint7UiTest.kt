@@ -33,7 +33,7 @@ class Sprint7UiTest {
     private fun prueba(bloque: ComposeUiTest.(AppContainer) -> Unit) =
         runComposeUiTest {
             val bd = BaseDatos.enMemoria()
-            val contenedor = AppContainer.crear(bd, depuracion = true) { ConfiguracionDePrueba.texto }
+            val contenedor = AppContainer.crear(bd, conBienvenida = false) { ConfiguracionDePrueba.texto }
             setContent {
                 CompositionLocalProvider(LocalContenedor provides contenedor) {
                     PandaZooTema { PandaZooNavegacion() }
@@ -95,13 +95,11 @@ class Sprint7UiTest {
     fun `el aviso de reproduccion se lista con nombres y abre el formulario de la cria`() =
         prueba { c ->
             pareja(c)
-            c.adelantarCiclo() shouldBe true
+            (c.ejecutarCiclo.siguiente(c.idPartida) is com.pandazoo.application.error.Resultado.Exito) shouldBe true
             onNodeWithText("Avisos").performClick()
             esperar("esperan una cría", subcadena = true)
             sinIdentificadoresTecnicos(c)
             onNodeWithText("esperan una cría", substring = true).performClick()
-            esperar("Registrar cría")
-            onNodeWithText("Registrar cría").performClick()
             esperar("Ficha técnica de la cría")
             esperar("Progenitores")
             sinIdentificadoresTecnicos(c)
@@ -113,7 +111,8 @@ class Sprint7UiTest {
 
             esperar("Avisos")
             vivos(c) shouldBe 3
-            esperar("Aceptada", subcadena = true)
+            c.bd.uno("SELECT estado FROM Notificacion WHERE codigo = 'REPRODUCCION_DISPONIBLE'") { it.texto(0) } shouldBe "ACEPTADA"
+            onAllNodesWithText("esperan una cría", substring = true).fetchSemanticsNodes().size shouldBe 0 // ya no está abierto
             sinIdentificadoresTecnicos(c)
         }
 
@@ -121,11 +120,10 @@ class Sprint7UiTest {
     fun `con el espacio lleno el formulario muestra el motivo y no permite registrar`() =
         prueba { c ->
             pareja(c, capacidad = 2)
-            c.adelantarCiclo() shouldBe true
+            (c.ejecutarCiclo.siguiente(c.idPartida) is com.pandazoo.application.error.Resultado.Exito) shouldBe true
             onNodeWithText("Avisos").performClick()
             esperar("esperan una cría", subcadena = true)
             onNodeWithText("esperan una cría", substring = true).performClick()
-            onNodeWithText("Registrar cría").performClick()
             esperar("El espacio no tiene capacidad libre.")
             onNodeWithText("Nombre de la cría").performTextInput("Brote")
             listOf("Líder", "Cuidador", "Curioso", "Tímido").forEach { pulsar(it) }

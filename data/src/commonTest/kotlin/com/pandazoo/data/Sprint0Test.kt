@@ -53,7 +53,7 @@ class Sprint0Test {
         e.contar("Animal") shouldBe 0
         e.contar("Notificacion") shouldBe 0
         e.inventario.existencias(e.idPartida).map { it.nombre to it.cantidad }
-            .shouldContainExactly("Bambú" to 30, "Insumo médico" to 3)
+            .shouldContainExactly("Bambú" to 30, "Medicina" to 3)
         db.uno("SELECT remanente_temporizador, estado, numero_ciclo_ultimo FROM EstadoSimulacion") {
             it.entero(0) shouldBe 600
             it.texto(1) shouldBe "ACTIVO"
@@ -189,7 +189,7 @@ class Sprint0Test {
         rechaza("UPDATE Especie SET peso_bio = 0.7 WHERE id_especie = 'leon'") // bio + soc != 1
         rechaza("UPDATE Especie SET peso_afinidad = 0.1 WHERE id_especie = 'leon'")
         rechaza("UPDATE Especie SET nivel_desbloqueo = 3 WHERE id_especie = 'panda'") // exclusiva sin nivel
-        rechaza("UPDATE CosteEspacio SET importe = 10.005 WHERE capacidad_max = 2")
+        rechaza("UPDATE CosteEspacio SET importe = 10.005 WHERE capacidad_max = 6")
     }
 
     @Test
@@ -206,7 +206,7 @@ class Sprint0Test {
     fun `T0_3 el esquema contiene todas las tablas e indices parciales`() {
         e.bd.leer("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'android_%'") {
             it.texto(0)
-        }.size shouldBe 35
+        }.size shouldBe 36
         e.bd.uno("SELECT sql FROM sqlite_master WHERE name = 'idx_animal_localizacion'") {
             it.texto(0).contains("WHERE estado_vital = 'VIVO'") shouldBe true
         }

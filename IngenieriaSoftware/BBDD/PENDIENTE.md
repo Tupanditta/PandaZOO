@@ -13,9 +13,9 @@
 ## Definición resuelta
 
 - Fórmula base: `B_ciclo = redondear(suma, sobre los animales vivos alojados, de beneficio_base_animal_ciclo(rango) * S_i * M_nivel(nivel))`, con `S_i` la satisfacción individual en `0..1` sin redondear, `M_nivel` el multiplicador lineal de nivel (`1` en el nivel 1 y `multiplicador_nivel_maximo` en el tope del rango) y redondeo de la suma al centésimo, medios hacia arriba. Sin animales vivos alojados vale `0`.
-- Configuración por rango (`tablas.rangos_especie`): beneficio base `12.00`, `24.00`, `40.00`, `64.00` y `100.00` (rango 5, exclusivas); nivel máximo `15`, `29`, `41`, `51` y `61`; multiplicador en el tope `3.0`, `3.5`, `4.0`, `4.5` y `5.0`. No hay multiplicadores por especie.
+- Configuración por rango (`tablas.rangos_especie`): beneficio base `6.00`, `12.00`, `20.00`, `32.00` y `50.00` (rango 5, exclusivas); nivel máximo `15`, `29`, `41`, `51` y `61`; multiplicador en el tope `3.0`, `3.5`, `4.0`, `4.5` y `5.0`. No hay multiplicadores por especie.
 - Se genera una vez por ciclo confirmado, en la etapa de beneficios y tras las defunciones, con la satisfacción global vigente al inicio de esa etapa. Un importe `0` no crea registro.
-- Costes y cantidades económicos: espacios `100` a `700` según capacidad; animales `200`, `450`, `900` y `1800` por rango; bambú `0.50` por kilogramo; insumo médico `10.00` por unidad; fondos iniciales `2000.00`. Valores completos en `Otros/valores_y_pesos.json`.
+- Costes y cantidades económicos: espacios `325` a `1300` según capacidad (6 a 30 animales; el primero de 6 es gratis); animales `40`, `160`, `450` y `700` por rango; bambú `0.50` por kilogramo; medicina `10.00` por unidad; fondos iniciales `2000.00`. Valores completos en `Otros/valores_y_pesos.json`.
 - Definición detallada: `EspecificacionBBDD.md`, sección 1.4.
 
 No queda nada pendiente de definir en este apartado.

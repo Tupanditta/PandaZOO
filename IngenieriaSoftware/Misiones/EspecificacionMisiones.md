@@ -91,7 +91,7 @@ Parámetro:
 
 - Nivel de prestigio requerido.
 
-El progreso es el nivel de prestigio actual y la misión se cumple cuando es mayor o igual que el nivel requerido.
+El progreso es el prestigio actual y la misión se cumple cuando es mayor o igual que el prestigio requerido. Como el prestigio nunca baja, su progreso tampoco disminuye. El prestigio requerido llega hasta el `100` y la recompensa es siempre un animal sorteado por rango (sección 6.3). El texto de la misión es «Alcanza el prestigio N.».
 
 ### 3.7. Vender un animal de una especie y nivel concretos
 
@@ -165,7 +165,7 @@ El progreso es la mayor satisfacción individual actual (`0..1`, sin redondear) 
 - En las misiones de cantidad total y por hábitat solo cuentan animales vivos con espacio asignado; un animal trasladado deja de contar en el hábitat anterior y pasa a contar en el nuevo.
 - Las misiones de venta cuentan ventas confirmadas y su progreso no disminuye.
 - Las misiones de satisfacción comprueban la satisfacción actual; su progreso disminuye si la satisfacción baja.
-- Las misiones de prestigio comprueban el nivel de prestigio actual; su progreso disminuye si el prestigio actual baja.
+- Las misiones de prestigio comprueban el prestigio actual; como el prestigio nunca baja (`Otros/DecisionesImplementacion.md`, sección 6), su progreso no disminuye.
 - El progreso se actualiza al producirse los eventos que puedan afectar a su objetivo o al finalizar un ciclo de simulación.
 - Cuando se alcanza la condición del objetivo, la misión pasa inmediatamente a estado cumplido.
 - Una misión cumplida muestra una acción explícita para reclamar la recompensa.
@@ -184,7 +184,7 @@ El progreso es la mayor satisfacción individual actual (`0..1`, sin redondear) 
 - **Progresión de parámetros.** Al reclamar, cada parámetro numérico se recalcula con su operación (`SUMAR`, `RESTAR`, `MULTIPLICAR`, `DIVIDIR`) y su constante, en aritmética exacta; después se redondea al entero más cercano (medios hacia arriba) si el parámetro es entero, o al centésimo (medios hacia arriba) si es de satisfacción. `DIVIDIR` exige una constante mayor que `0`. El resultado debe estar en `[valor_minimo, valor_maximo]` del parámetro.
 - **Agotamiento.** Si el resultado de algún parámetro supera `valor_maximo` (o queda por debajo de `valor_minimo`), no se crea una nueva instancia: la instancia reclamada se sustituye por un marcador `AGOTADA`, el tipo deja de mostrarse como misión vigente y no vuelve a generarse en esa partida. La configuración distribuida solo usa `SUMAR` con constantes positivas.
 - **Nueva instancia.** Se crea con `progreso = 0`; si es de tipo dinámico se evalúa de inmediato en la misma transacción y puede quedar `CUMPLIDA` al instante si el estado del parque ya cumple los nuevos parámetros.
-- **Misiones imposibles.** Los máximos configurados garantizan que ningún objetivo supere lo alcanzable: nivel máximo requerido `15` (el menor `nivel_maximo` entre los rangos; todas las especies de misión pertenecen al rango 1), prestigio máximo `10` (`nivel_maximo`), satisfacción máxima `0.95`.
+- **Misiones imposibles.** Los máximos configurados garantizan que ningún objetivo supere lo alcanzable: nivel máximo requerido `15` (el menor `nivel_maximo` entre los rangos; todas las especies de misión pertenecen al rango 1), prestigio máximo `100` (`nivel_maximo`), satisfacción máxima `0.95`.
 
 ## 5. Estructura de una recompensa
 
@@ -201,7 +201,7 @@ Cada misión tiene asociada una recompensa concreta, fija para el tipo (no progr
 
 ### 6.1. Alimentos e insumos
 
-La recompensa puede entregar alimentos o insumos médicos.
+La recompensa puede entregar alimentos o medicinas.
 
 Parámetros:
 
@@ -231,7 +231,9 @@ Parámetros:
 
 La lista se configura en `recompensas_animales_aleatorios.especies` de `valores_y_pesos.json`, debe sumar exactamente 100% e incluir como mínimo todas las especies exclusivas. Al reclamar la recompensa, el sistema selecciona una especie mediante un sorteo ponderado y persiste el resultado en el registro de recompensa para que los reintentos idempotentes no vuelvan a sortear.
 
-Esta recompensa puede ser una vía para obtener un animal exclusivo. Cuando se selecciona el animal, aparece en la tienda con coste cero y solo puede comprarse una unidad. La unidad está disponible desde la propia transacción de reclamación, no caduca y se retira de la tienda al comprarla (`RecompensaMision.unidad_pendiente`). La cantidad de animales de esta recompensa es siempre `1`. La compra sigue el flujo normal de adquisición de especímenes, incluyendo la validación, cumplimentación de la ficha y ubicación en un espacio con capacidad disponible. La compatibilidad entre especie y hábitat afecta a la satisfacción, pero no impide la ubicación.
+Reclamarla no desbloquea la especie en la tienda: solo concede la unidad gratuita (`Otros/DecisionesImplementacion.md`, sección 5.3). Esta recompensa puede ser una vía para obtener un animal exclusivo. Cuando se selecciona el animal, aparece en la tienda con coste cero y solo puede comprarse una unidad. La unidad está disponible desde la propia transacción de reclamación, no caduca y se retira de la tienda al comprarla (`RecompensaMision.unidad_pendiente`). La cantidad de animales de esta recompensa es siempre `1`. La compra sigue el flujo normal de adquisición de especímenes, incluyendo la validación, cumplimentación de la ficha y ubicación en un espacio con capacidad disponible. La compatibilidad entre especie y hábitat afecta a la satisfacción, pero no impide la ubicación.
+
+**Sorteo por rango de la misión de prestigio.** La misión `subir_prestigio` no usa la lista común: sortea primero el rango y después la especie. La tabla de rangos depende del prestigio requerido por la instancia y está en `recompensas_animales_aleatorios.sorteo_prestigio`: múltiplo de 10, `100 %` exclusivo; si no, múltiplo de 5, rangos 2 a 5 con `30/40/20/10 %`; en los demás casos, rangos 2 a 5 con `50/25/15/10 %`. Dentro de un rango 2 a 4 todas las especies comerciales pesan igual; dentro del rango exclusivo pesan las probabilidades de la lista común. El sorteo consume dos números del `Azar` (rango y especie, en ese orden) y se persiste para los reintentos. La lista de misiones solo anuncia «Un animal exclusivo, gratis» cuando el animal es seguro exclusivo; en otro caso, «Un animal aleatorio, gratis».
 
 ## 7. Reclamación
 
@@ -258,13 +260,13 @@ Todos los valores de esta sección están en `valores_y_pesos.json` y son valore
 | `comprar_especie` | acumulativa | capibara, cantidad `2` | cantidad: sumar `1`, 1–50 | `200.00` fondos |
 | `crecer_especie` | acumulativa | nutria, cantidad `1`, nivel `3` | cantidad: sumar `1`, 1–20; nivel: sumar `1`, 2–15 | `30` kg de bambú |
 | `total_animales` | dinámica | `5` animales | sumar `5`, 1–500 | `300.00` fondos |
-| `animales_habitat` | dinámica | hábitat bosque templado, `3` animales | sumar `2`, 1–200 | `5` insumos médicos |
+| `animales_habitat` | dinámica | hábitat bosque templado, `3` animales | sumar `2`, 1–200 | `5` medicinas |
 | `espacios_ocupados_habitat` | dinámica | hábitat humedal de agua dulce, mínimo `2` animales por espacio, `1` espacio | mínimo: sumar `1`, 1–20; espacios: sumar `1`, 1–50 | `400.00` fondos |
-| `subir_prestigio` | dinámica | nivel `1` | sumar `1`, 1–10 | animal aleatorio (`1`) |
+| `subir_prestigio` | dinámica | prestigio `1` | sumar `1`, 1–100 | animal sorteado por rango (`1`) |
 | `vender_especie_nivel` | acumulativa | erizo, nivel `4` | nivel: sumar `1`, 1–15 | `150.00` fondos |
 | `vender_nivel` | acumulativa | nivel `4` | sumar `1`, 1–15 | `20` kg de bambú |
 | `familia` | dinámica | `1` hermano | sumar `1`, 1–8 | `250.00` fondos |
-| `familia_especie` | dinámica | zarigüeya, `1` hermano | sumar `1`, 1–8 | `4` insumos médicos |
+| `familia_especie` | dinámica | zarigüeya, `1` hermano | sumar `1`, 1–8 | `4` medicinas |
 | `satisfaccion_minima` | dinámica | `0.60` | sumar `0.05`, 0.05–0.95 | `500.00` fondos |
 | `satisfaccion_minima_especie` | dinámica | tortuga, `0.60` | sumar `0.05`, 0.05–0.95 | `50` kg de bambú |
 
@@ -272,6 +274,8 @@ Las especies y hábitats de las misiones pertenecen al nivel 0 de desbloqueo, de
 
 **Recompensa de animal aleatorio.** Lista de especies elegibles (exactamente las nueve exclusivas): panda `10 %`, leopardo de las nieves `12 %`, tití león dorado `14 %`, tigre de Bengala `12 %`, alce leucístico `14 %`, jaguar `12 %`, ballena azul `6 %`, pangolín `12 %` y rinoceronte blanco `8 %` (suma `100 %`).
 
-**Disponibilidad.** El animal concedido queda disponible en la tienda, con coste cero y para una sola compra, desde la transacción de reclamación; se retira al comprarlo. Reclamar un animal no sustituye su compra ni su ubicación.
+**Disponibilidad.** El animal concedido queda disponible en la tienda, con coste cero y para una sola compra, desde la transacción de reclamación; se retira al comprarlo. La especie no se desbloquea por ello. Reclamar un animal no sustituye su compra ni su ubicación.
+
+**Orden de la lista de misiones (CU-20).** Primero van las cumplidas pendientes de reclamar, en el orden en que se cumplieron (`ProgresoMision.orden_cumplida`, que se asigna una sola vez al pasar a `CUMPLIDA`); después el resto, de más a menos avance (`progreso / objetivo`, entre 0 y 1) y, a igual avance, la que menos le falta. Cada misión muestra su avance con una barra. Detalle en `Otros/DecisionesImplementacion.md`, sección 5.1.
 
 **Representación en BBDD.** Cada tipo es una fila de `Mision` (con su naturaleza y recompensa) y tantas de `ParametroMision` como parámetros; la instancia vigente es una fila de `ProgresoMision` con sus `ParametroProgresoMision`. No quedan datos pendientes de parametrización.

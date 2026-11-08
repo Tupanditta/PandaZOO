@@ -5,6 +5,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.compose.runtime.getValue
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.savedstate.read
@@ -14,10 +16,13 @@ import com.pandazoo.ui.pantalla.PantallaEspacios
 import com.pandazoo.ui.pantalla.PantallaHabitats
 import com.pandazoo.ui.pantalla.Atajos
 import com.pandazoo.ui.pantalla.LocalAtajos
+import com.pandazoo.ui.pantalla.LocalSeccion
+import com.pandazoo.ui.pantalla.Seccion3
 import com.pandazoo.ui.pantalla.PantallaBeneficios
 import com.pandazoo.ui.pantalla.PantallaMisiones
 import com.pandazoo.ui.pantalla.PantallaNotificaciones
 import com.pandazoo.ui.pantalla.PantallaSeguimientoCritico
+import com.pandazoo.ui.pantalla.PantallaGuia
 import com.pandazoo.ui.pantalla.PantallaMonitor
 import com.pandazoo.ui.pantalla.PantallaPrestigio
 import com.pandazoo.ui.pantalla.PantallaTienda
@@ -38,11 +43,16 @@ private const val TIENDA = "tienda"
 private const val HABITATS = "habitats"
 private const val MONITOR = "monitor"
 private const val PRESTIGIO = "prestigio"
+private const val GUIA = "guia"
 private const val ESPACIOS = "espacios/{ref}"
 private const val COMPRAR = "comprar/{ref}"
 private const val CONFIGURAR = "configurar/{ref}"
 private const val TIENDA_ANIMALES = "tienda-animales"
 private const val COMPRAR_ANIMAL = "comprar-animal/{ref}"
+
+// Compra iniciada desde un espacio: el espacio viaja por la tienda y la ficha de compra, donde queda fijo.
+private const val TIENDA_ANIMALES_ESPACIO = "tienda-animales/espacio/{espacio}"
+private const val COMPRAR_ANIMAL_ESPACIO = "comprar-animal/{ref}/espacio/{espacio}"
 private const val ANIMALES = "animales/{ref}"
 private const val FICHA = "ficha/{ref}"
 private const val EDITAR = "editar/{ref}"
@@ -54,11 +64,22 @@ internal fun codificar(valor: String): String = valor.replace("%", "%25").replac
 
 internal fun decodificar(valor: String): String = valor.replace("%2F", "/").replace("%25", "%")
 
+/** Sección de la barra inferior resaltada en cada pantalla; la tienda, el monitor, el prestigio y los beneficios no cuelgan de ninguna. */
+private fun seccionDe(ruta: String?): Seccion3? =
+    when {
+        ruta == null -> null
+        ruta == MISIONES -> Seccion3.MISIONES
+        ruta == NOTIFICACIONES || ruta == CRITICO || ruta == CRIA -> Seccion3.NOTIFICACIONES
+        ruta in setOf(BENEFICIOS, MONITOR, PRESTIGIO, GUIA, TIENDA, TIENDA_ANIMALES, COMPRAR_ANIMAL, TIENDA_ANIMALES_ESPACIO, COMPRAR_ANIMAL_ESPACIO) -> null
+        else -> Seccion3.HABITATS
+    }
+
 /** Las rutas llevan referencias opacas codificadas; nunca se muestran al usuario (RES-06). */
 @Composable
 fun PandaZooNavegacion() {
     val nav = rememberNavController()
     val arg = listOf(navArgument("ref") { type = NavType.StringType })
+    val argEspacio = listOf(navArgument("espacio") { type = NavType.StringType })
     val raiz = { destino: String ->
         nav.navigate(destino) {
             popUpTo(HABITATS)
@@ -70,14 +91,17 @@ fun PandaZooNavegacion() {
         alMonitor = { nav.navigate(MONITOR) { launchSingleTop = true } },
         alPrestigio = { nav.navigate(PRESTIGIO) { launchSingleTop = true } },
         alBeneficios = { nav.navigate(BENEFICIOS) { launchSingleTop = true } },
+        alGuia = { nav.navigate(GUIA) { launchSingleTop = true } },
         alHabitats = { raiz(HABITATS) },
         alMisiones = { raiz(MISIONES) },
         alNotificaciones = { raiz(NOTIFICACIONES) },
     )
-    CompositionLocalProvider(LocalAtajos provides atajos) {
+    val ruta = nav.currentBackStackEntryAsState().value?.destination?.route
+    CompositionLocalProvider(LocalAtajos provides atajos, LocalSeccion provides seccionDe(ruta)) {
     NavHost(nav, startDestination = HABITATS) {
         composable(MONITOR) { PantallaMonitor(alVolver = { nav.popBackStack() }) }
         composable(PRESTIGIO) { PantallaPrestigio(alVolver = { nav.popBackStack() }) }
+        composable(GUIA) { PantallaGuia(alVolver = { nav.popBackStack() }) }
         composable(TIENDA) {
             PantallaTienda(alVolver = { nav.popBackStack() }, alAnimales = { nav.navigate(TIENDA_ANIMALES) { launchSingleTop = true } })
         }
@@ -87,9 +111,22 @@ fun PandaZooNavegacion() {
                 alElegir = { nav.navigate("comprar-animal/${codificar(it.valor)}") },
             )
         }
+        composable(TIENDA_ANIMALES_ESPACIO, argEspacio) { entrada ->
+            val espacio = decodificar(entrada.arguments!!.read { getString("espacio") })
+            PantallaTiendaAnimales(
+                alVolver = { nav.popBackStack() },
+                alElegir = { nav.navigate("comprar-animal/${codificar(it.valor)}/espacio/${codificar(espacio)}") },
+            )
+        }
         composable(COMPRAR_ANIMAL, arg) { entrada ->
             val ref = Ref(decodificar(entrada.arguments!!.read { getString("ref") }))
             PantallaComprarAnimal(ref, alVolver = { nav.popBackStack() })
+        }
+        composable(COMPRAR_ANIMAL_ESPACIO, arg + argEspacio) { entrada ->
+            val ref = Ref(decodificar(entrada.arguments!!.read { getString("ref") }))
+            val espacio = Ref(decodificar(entrada.arguments!!.read { getString("espacio") }))
+            // Comprado desde un espacio, se vuelve a él sin pasar por la tienda.
+            PantallaComprarAnimal(ref, espacioFijo = espacio, alVolver = { nav.popBackStack(ANIMALES, inclusive = false) })
         }
         composable(ANIMALES, arg) { entrada ->
             val ref = Ref(decodificar(entrada.arguments!!.read { getString("ref") }))
@@ -98,6 +135,7 @@ fun PandaZooNavegacion() {
                 alVolver = { nav.popBackStack() },
                 alAnimal = { nav.navigate("ficha/${codificar(it.valor)}") },
                 alConfigurar = { nav.navigate("configurar/${codificar(ref.valor)}") },
+                alComprar = { nav.navigate("tienda-animales/espacio/${codificar(ref.valor)}") },
             )
         }
         composable(FICHA, arg) { entrada ->

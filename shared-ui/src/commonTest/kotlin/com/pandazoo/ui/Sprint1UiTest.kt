@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.runComposeUiTest
 import com.pandazoo.data.db.BaseDatos
 import com.pandazoo.testing.ConfiguracionDePrueba
@@ -33,7 +34,7 @@ class Sprint1UiTest {
     private fun prueba(bloque: ComposeUiTest.(AppContainer) -> Unit) =
         runComposeUiTest {
             val bd = BaseDatos.enMemoria()
-            val contenedor = AppContainer.crear(bd) { ConfiguracionDePrueba.texto }
+            val contenedor = AppContainer.crear(bd, conBienvenida = false) { ConfiguracionDePrueba.texto }
             setContent {
                 CompositionLocalProvider(LocalContenedor provides contenedor) {
                     PandaZooTema { PandaZooNavegacion() }
@@ -81,7 +82,6 @@ class Sprint1UiTest {
             esperar("30 kg")
             onNodeWithContentDescription("Ver beneficios").performClick()
             esperar("Beneficios pendientes")
-            esperar("Beneficios por ciclo")
             esperar("🪙 0.00")
             sinIdentificadoresTecnicos(c)
         }
@@ -96,7 +96,7 @@ class Sprint1UiTest {
             onNodeWithText("Cantidad (kg)").performTextInput("10")
             esperar("Coste total: 🪙 5.00")
             sinIdentificadoresTecnicos(c)
-            onNodeWithText("Confirmar compra").assertIsEnabled().performClick()
+            onNodeWithText("Confirmar compra").assertIsEnabled().performScrollTo().performClick()
             esperar("Compra realizada: 🪙 5.00. Saldo: 🪙 1995.00.")
             sinIdentificadoresTecnicos(c)
         }
@@ -105,10 +105,10 @@ class Sprint1UiTest {
     fun `T1_9 saldo insuficiente se informa con el motivo y no cambia el saldo`() =
         prueba {
             onNodeWithContentDescription("Abrir tienda").performClick()
-            esperar("Insumo médico — 🪙 10.00 por unidad")
-            onNodeWithText("Insumo médico — 🪙 10.00 por unidad").performClick()
+            esperar("Medicina — 🪙 10.00 por unidad")
+            onNodeWithText("Medicina — 🪙 10.00 por unidad").performClick()
             onNodeWithText("Cantidad (unidades)").performTextInput("201")
-            onNodeWithText("Confirmar compra").performClick()
+            onNodeWithText("Confirmar compra").performScrollTo().performClick()
             esperar("Saldo insuficiente: cuesta 🪙 2010.00 y dispones de 🪙 2000.00.")
             esperar("🪙 2000.00", subcadena = true)
         }
@@ -120,33 +120,35 @@ class Sprint1UiTest {
             sinIdentificadoresTecnicos(c)
 
             onNodeWithText("Bosque templado").performClick()
-            esperar("Este hábitat aún no tiene espacios.")
+            esperar("Comprar espacio")
             onNodeWithText("Comprar espacio").performClick()
 
+            // La denominación solo se pide tras elegir la capacidad, y comprar solo se ofrece con un nombre válido.
+            esperar("6 animales")
+            onAllNodesWithText("Denominación del espacio").fetchSemanticsNodes().isEmpty() shouldBe true
+            onNodeWithText("6 animales").performClick()
             esperar("Denominación del espacio")
-            onNodeWithText("Confirmar compra").assertIsNotEnabled()
+            onAllNodesWithText("Comprar — Gratis").fetchSemanticsNodes().isEmpty() shouldBe true
             onNodeWithText("Denominación del espacio").performTextInput("Pradera")
-            onNodeWithText("2 animales — 🪙 100.00").performClick()
-            sinIdentificadoresTecnicos(c)
-            onNodeWithText("Confirmar compra").assertIsEnabled().performScrollTo().performClick()
+            esperar("Comprar — Gratis")
+            onNodeWithText("Comprar — Gratis").performClick()
 
             esperar("Pradera")
-            esperar("Ocupación 0/2")
+            esperar("0/6")
             sinIdentificadoresTecnicos(c)
 
             onNodeWithText("Pradera").performClick()
-            esperar("Este espacio no tiene animales.")
+            esperar("Configurar espacio")
             onNodeWithText("Configurar espacio").performClick()
-            esperar("La capacidad no se puede modificar.")
-            esperar("Humedal de agua dulce")
-            onNodeWithText("Humedal de agua dulce").performClick()
+            esperar("Ampliar capacidad")
+            onNodeWithText("Denominación").performTextReplacement("Dehesa")
             onNodeWithText("Guardar").performClick()
 
-            // Se vuelve a la pantalla del espacio y, desde ella, a la lista del bosque: el espacio ya no está en él.
-            esperar("Este espacio no tiene animales.")
+            // Se vuelve a la pantalla del espacio y, desde ella, a la lista del bosque con el nuevo nombre.
+            esperar("Configurar espacio")
             onNodeWithContentDescription("Volver").performClick()
-            esperar("Este hábitat aún no tiene espacios.")
+            esperar("Dehesa")
             sinIdentificadoresTecnicos(c)
-            c.consultarZoo.espacios(c.idPartida, "${c.idPartida}/humedal_agua_dulce").map { it.nombre } shouldBe listOf("Pradera")
+            c.consultarZoo.espacios(c.idPartida, "${c.idPartida}/bosque_templado").map { it.nombre } shouldBe listOf("Dehesa")
         }
 }

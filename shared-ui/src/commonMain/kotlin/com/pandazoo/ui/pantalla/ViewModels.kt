@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.pandazoo.ui.AppContainer
 import com.pandazoo.application.caso.ComandoAdquirirEspacio
+import com.pandazoo.application.caso.ComandoAmpliarEspacio
 import com.pandazoo.application.caso.ComandoAdquirirInsumos
 import com.pandazoo.application.caso.ComandoConfigurarEspacio
 import com.pandazoo.application.error.MotivoRechazo
@@ -15,6 +16,7 @@ import com.pandazoo.domain.modelo.OpcionCapacidad
 import com.pandazoo.domain.modelo.Recurso
 import com.pandazoo.domain.modelo.TipoRecurso
 import com.pandazoo.application.caso.ComandoAbrirAviso
+import com.pandazoo.application.caso.ComandoDescartarAviso
 import com.pandazoo.application.caso.ComandoAceptarReproduccion
 import com.pandazoo.application.caso.DetalleReproduccion
 import com.pandazoo.application.caso.ComandoReclamarBeneficios
@@ -24,6 +26,7 @@ import com.pandazoo.application.puerto.SeveridadAviso
 import com.pandazoo.domain.economia.Dinero
 import com.pandazoo.application.caso.ComandoAlimentarAnimal
 import com.pandazoo.application.caso.ComandoAlimentarEspacio
+import com.pandazoo.application.caso.ComandoAlimentarHabitat
 import com.pandazoo.application.caso.ComandoTratarAnimal
 import com.pandazoo.application.caso.ComandoDarDeBajaEspacio
 import com.pandazoo.application.caso.ComandoEditarFicha
@@ -84,19 +87,30 @@ abstract class BaseViewModel(protected val c: AppContainer) : ViewModel() {
         solicitud = nuevoId()
     }
 
-    protected fun <R> ejecutar(accion: () -> Resultado<R>, alExito: (R) -> String) {
+    /** `alExito` devuelve el mensaje de éxito, o `null` si el resultado se comunica de otra forma (p. ej. una ventana). */
+    protected fun <R> ejecutar(
+        accion: () -> Resultado<R>,
+        ignorarRechazo: (MotivoRechazo) -> Boolean = { false },
+        alFallar: () -> Unit = {},
+        alExito: (R) -> String?,
+    ) {
         viewModelScope.launch {
             val r = try {
                 withContext(Dispatchers.Default) { accion() }
             } catch (e: Exception) {
+                alFallar()
                 mensaje.value = Mensaje(Textos.ERROR_TECNICO, false)
                 return@launch
             }
             when (r) {
                 is Resultado.Exito -> {
-                    mensaje.value = Mensaje(alExito(r.valor), true)
+                    val texto = alExito(r.valor)
+                    mensaje.value = if (texto == null) null else Mensaje(texto, true)
                 }
-                is Resultado.Rechazado -> mensaje.value = Mensaje(Textos.motivo(r.motivo), false)
+                is Resultado.Rechazado -> {
+                    alFallar()
+                    mensaje.value = if (ignorarRechazo(r.motivo)) null else Mensaje(Textos.motivo(r.motivo), false)
+                }
             }
             nuevaSolicitud()
         }
@@ -130,6 +144,11 @@ class PrestigioViewModel(c: AppContainer) : BaseViewModel(c) {
 class BeneficiosViewModel(c: AppContainer) : BaseViewModel(c) {
     val vista: StateFlow<BeneficiosUi?> = observar<BeneficiosUi?>(null) { Textos.beneficios(c.consultarBeneficios.ejecutar(c.idPartida)) }
 
+    /** Lo que genera cada hábitat, espacio y animal por ciclo. */
+    val desglose: StateFlow<List<NodoBeneficioUi>> = observar(emptyList()) {
+        Textos.desgloseBeneficios(c.consultarDesgloseBeneficios.ejecutar(c.idPartida))
+    }
+
     /** Importe mostrado en el diálogo de confirmación; se valida de nuevo al confirmar (CU-08, 4.a). */
     val confirmando = MutableStateFlow<Dinero?>(null)
 
@@ -150,44 +169,42 @@ class BeneficiosViewModel(c: AppContainer) : BaseViewModel(c) {
     fun reclamar() {
         val importe = confirmando.value ?: return
         confirmando.value = null
-        ejecutar({ c.reclamarBeneficios.ejecutar(ComandoReclamarBeneficios(c.idPartida, importe, solicitud)) }) {
-            "Has reclamado ${Textos.dinero(it.importe)}. Saldo: ${Textos.dinero(it.saldo)}."
-        }
+        ejecutar({ c.reclamarBeneficios.ejecutar(ComandoReclamarBeneficios(c.idPartida, importe, solicitud)) }) { null }
     }
 }
 
-/** Historial de avisos (CU-21). Listar no cambia ningún estado; abrir el detalle marca como vista un aviso pendiente. */
+/**
+ * Avisos abiertos (CU-21): los descartados, caducados o resueltos ya no se listan. Los de severidad baja y media se
+ * descartan deslizando; abrir uno que lleva a otra pantalla lo marca como visto.
+ */
 class AvisosViewModel(c: AppContainer) : BaseViewModel(c) {
     val filtro = MutableStateFlow<SeveridadAviso?>(null)
 
     val avisos: StateFlow<List<AvisoItemUi>> = observarPor(filtro, emptyList()) { f ->
-        c.consultarAvisos.ejecutar(c.idPartida, f).map(Textos::aviso)
+        Textos.avisos(c.consultarAvisos.ejecutar(c.idPartida, f).filter { !it.cerrado })
     }
-
-    val detalle = MutableStateFlow<AvisoItemUi?>(null)
 
     fun filtrar(severidad: SeveridadAviso?) {
         filtro.value = severidad
     }
 
-    fun abrir(aviso: AvisoItemUi) {
+    fun abrir(aviso: AvisoItemUi, despues: () -> Unit) {
         viewModelScope.launch {
-            val r = try {
-                withContext(Dispatchers.Default) { c.abrirAviso.ejecutar(ComandoAbrirAviso(c.idPartida, aviso.id, solicitud)) }
+            try {
+                withContext(Dispatchers.Default) {
+                    aviso.ids.forEach { c.abrirAviso.ejecutar(ComandoAbrirAviso(c.idPartida, it, nuevoId())) }
+                }
             } catch (e: Exception) {
                 mensaje.value = Mensaje(Textos.ERROR_TECNICO, false)
                 return@launch
             }
-            when (r) {
-                is Resultado.Exito -> detalle.value = Textos.aviso(r.valor.aviso)
-                is Resultado.Rechazado -> mensaje.value = Mensaje(Textos.motivo(r.motivo), false)
-            }
-            nuevaSolicitud()
+            despues()
         }
     }
 
-    fun cerrarDetalle() {
-        detalle.value = null
+    fun descartar(aviso: AvisoItemUi) {
+        if (!aviso.descartable) return
+        ejecutar({ c.descartarAviso.ejecutar(ComandoDescartarAviso(c.idPartida, aviso.id, solicitud)) }) { null }
     }
 }
 
@@ -199,59 +216,8 @@ class SeguimientoViewModel(c: AppContainer) : BaseViewModel(c) {
 }
 
 class HabitatsViewModel(c: AppContainer) : BaseViewModel(c) {
-    /** Solo modo de depuración: elimina espacios y animales de prueba, conserva los del usuario. */
-    fun eliminarDatosDePrueba() {
-        viewModelScope.launch {
-            val texto = try {
-                val r = withContext(Dispatchers.Default) { c.eliminarCargaDePrueba() }
-                "Eliminados ${r.animales} animales y ${r.espacios} espacios de prueba."
-            } catch (e: Exception) {
-                Textos.ERROR_TECNICO
-            }
-            mensaje.value = Mensaje(texto, true)
-        }
-    }
-
     val habitats: StateFlow<List<HabitatUi>> = observar(emptyList()) {
         c.consultarZoo.habitats(c.idPartida).map(Textos::habitat)
-    }
-
-    /** Solo modo de depuración: ejecuta el siguiente ciclo sin esperar los 10 minutos. */
-    fun adelantarCiclo() {
-        viewModelScope.launch {
-            val texto = try {
-                if (withContext(Dispatchers.Default) { c.adelantarCiclo() }) "Ciclo ejecutado." else "No se pudo ejecutar el ciclo."
-            } catch (e: Exception) {
-                Textos.ERROR_TECNICO
-            }
-            mensaje.value = Mensaje(texto, true)
-        }
-    }
-
-    /** Solo modo de depuración: añade un panda a la partida activa. */
-    fun anadirPanda() {
-        viewModelScope.launch {
-            val texto = try {
-                if (withContext(Dispatchers.Default) { c.anadirPanda() }) "Panda añadido."
-                else "No hay espacio con cupo para el panda."
-            } catch (e: Exception) {
-                Textos.ERROR_TECNICO
-            }
-            mensaje.value = Mensaje(texto, true)
-        }
-    }
-
-    /** Solo modo de depuración: genera la carga de referencia y deja la satisfacción calculada. */
-    fun generarDatosDePrueba() {
-        viewModelScope.launch {
-            val texto = try {
-                val generado = withContext(Dispatchers.Default) { c.generarCargaDePrueba() }
-                if (generado) "Datos de prueba generados." else "La partida ya tiene animales; no se generó nada."
-            } catch (e: Exception) {
-                Textos.ERROR_TECNICO
-            }
-            mensaje.value = Mensaje(texto, true)
-        }
     }
 }
 
@@ -282,11 +248,59 @@ class EspaciosViewModel(c: AppContainer, private val habitat: Ref) : BaseViewMod
     val espacios: StateFlow<List<EspacioUi>> = observar(emptyList()) {
         c.consultarZoo.espacios(c.idPartida, habitat.valor).map(Textos::espacio)
     }
+
+    /** Hay algún animal vivo del hábitat por debajo del 100 % de alimentación. */
+    val hayHambre: StateFlow<Boolean> = observar(false) {
+        c.consultarCuidado.grupalHabitat(c.idPartida, habitat.valor).animales > 0
+    }
+
+    /** Confirmación de la acción por hábitat: texto con el total y total mostrado para validarlo al confirmar. */
+    val confirmandoGrupal = MutableStateFlow<GrupalUi?>(null)
+
+    fun pedirAlimentarGrupo() {
+        viewModelScope.launch {
+            val previa = withContext(Dispatchers.Default) { c.consultarCuidado.grupalHabitat(c.idPartida, habitat.valor) }
+            val kilos = previa.kilos
+            when {
+                previa.animales == 0 -> mensaje.value = Mensaje(Textos.motivo(MotivoRechazo.NadaQueAlimentar), false)
+                kilos == null -> mensaje.value = Mensaje(Textos.motivo(MotivoRechazo.RacionNoConfigurada), false)
+                else -> {
+                    descartarMensaje()
+                    confirmandoGrupal.value = GrupalUi(
+                        kilos,
+                        VentanaUi(
+                            icono = Iconos.Bambu,
+                            titulo = "Alimentar a todos",
+                            datos = listOf(
+                                DatoVentana(previa.animales.toString(), if (previa.animales == 1) "animal" else "animales", Iconos.Pata),
+                                DatoVentana("$kilos kg", "bambú", Iconos.Bambu, alerta = kilos > previa.bambuDisponible),
+                                DatoVentana("${previa.bambuDisponible} kg", "en almacén"),
+                            ),
+                            confirmar = "Confirmar alimentación",
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    fun cancelarGrupal() {
+        confirmandoGrupal.value = null
+    }
+
+    fun confirmarGrupal() {
+        val g = confirmandoGrupal.value ?: return
+        confirmandoGrupal.value = null
+        ejecutar({ c.alimentarHabitat.ejecutar(ComandoAlimentarHabitat(c.idPartida, habitat.valor, g.kilos, solicitud)) }, { it is MotivoRechazo.BambuInsuficiente }) { null }
+    }
 }
 
 class ComprarEspacioViewModel(c: AppContainer, private val habitat: Ref) : BaseViewModel(c) {
+    // Al confirmar se congela la lista: lo gratuito ya consumido no debe mostrarse un instante con su coste real.
+    @Volatile private var congelado = false
+    private var ultimas: List<CapacidadUi> = emptyList()
     val capacidades: StateFlow<List<CapacidadUi>> = observar(emptyList()) {
-        c.consultarTienda.capacidades().map(::capacidadUi)
+        if (congelado) ultimas else c.consultarTienda.capacidades(c.idPartida).map(::capacidadUi).also { ultimas = it }
     }
     val saldo: StateFlow<String> = observar("") {
         Textos.inicio(c.consultarInventario.ejecutar(c.idPartida)).saldo ?: "No disponible"
@@ -294,11 +308,15 @@ class ComprarEspacioViewModel(c: AppContainer, private val habitat: Ref) : BaseV
     val creado = MutableStateFlow(false)
 
     private fun capacidadUi(o: OpcionCapacidad) =
-        CapacidadUi(o.capacidad, o.coste, "${o.capacidad} animales — ${Textos.dinero(o.coste)}")
+        CapacidadUi(
+            o.capacidad, o.coste,
+            "${o.capacidad} animales — " + if (o.coste == Dinero.CERO) "Gratis" else Textos.dinero(o.coste),
+        )
 
     fun comprar(nombre: String, capacidad: Int) {
         val comando = ComandoAdquirirEspacio(c.idPartida, habitat.valor, nombre, capacidad, solicitud)
-        ejecutar({ c.adquirirEspacio.ejecutar(comando) }) {
+        congelado = true
+        ejecutar({ c.adquirirEspacio.ejecutar(comando) }, alFallar = { congelado = false }) {
             creado.value = true
             "Espacio creado por ${Textos.dinero(it.coste)}. Saldo: ${Textos.dinero(it.saldo)}."
         }
@@ -309,24 +327,44 @@ class ConfigurarEspacioViewModel(c: AppContainer, private val espacio: Ref) : Ba
     val actual: StateFlow<EspacioUi?> = observar<EspacioUi?>(null) {
         c.consultarZoo.espacio(c.idPartida, espacio.valor)?.let(Textos::espacio)
     }
-    val habitatActual: StateFlow<Ref?> = observar<Ref?>(null) {
-        c.consultarZoo.espacio(c.idPartida, espacio.valor)?.let { Ref(it.idHabitat) }
-    }
-    val habitats: StateFlow<List<HabitatUi>> = observar(emptyList()) {
-        c.consultarZoo.habitats(c.idPartida).map(Textos::habitat).filter { it.disponible }
-    }
     val guardado = MutableStateFlow(false)
 
-    fun guardar(nombre: String, habitat: Ref?) {
+    /** Capacidades a las que se puede ampliar el espacio, con el coste real; la elegida queda pendiente de confirmar. */
+    val ampliaciones: StateFlow<List<CapacidadUi>> = observar(emptyList()) {
+        val actual = c.consultarZoo.espacio(c.idPartida, espacio.valor)
+        if (actual == null || actual.estado.name != "ACTIVO") emptyList()
+        else c.consultarTienda.ampliaciones(actual.capacidadMax).map {
+            CapacidadUi(it.capacidad, it.coste, "${it.capacidad} animales — ${Textos.dinero(it.coste)}")
+        }
+    }
+    val confirmandoAmpliacion = MutableStateFlow<CapacidadUi?>(null)
+
+    fun elegirAmpliacion(o: CapacidadUi) {
+        descartarMensaje()
+        confirmandoAmpliacion.value = o
+    }
+
+    fun cancelarAmpliacion() {
+        confirmandoAmpliacion.value = null
+    }
+
+    fun confirmarAmpliacion() {
+        val o = confirmandoAmpliacion.value ?: return
+        confirmandoAmpliacion.value = null
+        ejecutar({ c.ampliarEspacio.ejecutar(ComandoAmpliarEspacio(c.idPartida, espacio.valor, o.capacidad, solicitud)) }) {
+            "Espacio ampliado a ${it.capacidad} animales por ${Textos.dinero(it.coste)}. Saldo: ${Textos.dinero(it.saldo)}."
+        }
+    }
+
+    fun guardar(nombre: String) {
         val idSolicitud = solicitud
         ejecutar({
-            val actual = c.consultarZoo.espacio(c.idPartida, espacio.valor)
             c.configurarEspacio.ejecutar(
                 ComandoConfigurarEspacio(
                     idPartida = c.idPartida,
                     idEspacio = espacio.valor,
                     nuevoNombre = nombre,
-                    nuevoIdHabitat = habitat?.valor?.takeIf { it != actual?.idHabitat },
+                    nuevoIdHabitat = null,
                     idSolicitud = idSolicitud,
                 ),
             )
@@ -347,6 +385,13 @@ class MisionesViewModel(c: AppContainer) : BaseViewModel(c) {
     /** Misión cuya recompensa se va a reclamar; hasta confirmar no se acredita nada (CU-15, 3.a). */
     val confirmando = MutableStateFlow<MisionUi?>(null)
 
+    /** Lo conseguido al reclamar; se muestra en una ventana pequeña hasta que el usuario pulsa fuera. */
+    val premio = MutableStateFlow<PremioUi?>(null)
+
+    fun cerrarPremio() {
+        premio.value = null
+    }
+
     fun pedirReclamar(m: MisionUi) {
         descartarMensaje()
         confirmando.value = m
@@ -359,7 +404,10 @@ class MisionesViewModel(c: AppContainer) : BaseViewModel(c) {
     fun reclamar() {
         val m = confirmando.value ?: return
         confirmando.value = null
-        ejecutar({ c.reclamarRecompensa.ejecutar(ComandoReclamarRecompensa(c.idPartida, m.ref.valor)) }, Textos::recompensaReclamada)
+        ejecutar({ c.reclamarRecompensa.ejecutar(ComandoReclamarRecompensa(c.idPartida, m.ref.valor)) }) {
+            premio.value = Textos.premio(it)
+            null
+        }
     }
 }
 
@@ -378,9 +426,25 @@ data class OpcionUi(val ref: String, val nombre: String)
 private fun opciones(l: List<OpcionFicha>) = l.map { OpcionUi(it.id, it.nombre) }
 
 /** CU-01: hábitat, espacio y ficha, y alta atómica. */
-class ComprarAnimalViewModel(c: AppContainer, private val especie: Ref) : BaseViewModel(c) {
+/** Hábitat y espacio de una compra iniciada desde un espacio: se muestran fijos, sin posibilidad de elegirlos. */
+data class UbicacionFijaUi(val habitat: String, val espacio: String)
+
+class ComprarAnimalViewModel(c: AppContainer, private val especie: Ref, private val espacioFijo: Ref? = null) : BaseViewModel(c) {
+    val ubicacionFija: StateFlow<UbicacionFijaUi?> = observar<UbicacionFijaUi?>(null) {
+        espacioFijo?.let { f ->
+            val e = c.consultarZoo.espacio(c.idPartida, f.valor) ?: return@let null
+            val h = c.consultarZoo.habitats(c.idPartida).firstOrNull { it.id == e.idHabitat }
+            UbicacionFijaUi(h?.let { Textos.habitat(it).nombre } ?: "", e.nombre)
+        }
+    }
+
+    // Al confirmar se congela la oferta: la unidad gratuita ya consumida no debe mostrarse un instante con su coste real.
+    @Volatile private var congelada = false
+    private var ultimaOferta: OfertaAnimalUi? = null
     val oferta: StateFlow<OfertaAnimalUi?> = observar<OfertaAnimalUi?>(null) {
-        c.consultarTiendaAnimales.ejecutar(c.idPartida).firstOrNull { it.especie.id == especie.valor }?.let(Textos::ofertaAnimal)
+        if (congelada) ultimaOferta
+        else c.consultarTiendaAnimales.ejecutar(c.idPartida).firstOrNull { it.especie.id == especie.valor }?.let(Textos::ofertaAnimal)
+            .also { ultimaOferta = it }
     }
     val saldo: StateFlow<String> = observar("") {
         Textos.inicio(c.consultarInventario.ejecutar(c.idPartida)).saldo ?: "No disponible"
@@ -390,7 +454,8 @@ class ComprarAnimalViewModel(c: AppContainer, private val especie: Ref) : BaseVi
     }
 
     val habitatElegido = MutableStateFlow<Ref?>(null)
-    val espacioElegido = MutableStateFlow<Ref?>(null)
+    // Comprando desde un espacio, este queda elegido desde el principio; deshacerlo es trasladar el animal ya comprado.
+    val espacioElegido = MutableStateFlow<Ref?>(espacioFijo)
 
     val espacios: StateFlow<List<EspacioUi>> = observarPor(habitatElegido, emptyList()) { h ->
         if (h == null) emptyList() else c.consultarAnimales.espaciosConCupo(c.idPartida, h.valor).map(Textos::espacio)
@@ -398,7 +463,7 @@ class ComprarAnimalViewModel(c: AppContainer, private val especie: Ref) : BaseVi
 
     /** Animales del espacio elegido: candidatos a mejor amigo. */
     val companeros: StateFlow<List<CandidatoUi>> = observarPor(espacioElegido, emptyList()) { s ->
-        if (s == null) emptyList() else c.consultarAnimales.animalesDe(c.idPartida, s.valor).let(Textos::candidatos)
+        if (s == null) emptyList() else c.consultarAnimales.animalesDe(c.idPartida, s.valor).filter { it.idMejorAmigo == null }.let(Textos::candidatos)
     }
 
     val habilidades: List<OpcionUi> = opciones(c.catalogoFicha.habilidades)
@@ -425,7 +490,8 @@ class ComprarAnimalViewModel(c: AppContainer, private val especie: Ref) : BaseVi
             ficha = FichaNueva(nombre, habilidades.toList(), rasgos.toList(), amigo?.valor),
             idSolicitud = solicitud,
         )
-        ejecutar({ c.adquirirAnimal.ejecutar(comando) }) {
+        congelada = true
+        ejecutar({ c.adquirirAnimal.ejecutar(comando) }, alFallar = { congelada = false }) {
             comprado.value = true
             "Animal comprado por ${Textos.dinero(it.coste)}. Saldo: ${Textos.dinero(it.saldo)}."
         }
@@ -441,6 +507,9 @@ class AnimalesViewModel(c: AppContainer, private val espacio: Ref) : BaseViewMod
         c.consultarAnimales.animalesDe(c.idPartida, espacio.valor).let(Textos::animalItems)
     }
     val ofreciendoBaja = MutableStateFlow(false)
+
+    /** Lo que se recupera al vender el espacio; se lee al abrir la confirmación. */
+    val reembolso = MutableStateFlow(Dinero.CERO)
     val dadoDeBaja = MutableStateFlow(false)
 
     /** Confirmación de la acción grupal (CU-13, paso 2): texto con el total y total mostrado para validarlo al confirmar. */
@@ -455,10 +524,18 @@ class AnimalesViewModel(c: AppContainer, private val espacio: Ref) : BaseViewMod
                 kilos == null -> mensaje.value = Mensaje(Textos.motivo(MotivoRechazo.RacionNoConfigurada), false)
                 else -> {
                     descartarMensaje()
-                    val animales = if (previa.animales == 1) "1 animal" else "${previa.animales} animales"
                     confirmandoGrupal.value = GrupalUi(
                         kilos,
-                        "Se alimentará hasta el 100 % a $animales. Total de bambú: $kilos kg (hay ${previa.bambuDisponible} kg).",
+                        VentanaUi(
+                            icono = Iconos.Bambu,
+                            titulo = "Alimentar a todos",
+                            datos = listOf(
+                                DatoVentana(previa.animales.toString(), if (previa.animales == 1) "animal" else "animales", Iconos.Pata),
+                                DatoVentana("$kilos kg", "bambú", Iconos.Bambu, alerta = kilos > previa.bambuDisponible),
+                                DatoVentana("${previa.bambuDisponible} kg", "en almacén"),
+                            ),
+                            confirmar = "Confirmar alimentación",
+                        ),
                     )
                 }
             }
@@ -472,13 +549,12 @@ class AnimalesViewModel(c: AppContainer, private val espacio: Ref) : BaseViewMod
     fun confirmarGrupal() {
         val g = confirmandoGrupal.value ?: return
         confirmandoGrupal.value = null
-        ejecutar({ c.alimentarEspacio.ejecutar(ComandoAlimentarEspacio(c.idPartida, espacio.valor, g.kilos, solicitud)) }) {
-            val n = if (it.animales == 1) "1 animal" else "${it.animales} animales"
-            "Se ha alimentado a $n con ${it.kilos} kg de bambú. Quedan ${it.bambuRestante} kg."
-        }
+        // Sin avisos: ni al alimentar ni por falta de bambú (la ventana ya marca en rojo lo que falta).
+        ejecutar({ c.alimentarEspacio.ejecutar(ComandoAlimentarEspacio(c.idPartida, espacio.valor, g.kilos, solicitud)) }, { it is MotivoRechazo.BambuInsuficiente }) { null }
     }
 
     fun pedirBaja() {
+        reembolso.value = c.consultarZoo.costePagado(c.idPartida, espacio.valor)
         ofreciendoBaja.value = true
     }
 
@@ -490,7 +566,7 @@ class AnimalesViewModel(c: AppContainer, private val espacio: Ref) : BaseViewMod
         ofreciendoBaja.value = false
         ejecutar({ c.darDeBajaEspacio.ejecutar(ComandoDarDeBajaEspacio(c.idPartida, espacio.valor, solicitud)) }) {
             dadoDeBaja.value = true
-            "El espacio se ha dado de baja."
+            textoVentaEspacio(it.reembolso)
         }
     }
 }
@@ -502,9 +578,19 @@ class FichaAnimalViewModel(c: AppContainer, private val animal: Ref) : BaseViewM
     }
     val confirmandoVenta = MutableStateFlow(false)
 
-    /** Texto de los diálogos de confirmación de CU-13 y CU-09; `null` si no hay diálogo abierto. */
-    val confirmandoAlimentar = MutableStateFlow<String?>(null)
-    val confirmandoTratar = MutableStateFlow<String?>(null)
+    /** Panel de estadísticas (satisfacción y beneficio) desplegado en la ficha. */
+    val verEstadisticas = MutableStateFlow(true) // [simplificar-6] siempre visibles
+    val estadisticas: StateFlow<EstadisticasUi?> = observarPor<Boolean, EstadisticasUi?>(verEstadisticas, null) { ver ->
+        if (ver) c.consultarEstadisticasAnimal.ejecutar(c.idPartida, animal.valor)?.let(Textos::estadisticas) else null
+    }
+
+    fun alternarEstadisticas() {
+        verEstadisticas.value = !verEstadisticas.value
+    }
+
+    /** Ventanas de confirmación de CU-13 y CU-09; `null` si no hay ventana abierta. */
+    val confirmandoAlimentar = MutableStateFlow<VentanaUi?>(null)
+    val confirmandoTratar = MutableStateFlow<VentanaUi?>(null)
 
     fun pedirAlimentar() {
         viewModelScope.launch {
@@ -518,9 +604,16 @@ class FichaAnimalViewModel(c: AppContainer, private val animal: Ref) : BaseViewM
                 kilos == null -> mensaje.value = Mensaje(Textos.motivo(MotivoRechazo.RacionNoConfigurada), false)
                 else -> {
                     descartarMensaje()
-                    confirmandoAlimentar.value =
-                        "Se consumirán $kilos kg de bambú (hay ${previa.bambuDisponible} kg) y la alimentación de ${f.nombre} " +
-                            "subirá del ${f.alimentacion} % al ${ReglasCuidado.nivelTrasRacion(f.alimentacion)} %."
+                    confirmandoAlimentar.value = VentanaUi(
+                        icono = Iconos.Bambu,
+                        titulo = "Alimentar a ${f.nombre}",
+                        datos = listOf(
+                            DatoVentana("$kilos kg", "bambú", Iconos.Bambu, alerta = kilos > previa.bambuDisponible),
+                            DatoVentana("${f.alimentacion}% → ${ReglasCuidado.nivelTrasRacion(f.alimentacion)}%", "alimentación"),
+                            DatoVentana("${previa.bambuDisponible} kg", "en almacén"),
+                        ),
+                        confirmar = "Confirmar alimentación",
+                    )
                 }
             }
         }
@@ -532,9 +625,7 @@ class FichaAnimalViewModel(c: AppContainer, private val animal: Ref) : BaseViewM
 
     fun alimentar() {
         confirmandoAlimentar.value = null
-        ejecutar({ c.alimentarAnimal.ejecutar(ComandoAlimentarAnimal(c.idPartida, animal.valor, solicitud)) }) {
-            "Alimentación al ${it.nivel} %. Se han consumido ${it.kilos} kg de bambú; quedan ${it.bambuRestante} kg."
-        }
+        ejecutar({ c.alimentarAnimal.ejecutar(ComandoAlimentarAnimal(c.idPartida, animal.valor, solicitud)) }, { it is MotivoRechazo.BambuInsuficiente }) { null }
     }
 
     fun pedirTratamiento() {
@@ -544,9 +635,12 @@ class FichaAnimalViewModel(c: AppContainer, private val animal: Ref) : BaseViewM
                 mensaje.value = Mensaje(Textos.motivo(MotivoRechazo.ConsumoMedicoNoConfigurado), false)
             } else {
                 descartarMensaje()
-                confirmandoTratar.value = "Se consumirán " +
-                    lineas.joinToString(", ") { "${it.necesario} de ${it.nombre} (tienes ${it.disponible})" } +
-                    " y el animal quedará sano."
+                confirmandoTratar.value = VentanaUi(
+                    icono = Iconos.InsumosMedicos,
+                    titulo = "Aplicar tratamiento",
+                    datos = lineas.map { DatoVentana("${it.necesario}", it.nombre, Iconos.InsumosMedicos, alerta = it.necesario > it.disponible) },
+                    confirmar = "Confirmar tratamiento",
+                )
             }
         }
     }
@@ -558,12 +652,11 @@ class FichaAnimalViewModel(c: AppContainer, private val animal: Ref) : BaseViewM
     fun tratar() {
         confirmandoTratar.value = null
         ejecutar({ c.tratarAnimal.ejecutar(ComandoTratarAnimal(c.idPartida, animal.valor, solicitud)) }) {
-            "Tratamiento aplicado. El animal está sano; se han consumido ${it.unidades} unidades de insumos médicos."
+            "Tratamiento aplicado. El animal está sano; se han consumido ${it.unidades} medicinas."
         }
     }
 
     /** Espacio de origen vacío tras la venta: se ofrece su baja. `null` si no hay oferta. */
-    val ofertaBaja = MutableStateFlow<Ref?>(null)
     val terminado = MutableStateFlow(false)
 
     fun pedirVenta() {
@@ -578,27 +671,15 @@ class FichaAnimalViewModel(c: AppContainer, private val animal: Ref) : BaseViewM
         confirmandoVenta.value = false
         val confirmado = ficha.value?.importeVenta
         ejecutar({ c.venderAnimal.ejecutar(ComandoVenderAnimal(c.idPartida, animal.valor, solicitud, confirmado)) }) {
-            if (it.origenVacio) ofertaBaja.value = Ref(it.idEspacioOrigen) else terminado.value = true
+            terminado.value = true
             "Animal vendido por ${Textos.dinero(it.importe)}."
         }
     }
 
-    fun darDeBaja(origen: Ref) {
-        ejecutar({ c.darDeBajaEspacio.ejecutar(ComandoDarDeBajaEspacio(c.idPartida, origen.valor, solicitud)) }) {
-            ofertaBaja.value = null
-            terminado.value = true
-            "El espacio se ha dado de baja."
-        }
-    }
-
-    fun mantenerEspacio() {
-        ofertaBaja.value = null
-        terminado.value = true
-    }
 }
 
-/** Confirmación de alimentación grupal: total de kilos mostrado y texto del diálogo. */
-data class GrupalUi(val kilos: Int, val texto: String)
+/** Confirmación de alimentación grupal: total de kilos mostrado y ventana de confirmación. */
+data class GrupalUi(val kilos: Int, val ventana: VentanaUi)
 
 /** Candidatos de la edición: parejas y amigos posibles dentro del espacio del animal. */
 data class CandidatosUi(val parejas: List<CandidatoUi>, val amigos: List<CandidatoUi>)
@@ -619,7 +700,8 @@ class EditarFichaViewModel(c: AppContainer, private val animal: Ref) : BaseViewM
                 yo != null && yo.nivel >= ReglasNivel.NIVEL_MINIMO_PAREJA && it.idEspecie == yo.idEspecie &&
                     it.nivel >= ReglasNivel.NIVEL_MINIMO_PAREJA && (it.idPareja == null || it.id == yo.idPareja)
             }.let(Textos::candidatos),
-            amigos = otros.let(Textos::candidatos),
+            // El mejor amigo es recíproco: solo se puede elegir a un animal libre, y quien ya tiene amigo solo puede quitarlo.
+            amigos = otros.filter { yo?.idMejorAmigo == null && it.idMejorAmigo == null || it.id == yo?.idMejorAmigo }.let(Textos::candidatos),
         )
     }
     val habilidades: List<OpcionUi> = opciones(c.catalogoFicha.habilidades)
@@ -644,28 +726,15 @@ class ReubicarViewModel(c: AppContainer, private val animal: Ref) : BaseViewMode
         val actual = c.consultarAnimales.ficha(c.idPartida, animal.valor)?.idEspacio
         c.consultarAnimales.destinosPosibles(c.idPartida, actual).map(Textos::destino)
     }
-    val ofertaBaja = MutableStateFlow<Ref?>(null)
     val terminado = MutableStateFlow(false)
 
     fun reubicar(destino: Ref) {
         ejecutar({ c.reubicarAnimal.ejecutar(ComandoReubicarAnimal(c.idPartida, animal.valor, destino.valor, solicitud)) }) {
-            if (it.origenVacio) ofertaBaja.value = Ref(it.idEspacioOrigen) else terminado.value = true
+            terminado.value = true
             "Animal trasladado."
         }
     }
 
-    fun darDeBaja(origen: Ref) {
-        ejecutar({ c.darDeBajaEspacio.ejecutar(ComandoDarDeBajaEspacio(c.idPartida, origen.valor, solicitud)) }) {
-            ofertaBaja.value = null
-            terminado.value = true
-            "El espacio se ha dado de baja."
-        }
-    }
-
-    fun mantenerEspacio() {
-        ofertaBaja.value = null
-        terminado.value = true
-    }
 }
 
 /** Crea ViewModels con el contenedor de dependencias; los argumentos de navegación son referencias opacas. */
@@ -683,7 +752,7 @@ class CriaViewModel(c: AppContainer, private val aviso: Ref) : BaseViewModel(c) 
     /** Animales del espacio de los progenitores: candidatos a mejor amigo de la cría. */
     val companeros: StateFlow<List<CandidatoUi>> = observar(emptyList()) {
         val espacio = id?.let { c.consultarReproduccion.ejecutar(c.idPartida, it) }?.idEspacio
-        if (espacio == null) emptyList() else c.consultarAnimales.animalesDe(c.idPartida, espacio).let(Textos::candidatos)
+        if (espacio == null) emptyList() else c.consultarAnimales.animalesDe(c.idPartida, espacio).filter { it.idMejorAmigo == null }.let(Textos::candidatos)
     }
 
     val habilidades: List<OpcionUi> = opciones(c.catalogoFicha.habilidades)
@@ -704,3 +773,6 @@ class CriaViewModel(c: AppContainer, private val aviso: Ref) : BaseViewModel(c) 
         }
     }
 }
+
+private fun textoVentaEspacio(reembolso: Dinero) =
+    if (reembolso > Dinero.CERO) "Espacio vendido. Recuperas ${Textos.dinero(reembolso)}." else "Espacio vendido."

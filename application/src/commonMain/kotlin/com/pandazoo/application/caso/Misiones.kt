@@ -13,12 +13,15 @@ import com.pandazoo.application.puerto.InventarioRepositorio
 import com.pandazoo.application.puerto.MisionRepositorio
 import com.pandazoo.application.puerto.Reloj
 import com.pandazoo.application.puerto.TipoMovimiento
+import com.pandazoo.application.puerto.RecompensaConfigurada
 import com.pandazoo.application.puerto.TipoRecompensa
+import com.pandazoo.domain.config.ProbabilidadRango
 import com.pandazoo.domain.economia.Decimales
 import com.pandazoo.domain.economia.Dinero
 import com.pandazoo.domain.mision.EspecieElegible
 import com.pandazoo.domain.mision.ReglasMision
 import com.pandazoo.domain.mision.ResultadoProgresion
+import com.pandazoo.domain.mision.SorteoAnimales
 import com.pandazoo.domain.modelo.IdPartida
 import com.pandazoo.domain.modelo.Recurso
 import com.pandazoo.domain.modelo.TipoRecurso
@@ -105,6 +108,8 @@ data class ComandoReclamarRecompensa(val idPartida: IdPartida, val idInstancia: 
  * @property nombreItem alimento o insumo acreditado.
  * @property nombreEspecie especie sorteada, cuya unidad gratuita queda disponible en la tienda.
  * @property agotada el tipo agotó su progresión y no vuelve a aparecer.
+ * @property idRango rango de la especie sorteada, si se conoce.
+ * @property probabilidades tabla de rango con la que se sorteó el animal (vacía si no hubo sorteo por rango).
  */
 data class RecompensaReclamada(
     val tipo: TipoRecompensa,
@@ -112,6 +117,8 @@ data class RecompensaReclamada(
     val nombreItem: String?,
     val nombreEspecie: String?,
     val agotada: Boolean,
+    val idRango: Int? = null,
+    val probabilidades: List<ProbabilidadRango> = emptyList(),
 )
 
 /**
@@ -129,6 +136,8 @@ class ReclamarRecompensa(
     private val azar: Azar,
     private val reloj: Reloj,
     private val elegibles: List<EspecieElegible>,
+    /** Sorteo por rango de la misión de prestigio; sin él, el animal sale de [elegibles]. */
+    private val sorteo: SorteoAnimales? = null,
 ) {
     fun ejecutar(c: ComandoReclamarRecompensa): Resultado<RecompensaReclamada> {
         val op = Operacion(
@@ -138,11 +147,19 @@ class ReclamarRecompensa(
             origen = "CU-15",
             idSolicitud = c.idInstancia,
             huella = "instancia=${c.idInstancia}",
-            codificar = { "${it.tipo}|${it.cantidad}|${it.nombreItem.orEmpty()}|${it.nombreEspecie.orEmpty()}|${if (it.agotada) 1 else 0}" },
+            codificar = {
+                "${it.tipo}|${it.cantidad}|${it.nombreItem.orEmpty()}|${it.nombreEspecie.orEmpty()}|${if (it.agotada) 1 else 0}|" +
+                    "${it.idRango ?: ""}|${it.probabilidades.joinToString(",") { p -> "${p.idRango}:${p.porcentaje}" }}"
+            },
             decodificar = {
                 val p = it.split("|")
                 RecompensaReclamada(
                     TipoRecompensa.valueOf(p[0]), p[1].toDouble(), p[2].ifEmpty { null }, p[3].ifEmpty { null }, p[4] == "1",
+                    p.getOrNull(5)?.toIntOrNull(),
+                    p.getOrNull(6).orEmpty().split(",").filter { s -> s.isNotEmpty() }.map { s ->
+                        val (rango, porcentaje) = s.split(":")
+                        ProbabilidadRango(rango.toInt(), porcentaje.toInt())
+                    },
                 )
             },
             idEntidad = { c.idInstancia },
@@ -157,7 +174,7 @@ class ReclamarRecompensa(
         if (inst.estado != EstadoMision.CUMPLIDA) return rechazo(MotivoRechazo.MisionNoCumplida)
 
         // Se valida todo antes de escribir: un rechazo no cambia nada (CU-15, 4.b y 4.c).
-        val r = inst.recompensa
+        val r = recompensaVigente(inst)
         val enteraValida = r.cantidad == r.cantidad.toLong().toDouble()
         val contenidoValido = r.cantidad > 0 && when (r.tipo) {
             TipoRecompensa.FONDOS -> true
@@ -177,10 +194,15 @@ class ReclamarRecompensa(
                 ResultadoProgresion.Invalida -> return rechazo(MotivoRechazo.ProgresionInvalida)
             }
         }
-        val especie = if (r.tipo == TipoRecompensa.ESPECIE) {
-            ReglasMision.sortearEspecie(azar.siguienteDouble(), elegibles) ?: return rechazo(MotivoRechazo.RecompensaNoValida)
-        } else {
+        var tabla: List<ProbabilidadRango> = emptyList()
+        val especie = if (r.tipo != TipoRecompensa.ESPECIE) {
             null
+        } else if (sorteo != null && inst.idMision == ReglasMision.MISION_PRESTIGIO) {
+            val requerido = inst.numericos[ReglasMision.PARAMETRO_PRESTIGIO] ?: return rechazo(MotivoRechazo.RecompensaNoValida)
+            tabla = sorteo.tablaPrestigio(requerido.toInt())
+            sorteo.sortear(tabla, azar.siguienteDouble(), azar.siguienteDouble()) ?: return rechazo(MotivoRechazo.RecompensaNoValida)
+        } else {
+            ReglasMision.sortearEspecie(azar.siguienteDouble(), elegibles) ?: return rechazo(MotivoRechazo.RecompensaNoValida)
         }
 
         val ahora = reloj.ahoraSegundos()
@@ -195,7 +217,8 @@ class ReclamarRecompensa(
                 inventario.incrementar(idPartida, Recurso(TipoRecurso.ALIMENTO, requireNotNull(r.idItem)), r.cantidad.toInt())
             TipoRecompensa.INSUMO ->
                 inventario.incrementar(idPartida, Recurso(TipoRecurso.INSUMO, requireNotNull(r.idItem)), r.cantidad.toInt())
-            TipoRecompensa.ESPECIE -> misiones.desbloquearEspecie(idPartida, requireNotNull(especie), ciclo, ahora)
+            // Solo concede una unidad gratuita (registrarRecompensa): la especie no se desbloquea en la tienda.
+            TipoRecompensa.ESPECIE -> requireNotNull(especie)
         }
         misiones.registrarRecompensa(idPartida, inst.idMision, inst.idInstancia, r, especie, ciclo, ahora)
 
@@ -214,6 +237,8 @@ class ReclamarRecompensa(
                 nombreItem = r.idItem?.let { misiones.nombreRecurso(it) ?: it },
                 nombreEspecie = especie?.let { misiones.nombreEspecie(it) ?: it },
                 agotada = agotada,
+                idRango = especie?.let { sorteo?.rangoDe(it) },
+                probabilidades = tabla,
             ),
         )
     }
@@ -221,9 +246,18 @@ class ReclamarRecompensa(
     private fun rechazo(m: MotivoRechazo) = Resultado.Rechazado(m)
 }
 
+/** Recompensa que se entrega por la instancia: la configurada (la misión de prestigio siempre concede un animal). */
+internal fun recompensaVigente(i: InstanciaMision): RecompensaConfigurada = i.recompensa
+
 // ---------------------------------------------------------------------------------------------------- CU-20
 
-data class RecompensaVista(val tipo: TipoRecompensa, val cantidad: Double, val nombreItem: String?)
+/** @property probabilidades tabla de rango del animal que se sortea al reclamar (vacía si no es un sorteo por rango). */
+data class RecompensaVista(
+    val tipo: TipoRecompensa,
+    val cantidad: Double,
+    val nombreItem: String?,
+    val probabilidades: List<ProbabilidadRango> = emptyList(),
+)
 
 /**
  * @property progresoTexto progreso y objetivo ya formateados («1 / 2», «62 % / 65 %»).
@@ -238,21 +272,37 @@ data class MisionVista(
     val cumplida: Boolean,
     val reclamable: Boolean,
     val recompensa: RecompensaVista,
-)
+    /** Orden en que se cumplió, para ordenar las pendientes de reclamar; `null` si no está cumplida. */
+    val ordenCumplida: Int? = null,
+) {
+    /** Avance hacia el objetivo, entre 0 y 1. */
+    val fraccion: Double get() = if (objetivo <= 0.0) 1.0 else (progreso / objetivo).coerceIn(0.0, 1.0)
+}
 
 /**
  * CU-20 Consultar misiones y progreso (RF-39). Lee lo persistido: no recalcula, no abre transacción y no audita (RF-47).
  * Muestra una instancia vigente por tipo; las agotadas no se muestran. Los nombres son siempre descriptivos (RES-06).
  */
-class ConsultarMisiones(private val misiones: MisionRepositorio) {
+class ConsultarMisiones(private val misiones: MisionRepositorio, private val sorteo: SorteoAnimales? = null) {
+    /**
+     * Primero las cumplidas pendientes de reclamar, en el orden en que se cumplieron; después el resto, de más a menos
+     * avanzada y, a igual avance, la que menos le falta para completarse.
+     */
     fun ejecutar(idPartida: IdPartida): List<MisionVista> =
         misiones.instancias(idPartida).filter { it.estado != EstadoMision.AGOTADA }.mapNotNull { vista(idPartida, it) }
+            .sortedWith(
+                compareByDescending<MisionVista> { it.reclamable }
+                    .thenBy { if (it.reclamable) it.ordenCumplida ?: Int.MAX_VALUE else 0 }
+                    .thenByDescending { it.fraccion }
+                    .thenBy { it.objetivo - it.progreso }
+                    .thenBy { it.idInstancia },
+            )
 
     private fun vista(idPartida: IdPartida, i: InstanciaMision): MisionVista? {
         val objetivo = ReglasMision.objetivo(i.idMision, i.numericos) ?: return null
         val especie = i.textos["id_especie"]?.let { misiones.nombreEspecie(it) ?: it }
         val habitat = i.textos["id_habitat"]?.let { misiones.nombreHabitat(idPartida, it) ?: it }
-        val r = i.recompensa
+        val r = recompensaVigente(i)
         return MisionVista(
             idInstancia = i.idInstancia,
             descripcion = descripcion(i, especie, habitat),
@@ -265,7 +315,15 @@ class ConsultarMisiones(private val misiones: MisionRepositorio) {
             },
             cumplida = i.estado == EstadoMision.CUMPLIDA,
             reclamable = i.estado == EstadoMision.CUMPLIDA,
-            recompensa = RecompensaVista(r.tipo, r.cantidad, r.idItem?.let { misiones.nombreRecurso(it) ?: it }),
+            recompensa = RecompensaVista(
+                r.tipo, r.cantidad, r.idItem?.let { misiones.nombreRecurso(it) ?: it },
+                if (r.tipo == TipoRecompensa.ESPECIE && i.idMision == ReglasMision.MISION_PRESTIGIO) {
+                    sorteo?.tablaPrestigio((i.numericos[ReglasMision.PARAMETRO_PRESTIGIO] ?: 0.0).toInt()).orEmpty()
+                } else {
+                    emptyList()
+                },
+            ),
+            ordenCumplida = i.ordenCumplida,
         )
     }
 
@@ -280,7 +338,7 @@ class ConsultarMisiones(private val misiones: MisionRepositorio) {
             "animales_habitat" -> "Ten ${n("numero_animales")} animales en el hábitat $hb."
             "espacios_ocupados_habitat" ->
                 "Ten ${n("numero_espacios_requeridos")} espacios del hábitat $hb con al menos ${n("numero_minimo_animales_por_espacio")} animales."
-            "subir_prestigio" -> "Alcanza el nivel de prestigio ${n("nivel_prestigio_requerido")}."
+            "subir_prestigio" -> "Alcanza el prestigio ${n("nivel_prestigio_requerido")}."
             "vender_especie_nivel" -> "Vende un ejemplar de $sp de nivel ${n("nivel_requerido")} o superior."
             "vender_nivel" -> "Vende un animal de nivel ${n("nivel_requerido")} o superior."
             "familia" -> "Ten una familia: un animal con padre, madre y al menos ${n("numero_minimo_hermanos")} hermanos vivos."

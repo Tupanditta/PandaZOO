@@ -42,16 +42,16 @@ class MigracionV3Test {
         c.cerrar()
     }
 
-    private fun abrir(): BaseDatos = BaseDatos.enArchivo(archivo.absolutePath)
+    private fun abrir(): BaseDatos = BaseDatos.enArchivoMigrandoHasta(archivo.absolutePath, 8)
 
     private fun BaseDatos.nivelDe(id: String) =
         uno("SELECT nivel, ciclos_nivel FROM Animal WHERE id_animal = ?", id) { it.entero(0) to it.entero(1) }
 
     @Test
-    fun `TN_11 la migracion deja la version 3 sin referencias rotas`() {
+    fun `TN_11 la migracion deja la version 5 sin referencias rotas`() {
         val bd = abrir()
         try {
-            bd.uno("PRAGMA user_version") { it.entero(0) } shouldBe 3
+            bd.uno("PRAGMA user_version") { it.entero(0) } shouldBe 8
             bd.leer("PRAGMA foreign_key_check") { it.texto(0) } shouldBe emptyList()
             bd.uno("PRAGMA foreign_keys") { it.entero(0) } shouldBe 1
             val columnas = bd.leer("PRAGMA table_info(Animal)") { it.texto(1) }
@@ -104,7 +104,7 @@ class MigracionV3Test {
     }
 
     @Test
-    fun `TN_11 los rangos reciben los valores de la version 1_1`() {
+    fun `TN_11 los rangos reciben los valores de la version 1_1 con el beneficio a la mitad`() {
         val bd = abrir()
         try {
             val filas = bd.leer(
@@ -112,11 +112,11 @@ class MigracionV3Test {
                     "FROM RangoEspecie ORDER BY id_rango",
             ) { listOf(it.entero(0).toDouble(), it.decimal(1), it.entero(2).toDouble(), it.decimal(3), it.decimal(4), it.decimal(5)) }
             filas shouldBe listOf(
-                listOf(1.0, 12.0, 15.0, 3.0, 200.0, 1.5),
-                listOf(2.0, 24.0, 29.0, 3.5, 450.0, 1.75),
-                listOf(3.0, 40.0, 41.0, 4.0, 900.0, 2.0),
-                listOf(4.0, 64.0, 51.0, 4.5, 1800.0, 2.25),
-                listOf(5.0, 100.0, 61.0, 5.0, 4000.0, 2.5),
+                listOf(1.0, 6.0, 15.0, 3.0, 200.0, 1.5),
+                listOf(2.0, 12.0, 29.0, 3.5, 450.0, 1.75),
+                listOf(3.0, 20.0, 41.0, 4.0, 900.0, 2.0),
+                listOf(4.0, 32.0, 51.0, 4.5, 1800.0, 2.25),
+                listOf(5.0, 50.0, 61.0, 5.0, 4000.0, 2.5),
             )
         } finally {
             bd.cerrar()
@@ -169,7 +169,7 @@ class MigracionV3Test {
         abrir().cerrar()
         val bd = abrir()
         try {
-            bd.uno("PRAGMA user_version") { it.entero(0) } shouldBe 3
+            bd.uno("PRAGMA user_version") { it.entero(0) } shouldBe 8
             bd.nivelDe("a7") shouldBe (2 to 28)
             bd.uno("SELECT COUNT(*) FROM Animal") { it.entero(0) } shouldBe 9
         } finally {

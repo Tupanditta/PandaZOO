@@ -65,7 +65,8 @@ Al cierre de cada sprint: demo corta, lista de CU/RF cerrados, informe de tests,
 | 8 | Simulación en diferido y recuperación | CU-12 | 5, 7 |
 | 9 | Misiones y recompensas | CU-15, CU-20 | 6, 7 |
 | N | Niveles de animal (sin edad ni vejez), beneficio y venta según nivel | CU-01, CU-05, CU-06, CU-10, CU-11, CU-12, CU-20 (modifica) | 9 |
-| 10 | Endurecimiento: rendimiento, retención, accesibilidad y aceptación | — | todos, incluido N |
+| P | Pulido: partida nueva con regalo, espacios, avisos, misiones y guía de convivencia | CU-03, CU-05, CU-13, CU-14, CU-15, CU-16, CU-19, CU-20, CU-21, CU-22, CU-23 | N |
+| 10 | Endurecimiento: rendimiento, retención, accesibilidad y aceptación | — | todos, incluidos N y P |
 
 Hitos de revisión sugeridos:
 
@@ -123,7 +124,7 @@ Hitos de revisión sugeridos:
 - T1.1 Compra de bambú: coste correcto, saldo e inventario actualizados en una sola transacción; cantidad `0` o negativa rechazada.
 - T1.2 Saldo insuficiente: sin cambios y motivo exacto (RF-31). Cubre también el límite exacto (saldo = coste).
 - T1.3 No pueden existir saldos ni inventarios negativos tras ninguna secuencia de operaciones (propiedad sobre secuencias aleatorias; RES-12, RF-50).
-- T1.4 Compra de espacio: capacidades válidas `2, 4, 6, 8, 10, 15, 20`; capacidad fuera de tabla rechazada; nombre duplicado en el mismo hábitat rechazado, mismo nombre en otro hábitat aceptado.
+- T1.4 Compra de espacio: capacidades válidas (entonces `2, 4, 6, 8, 10, 15, 20`; hoy `6, 8, 10, 15, 20, 25, 30`); capacidad fuera de tabla rechazada; nombre duplicado en el mismo hábitat rechazado, mismo nombre en otro hábitat aceptado.
 - T1.5 Espacio en hábitat bloqueado rechazado.
 - T1.6 Configurar espacio: renombrar, cambiar de hábitat, ambos; la capacidad queda intacta; hábitat destino sin capacidad rechazado sin cambios.
 - T1.7 Reintentar la misma compra con la misma clave de operación no cobra dos veces (RNF-12).
@@ -194,7 +195,7 @@ Hitos de revisión sugeridos:
 - Familia a efectos de `C_afinidad`: pareja, padre, madre, hermanos e hijos vivos. El mejor amigo no es familiar y sí entra en la afinidad.
 - Las medias de espacio, hábitat y parque son medias directas sobre los animales vivos de cada nivel, no medias de medias (`EspecificacionBBDD.md`, 4.3).
 - El orquestador `RecalcularSatisfaccion` admite alcance `Parque` o `Espacios`. Los casos de uso de los sprints 3 a 8 deben incluir en el alcance todos los espacios afectados, incluidos los de familiares alojados en otros espacios cuando cambie el número de hermanos o una relación.
-- Generador de datos de prueba (`DatosDePrueba`): solo en tests y en modo de depuración (Android con `FLAG_DEBUGGABLE`; en iOS permanece desactivado hasta que haya contenedor de depuración).
+- Generador de datos de prueba (`DatosDePrueba`): solo en tests (el modo de depuración se retiró; ver `Otros/DecisionesImplementacion.md`, sección 11).
 
 ---
 
@@ -209,7 +210,7 @@ Hitos de revisión sugeridos:
 - **CU-05** Editar ficha: nombre, dos habilidades, dos rasgos, pareja y mejor amigo; pareja recíproca, misma especie, ambos ≥ 16 años; sin autorreferencias; variables biológicas no editables (RF-03, RF-34, RF-48, RES-03).
 - **CU-04** Reubicar espécimen: espacio destino activo con capacidad; recálculo de origen y destino (RF-05, RF-29).
 - **CU-06** Vender espécimen: no enfermo, alimentación > 0%, acredita `0`, estado `VENDIDO`, conserva genealogía (RF-06, RES-11).
-- **CU-14** Dar de baja espacio vacío: baja lógica sin romper referencias; oferta opcional tras traslado o baja (RF-07).
+- **CU-14** Vender espacio vacío (antes dar de baja): hoy borra el espacio y reembolsa lo pagado (`Otros/DecisionesImplementacion.md`, sección 2.4); este sprint lo implementó como baja lógica sin romper referencias; oferta opcional tras traslado o venta (RF-07).
 - Nivel Animales en la navegación y ficha técnica del animal con rango visible y sin edición de campos protegidos (RF-25).
 
 **Tests**
@@ -225,7 +226,7 @@ Hitos de revisión sugeridos:
 - T3.9 Reubicar: aforo lleno rechazado; traslado correcto actualiza ambos espacios; destino inactivo rechazado.
 - T3.10 Vender: enfermo rechazado, alimentación 0% rechazada, venta correcta no suma fondos, libera aforo y mantiene genealogía.
 - T3.11 No se puede borrar físicamente un animal con descendencia (RES-11).
-- T3.12 Baja de espacio: con animales rechazada; con referencias históricas o pendientes rechazada; vacío y limpio aceptada como baja lógica.
+- T3.12 Venta de espacio: con animales rechazada; con operaciones pendientes rechazada; vacío y limpio aceptada, borrado, con reembolso de lo pagado.
 - T3.13 Reintento idempotente de compra y de traslado (RNF-12).
 - T3.14 UI: flujo de compra de punta a punta, la ficha no muestra claves (RES-06).
 
@@ -235,11 +236,11 @@ Hitos de revisión sugeridos:
 
 - La satisfacción del compañero de espacio cambia al llegar un animal nuevo, pero no siempre baja: un animal solo no tiene afinidad (`C_afinidad = 0`) y el compañero la aporta. T3.6 se verifica como «la satisfacción de él es menor en un hábitat incompatible y la de los compañeros se recalcula».
 - El nombre no es único (RF-32): se eliminaron la restricción `UNIQUE (id_partida, id_especie, nombre)` y el rechazo por duplicado. Si en un listado dos animales tienen la misma etiqueta, se añade la edad y, si aún coinciden, un número de orden de alta.
-- El mejor amigo no es recíproco (cada animal guarda el suyo); la pareja sí. Quitar la pareja libera a los dos. No se puede pasar directamente de una pareja a otra: hay que quitar la primera (CU-05, 3.c).
+- **Superado:** el mejor amigo es hoy recíproco, igual que la pareja (`Otros/DecisionesImplementacion.md`, sección 3). Este sprint lo implementó sin reciprocidad. La pareja sí es recíproca. Quitar la pareja libera a los dos. No se puede pasar directamente de una pareja a otra: hay que quitar la primera (CU-05, 3.c).
 - Un vínculo que no cambia en una edición no se vuelve a validar, porque una pareja trasladada a otro espacio sigue siéndolo (regla 5.3, Sprint 7).
-- Un traslado conserva pareja y mejor amigo. Al vender se anulan los vínculos mutables en ambos sentidos y se conservan `id_padre` e `id_madre`.
+- Un traslado conserva la pareja y rompe el mejor amigo (sección 3 del documento de decisiones; este sprint conservaba ambos). Al vender se anulan los vínculos mutables en ambos sentidos y se conservan `id_padre` e `id_madre`.
 - Los espacios afectados por una venta o edición se calculan con `espaciosRelacionados` (vínculos, padres, hijos y hermanos vivos alojados), de modo que la satisfacción de un familiar en otro espacio también se recalcula. CU-02 recalcula el espacio cuando cambia de hábitat.
-- Dependencias que impiden la baja lógica de un espacio (CU-14): un aviso abierto (`PENDIENTE` o `VISTA`) que lo referencia y una concepción `CONCEBIDA` de un progenitor alojado en él. El histórico de auditoría no bloquea la baja lógica, porque no se borra nada. Los sprints 5 y 7 añadirán sus propias referencias a esta comprobación si las crean.
+- Dependencias que impiden vender un espacio (CU-14): un aviso abierto (`PENDIENTE` o `VISTA`) que lo referencia y una concepción `CONCEBIDA` de un progenitor alojado en él. El histórico de auditoría no bloquea la venta. Los sprints 5 y 7 añadirán sus propias referencias a esta comprobación si las crean.
 - La unidad a coste cero de una recompensa de misión (CU-01, paso 7) llega en el Sprint 9; por ahora todas las compras cobran el coste de `CosteRango`.
 - Navegación: Hábitats → Espacios → Animales → Ficha. La compra de animales parte de la tienda (botón «Comprar animales» de la tienda de recursos). La venta y el traslado ofrecen la baja del espacio que queda vacío.
 
@@ -336,7 +337,7 @@ Hitos de revisión sugeridos:
 - Retención: `PurgarRetencion` se ejecuta tras cada ciclo en su propia transacción y acota auditoría, movimientos, beneficios cerrados, ciclos y avisos cerrados (por ventana y por número máximo de filas); los avisos `PENDIENTE` no se purgan. La poda de animales inactivos (BBDD 5.3) queda para el Sprint 10.
 - CU-08: la reclamación recibe el importe mostrado; si al confirmar el pendiente es otro se rechaza (`BeneficiosCambiados`). Un reintento con la misma `id_solicitud` devuelve el resultado persistido.
 - CU-21: el historial se muestra con el aviso más reciente primero; listar no cambia ningún estado y abrir el detalle de uno `PENDIENTE` lo marca `VISTA`.
-- Modo de depuración: botón «Adelantar ciclo» en la pantalla de hábitats, junto a la generación de datos de prueba.
+- Modo de depuración (retirado después: ver `Otros/DecisionesImplementacion.md`, sección 11): botón «Adelantar ciclo» en la pantalla de hábitats, junto a la generación de datos de prueba.
 
 **Cambio de fondos iniciales.** La partida nueva empieza con `2000.00` monedas (`partida_inicial.fondos`). Las partidas creadas antes (versión de base de datos 1) reciben `1000.00` monedas una sola vez al migrar a la versión 2, registradas como movimiento `INGRESO` con origen `COMPENSACION_INICIAL`.
 
@@ -360,7 +361,7 @@ Hitos de revisión sugeridos:
 - T6.1 Tabla de umbrales: cada nivel con valores por encima, iguales y por debajo del umbral en ambas condiciones (se exigen las dos a la vez).
 - T6.2 Redondeo de animales sin acumular error: el nivel `n+1` se calcula desde el umbral `n` sin redondear.
 - T6.3 Ningún nivel cumplido da prestigio `0`.
-- T6.4 Los máximos son independientes y no disminuyen si baja el prestigio actual (RF-36). Una partida nueva no tiene máximos.
+- T6.4 Los máximos son independientes y no disminuyen (RF-36); el prestigio actual tampoco baja (`Otros/DecisionesImplementacion.md`, sección 6). Una partida nueva no tiene máximos.
 - T6.5 Desbloqueo persistente: tras descender de nivel la especie sigue comprable (RES-07).
 - T6.6 Subir varios niveles en un recálculo emite un solo aviso, el del más alto; no se repite un nivel ya alcanzado (RF-43).
 - T6.7 Las especies y hábitats desbloqueados generan un aviso informativo no interactivo, una sola vez.
@@ -500,7 +501,7 @@ Hitos de revisión sugeridos:
 - Familia: «hermanos» son los animales vivos con el mismo padre **o** la misma madre (EspecificacionMisiones 3.9); no hace falta que estén alojados. Padre y madre del animal evaluado deben estar vivos y alojados.
 - CU-15: valida instancia, contenido y progresión antes de escribir (un rechazo no cambia nada). La clave de idempotencia es la instancia (`id_partida:RECOMPENSA_RECLAMADA:id_instancia`), así que repetir la reclamación devuelve el resultado persistido; con la clave ya purgada, la instancia sustituida se rechaza como `MisionInexistente`. Todo parámetro numérico sin operación y constante se rechaza como `ProgresionInvalida`; fuera de `[mínimo, máximo]` la instancia pasa a `AGOTADA` y no se vuelve a crear.
 - La aritmética de progresión es exacta a seis decimales para `SUMAR` y `RESTAR`; el parámetro `satisfaccion_minima` se redondea al centésimo y el resto al entero (medios hacia arriba).
-- Animal aleatorio: sorteo con el `Azar` del contenedor sobre los tramos acumulados de `recompensas_animales_aleatorios`, persistido en `RecompensaMision.id_especie_seleccionada` con `unidad_pendiente = 1`. La especie se desbloquea con origen `RECOMPENSA` y emite el aviso informativo `ESPECIE_DESBLOQUEADA` (sin duplicar).
+- Animal aleatorio: sorteo con el `Azar` del contenedor sobre los tramos acumulados de `recompensas_animales_aleatorios`, persistido en `RecompensaMision.id_especie_seleccionada` con `unidad_pendiente = 1`. Superado: la reclamación ya no desbloquea la especie ni emite `ESPECIE_DESBLOQUEADA`; solo concede la unidad gratuita (`Otros/DecisionesImplementacion.md`, sección 5.3).
 - Unidad gratuita: una unidad pendiente tiene prioridad sobre el estado de catálogo; la compra cuesta 0, sigue el flujo de CU-01 (ficha, aforo, satisfacción) y consume la unidad en la misma transacción. Un rechazo de la compra no la consume. Cuenta como compra para las misiones de compra de esa especie.
 - Retención: las recompensas cerradas (`unidad_pendiente = 0`) se purgan tras `retencion.recompensa_mision_cerrada` ciclos; una unidad pendiente nunca se purga.
 - Interfaz: la pestaña Misiones lista una misión por tipo (las agotadas no se muestran) con descripción, progreso y recompensa; la cumplida ofrece «Reclamar recompensa» con confirmación. La tienda de animales muestra la unidad concedida como «Gratis».
@@ -518,7 +519,7 @@ Hitos de revisión sugeridos:
 - **Configuración (`valores_y_pesos.json`, versión `1.1`).** Desaparecen `reglas_de_calculo.edad`, `tablas.edad_media_especie` y `tablas.formula_longevidad`. Se añade `reglas_de_calculo.nivel` y `tablas.rangos_especie` pasa a incluir `beneficio_base_animal_ciclo` (antes `beneficio_por_animal_ciclo`), `nivel_maximo` y `multiplicador_nivel_maximo`. Se renombran las misiones de edad (ver más abajo). El validador del Sprint 0 incorpora las reglas nuevas y la copia de `:shared-ui` se sincroniza con la original (la tarea de Gradle que las compara debe volver a pasar).
 - **Dominio.** `Animal.nivel` sustituye a la edad y a la edad máxima; regla pura de subida de nivel; `M_nivel`; beneficio por animal. Se eliminan el cálculo de longevidad, la muerte por vejez y el calendario 30×12.
 - **Regla de nivel (RF-51).** Nivel inicial `1` en toda alta. En la etapa de nivel, tras las defunciones, el animal que sigue vivo, está sano y tiene alimentación mayor que `0` suma `1` a `Animal.ciclos_nivel`; al llegar a `ciclos_por_nivel = 72` (12 h) sube un nivel y `ciclos_nivel` vuelve a `0`, hasta el `nivel_maximo` de su rango (`15`, `29`, `41`, `51`, `61`: 7, 14, 20, 25 y 30 días). Un ciclo no sano no suma ni resta; nada baja nunca. Equivale a ambos contadores de ciclos críticos a `0` tras la etapa de ciclos críticos.
-- **Venta según nivel (RF-52, CU-06).** `V = redondear(valor_venta_base(r) · F_venta(n))`, lineal a tramos: `0.05` en el nivel 1, `1` en `n_eq = redondear(2/3 · nivel_maximo)` y `factor_venta_nivel_maximo` en el tope. En los rangos 1 a 4 `valor_venta_base` es el coste de compra, así que en `n_eq` no se pierde ni se gana; en el rango 5 (coste `0`) es un valor de referencia. En el tope se vende por `300`, `787.50`, `1800`, `4050` y `10000`. La venta abona `V` en los fondos como movimiento `VENTA` en la misma transacción; la confirmación muestra el importe y la venta se rechaza si el nivel cambió y el importe ya no coincide.
+- **Venta según nivel (RF-52, CU-06).** `V = redondear(valor_venta_base(r) · F_venta(n))`, lineal a tramos: `0.05` en el nivel 1, `1` en `n_eq = redondear(2/3 · nivel_maximo)` y `factor_venta_nivel_maximo` en el tope. En los rangos 1 a 4 `valor_venta_base` es el coste de compra, así que en `n_eq` no se pierde ni se gana; en el rango 5 (coste `0`) es un valor de referencia. En el tope se vende por `60`, `280`, `900`, `1575` y `10000` (con los valores vigentes; ver `Otros/DecisionesImplementacion.md`, sección 9). La venta abona `V` en los fondos como movimiento `VENTA` en la misma transacción; la confirmación muestra el importe y la venta se rechaza si el nivel cambió y el importe ya no coincide.
 - **Beneficio (RF-15).** `B_ciclo = redondear(Σ beneficio_base(r) · S_i · M_nivel(n_i))`, con `M_nivel(n) = 1 + (mult_max(r) − 1) · (n − 1) / (nivel_max(r) − 1)`. `S_i` es la satisfacción persistida al inicio del ciclo y `n_i` el nivel tras la etapa de nivel. `S_global` deja de intervenir en el beneficio.
 - **Orden del ciclo (RF-14).** Alimentación, salud, ciclos críticos, defunciones, **nivel**, reproducción, beneficios, misiones, métricas y persistencia (CU-11 y CU-12).
 - **Pareja (RF-03, RF-34).** El mínimo pasa de 16 años a `nivel_minimo_pareja = 4` (unos 1,5 días de cuidados), y solo se exige al crear el vínculo. CU-01 deja de ofrecer pareja en el alta (un animal nuevo tiene nivel `1`); se asigna después con CU-05.
@@ -556,9 +557,30 @@ Hitos de revisión sugeridos:
 - **Pareja.** `CU-01` ya no recibe pareja (`FichaNueva` sin `idPareja`); el nivel mínimo `4` se exige solo en `Vinculos.validarPareja`, al crear el vínculo desde CU-05. El motivo de rechazo pasa a `ParejaNivelInsuficiente`.
 - **Configuración.** `fraccion_equilibrio` redondea con medios hacia arriba (`10`, `19`, `27`, `34`, `41`). El validador usa `60` como tope de un parámetro de nivel sin especie, como indica TN.1.
 - **Migración 2 a 3.** Se reconstruyen `RangoEspecie`, `Especie` y `Animal` con las claves foráneas desactivadas (la orden va fuera de la transacción), conservando el `rowid`, y se comprueba `foreign_key_check` antes de confirmar. Las misiones renombradas actualizan también los identificadores de instancia (`…/vender_edad/3` pasa a `…/vender_nivel/3`); una instancia `CUMPLIDA` conserva su progreso y su recompensa y solo sustituye `edad_requerida` por `nivel_requerido` con el valor base.
-- **Balance (TN.13).** Ciclos para amortizar el peor caso de cada rango, contando un nivel cada 72 ciclos: con `S_i = 0.5`, `50`, `50`, `53` y `67` (rangos 1 a 4); con `S_i = 0.4`, `72`, `69`, `70` y `87`.
+- **Balance (TN.13).** Con los costes y beneficios vigentes (`Otros/DecisionesImplementacion.md`, sección 9), cada compra se amortiza en `72` ciclos o menos con `S_i = 0.5` y en `90` o menos con `S_i = 0.4`, contando un nivel cada 72 ciclos (`tablas.costes_rangos_nota`).
 - **Interfaz.** La ficha muestra «Nivel n de máx.», «Progreso de nivel», el rango y el valor de venta; la confirmación de venta indica el importe, el nivel y el nivel de equilibrio; la compra explica que la pareja se asigna con nivel `4`. Los homónimos se distinguen por nivel y no queda ninguna edad en pantalla.
 - **Carga de referencia.** `DatosDePrueba.animal` acepta `nivel` y `ciclosNivel`, y la carga reparte niveles del `1` al `12`.
+
+---
+
+### Sprint P — Pulido de la experiencia y decisiones posteriores
+
+**Estado: implementado (rama `guia-convivencia`).** Registra lo construido después del Sprint N y antes del Sprint 10. Cada decisión está especificada en `Otros/DecisionesImplementacion.md`; aquí se resume qué se entregó y con qué pruebas.
+
+**Objetivo:** que una partida nueva sea jugable desde el primer minuto, pulir la gestión de espacios, animales, avisos y misiones, y explicar al jugador cómo se llevan las especies.
+
+**Alcance:**
+
+- **P.1 Partida nueva** (sección 1 del documento de decisiones): regalo de bienvenida con unidades gratuitas (`UnidadGratuita`), ventanas flotantes de regalo y ventana de suerte. Pruebas: `BienvenidaTest` y `BienvenidaUiTest`.
+- **P.2 Espacios** (sección 2): capacidades de 6 a 30, primer espacio de 6 gratis, ampliar con recargo del 25 %, vender con reembolso y borrado físico, compra de animales desde un espacio. Pruebas: `AmpliarEspacioTest` (ampliar, rechazos, reembolso de lo pagado), `CompraDesdeEspacioUiTest` y ajustes de `Sprint1Test`, `Sprint3Test` y `Sprint3UiTest`.
+- **P.3 Animales** (secciones 3 y 4): mejor amigo recíproco, ración según nivel, alimentación por hábitat, estadísticas del animal. Pruebas: `Sprint3Test` (`AMIGO_OCUPADO`) y `Sprint4Test`/`Sprint4UiTest`. **Sin prueba dedicada:** la fórmula de la ración según nivel, la alimentación por hábitat y las estadísticas del animal.
+- **P.4 Misiones y prestigio** (secciones 5 y 6): orden de la lista, misión de prestigio hasta el 100 con sorteo por rango, las unidades de recompensa ya no desbloquean la especie, prestigio que nunca baja, panel con el desbloqueo siguiente. Pruebas: `Sprint9Test` (sorteo por rango) y `MejorasAvisosMisionesTest` (orden de la lista). **Sin prueba dedicada:** que el prestigio no baja y el desbloqueo del nivel siguiente en el panel.
+- **P.5 Avisos** (sección 7): descarte, caducidad y agrupación de alertas de salud. Pruebas: `MejorasAvisosMisionesTest` (descarte y caducidad).
+- **P.6 Consultas** (sección 8): desglose de beneficios, estadísticas del animal y guía de convivencia (CU-22 y CU-23). Pruebas: `GuiaConvivenciaTest`, `GuiaUiTest` y, para el desglose de beneficios, `MejorasAvisosMisionesTest`.
+- **P.7 Datos y esquema** (secciones 9 y 10): nuevos valores de `valores_y_pesos.json`, base de datos versión 12 y migraciones 4 a 12. Pruebas: `MigracionV3Test` y `MigracionV12Test`. **Sin prueba dedicada:** las migraciones 4 a 11.
+- **P.8 Interfaz y limpieza** (sección 11): nueva identidad visual (`Interfaz/EspecificacionInterfaz.md`), terminología «medicina» y «prestigio», retirada del modo de depuración.
+
+**Criterio de hecho:** `./gradlew check` correcto en JVM y web, y `:androidApp:assembleDebug` compila. Quedan sin verificar iOS y la demo en dispositivo.
 
 ---
 
@@ -613,14 +635,16 @@ Hitos de revisión sugeridos:
 | CU-11 | Ejecutar ciclo de simulación | 5 |
 | CU-12 | Procesar simulación en diferido | 8 |
 | CU-13 | Alimentar espécimen | 4 |
-| CU-14 | Dar de baja espacio vacío | 3 |
+| CU-14 | Vender espacio vacío (antes dar de baja) | 3, P |
 | CU-15 | Reclamar recompensa de misión | 9 |
 | CU-16 | Consultar inventario y finanzas | 1 |
 | CU-17 | Consultar monitor de satisfacción | 2 |
 | CU-18 | Gestionar alertas y seguimiento crítico | 5 |
 | CU-19 | Consultar prestigio | 6 |
 | CU-20 | Consultar misiones y progreso | 9 |
-| CU-21 | Consultar historial de avisos | 5 |
+| CU-21 | Consultar historial de avisos | 5, P |
+| CU-22 | Consultar guía de convivencia | P |
+| CU-23 | Consultar estadísticas de un animal | P |
 
 ### 4.2. Requisitos funcionales por sprint
 
@@ -637,6 +661,7 @@ Hitos de revisión sugeridos:
 | 8 | RF-21, RF-22, RF-23 |
 | 9 | RF-38, RF-39, RF-40 |
 | N | RF-51 y RF-52 (nuevos); modifica RF-01, RF-03, RF-06, RF-14, RF-15, RF-18, RF-19, RF-25, RF-32, RF-34 y RF-39 |
+| P | RF-53 a RF-61 (nuevos); modifica RF-03, RF-07, RF-12, RF-36, RF-38, RF-39 y RF-49 |
 | 10 | Verificación de todos |
 
 ### 4.3. Requisitos no funcionales y restricciones
@@ -683,6 +708,12 @@ Todos los puntos que estaban abiertos quedan resueltos con estas decisiones. Si 
 | D9 | Nivel en la recuperación offline | Se aplica ciclo a ciclo sobre el estado resultante de los límites de RF-22 y RF-23, sin límite propio. Es coherente con el beneficio, que también se genera en cada ciclo diferido. Si se considerase excesivo, el ajuste sería un máximo de niveles por recuperación en `reglas_de_calculo.nivel`. | N |
 | D10 | Nivel de las altas y pareja | Compra, recompensa y cría empiezan en el nivel `1`. La pareja exige `nivel_minimo_pareja = 4` en ambos animales, solo al crear el vínculo; por eso el alta de CU-01 no ofrece pareja. | N |
 | D11 | Venta | Acredita `V` según nivel y rango (RF-52): `5 %` del valor en el nivel 1, valor de compra en 2/3 del tope y hasta `1,5` a `2,5` veces por encima. El rango exclusivo usa un valor de referencia de `4000`. | N |
+| D12 | Partida nueva | Regalo de bienvenida con unidades gratuitas que no desbloquean la especie, y primer espacio de 6 animales gratis. Ver `Otros/DecisionesImplementacion.md`, secciones 1 y 2. | P |
+| D13 | Espacios | Capacidades de 6 a 30; ampliar con diferencia de precio más 25 %; vender borra el espacio y devuelve lo pagado; nunca se reduce la capacidad. | P |
+| D14 | Vínculos | El mejor amigo es recíproco y se rompe al trasladar a uno de los dos animales. | P |
+| D15 | Prestigio y misiones | El prestigio nunca baja y llega al 100; la misión de prestigio siempre da un animal sorteado por rango. | P |
+| D16 | Avisos | Se descartan los de severidad baja y media; caducan a 1 y 3 ciclos. | P |
+| D17 | Modo de depuración | Retirado. Los ciclos solo los ejecuta CU-11. | P |
 
 ### 5.2. Regla del reloj (D2)
 

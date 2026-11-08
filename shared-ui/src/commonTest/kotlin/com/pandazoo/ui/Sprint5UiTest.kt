@@ -13,6 +13,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.test.runComposeUiTest
 import com.pandazoo.application.caso.ComandoAdquirirEspacio
 import com.pandazoo.data.db.BaseDatos
@@ -35,7 +37,7 @@ class Sprint5UiTest {
     private fun prueba(bloque: ComposeUiTest.(AppContainer) -> Unit) =
         runComposeUiTest {
             val bd = BaseDatos.enMemoria()
-            val contenedor = AppContainer.crear(bd) { ConfiguracionDePrueba.texto }
+            val contenedor = AppContainer.crear(bd, conBienvenida = false) { ConfiguracionDePrueba.texto }
             setContent {
                 CompositionLocalProvider(LocalContenedor provides contenedor) {
                     PandaZooTema { PandaZooNavegacion() }
@@ -77,7 +79,7 @@ class Sprint5UiTest {
     }
 
     private fun espacio(c: AppContainer, nombre: String): String {
-        c.adquirirEspacio.ejecutar(ComandoAdquirirEspacio(c.idPartida, "${c.idPartida}/bosque_templado", nombre, 4, "sol-$nombre"))
+        c.adquirirEspacio.ejecutar(ComandoAdquirirEspacio(c.idPartida, "${c.idPartida}/bosque_templado", nombre, 8, "sol-$nombre"))
         return c.consultarZoo.espacios(c.idPartida, "${c.idPartida}/bosque_templado").first { it.nombre == nombre }.id
     }
 
@@ -109,21 +111,21 @@ class Sprint5UiTest {
 
             onNodeWithContentDescription("Ver beneficios").performClick()
             esperar("Reclamar beneficios")
-            esperar("🪙 12.00", subcadena = true)
+            esperar("🪙 6.00", subcadena = true)
+            esperar("▸ Bosque templado")
             pulsar("Reclamar beneficios")
             esperar("Confirmar reclamación")
-            esperar("Se acreditarán 🪙 12.00", subcadena = true)
+            esperar("+🪙 6.00")
             sinIdentificadoresTecnicos(c)
             onNodeWithText("Cancelar").performClick()
             fondos(c) shouldBe antes
 
             pulsar("Reclamar beneficios")
             onNodeWithText("Confirmar reclamación").performClick()
-            esperar("Has reclamado 🪙 12.00", subcadena = true)
-            fondos(c) shouldBe antes + Dinero.desdeDecimal(12.0)
-            esperar("No hay beneficios pendientes de reclamar.")
+            esperar("🪙 0.00", subcadena = true) // pendiente a cero
+            fondos(c) shouldBe antes + Dinero.desdeDecimal(6.0)
+            textos().none { it.contains("Has reclamado") } shouldBe true // sin aviso al reclamar
             onNodeWithText("Reclamar beneficios").performScrollTo().assertIsNotEnabled()
-            esperar("Ciclo 1", subcadena = true)
             sinIdentificadoresTecnicos(c)
         }
 
@@ -136,24 +138,19 @@ class Sprint5UiTest {
 
             esperar("Avisos")
             onNodeWithText("Avisos").performClick()
-            esperar("Crítica · Alta", subcadena = true)
             esperar("Pincho", subcadena = true)
-            esperar("Pendiente", subcadena = true)
             sinIdentificadoresTecnicos(c)
             c.bd.uno("SELECT estado FROM Notificacion") { it.texto(0) } shouldBe "PENDIENTE" // listar no cambia nada
 
             onNodeWithText("Media").performClick()
             esperar("No hay avisos por ahora.")
             onNodeWithText("Todos").performClick()
-            esperar("Crítica · Alta", subcadena = true)
+            esperar("Pincho", subcadena = true)
 
-            onNodeWithText("Crítica · Alta", substring = true).performClick()
-            esperar("Ver seguimiento")
+            onNodeWithText("Pincho", substring = true).performClick()
+            esperar("Desnutrido", subcadena = true) // abrir un aviso crítico lleva directo al seguimiento
             c.bd.uno("SELECT estado FROM Notificacion") { it.texto(0) } shouldBe "VISTA"
             sinIdentificadoresTecnicos(c)
-            onNodeWithText("Ver seguimiento").performClick()
-            esperar("Seguimiento crítico")
-            esperar("Desnutrido", subcadena = true)
             esperar("Quedan 2 ciclos", subcadena = true)
         }
 
@@ -184,5 +181,36 @@ class Sprint5UiTest {
             esperar("No hay avisos por ahora.")
             onNodeWithText("Seguimiento crítico").performClick()
             esperar("No hay animales que requieran seguimiento.")
+        }
+
+    @Test
+    fun `la barra inferior esta en cualquier pantalla y lleva a sus secciones`() =
+        prueba { c ->
+            espacio(c, "Madriguera")
+            onNodeWithContentDescription("Abrir tienda").performClick()
+            esperar("Saldo disponible")
+            onNodeWithText("Misiones").performClick()
+            esperar("Compra 2 ejemplares de", subcadena = true)
+            onNodeWithContentDescription("Abrir monitor de satisfacción").performClick()
+            esperar("Parque")
+            onNodeWithText("Hábitats").performClick()
+            esperar("Bosque templado")
+        }
+
+    @Test
+    fun `deslizar un aviso bajo o medio lo descarta y los textos no llevan la severidad`() =
+        prueba { c ->
+            c.bd.escribir(
+                "INSERT INTO Notificacion (id_partida, tipo, severidad, codigo, entidad, id_entidad, numero_ciclo, estado, fecha) " +
+                    "VALUES (?, 'INFORMATIVA', 'BAJA', 'PRESTIGIO_ASCENSO', 'PARTIDA', '1', 0, 'PENDIENTE', 0)",
+                c.idPartida,
+            )
+            esperar("Avisos")
+            onNodeWithText("Avisos").performClick()
+            esperar("Has alcanzado el prestigio 1.", subcadena = true)
+            textos().forEach { t -> (t.contains("Informativa") || t.contains("Pendiente")) shouldBe false }
+            onNodeWithText("Has alcanzado el prestigio 1.", substring = true).performTouchInput { swipeRight() }
+            esperar("No hay avisos por ahora.")
+            c.bd.uno("SELECT ciclo_cierre IS NOT NULL FROM Notificacion") { it.entero(0) } shouldBe 1
         }
 }

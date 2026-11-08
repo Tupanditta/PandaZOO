@@ -14,6 +14,8 @@ class Fila internal constructor(private val s: SentenciaSql) {
 
     fun entero(i: Int): Int = s.getLong(i).toInt()
 
+    fun enteroONulo(i: Int): Int? = if (s.isNull(i)) null else s.getLong(i).toInt()
+
     fun largo(i: Int): Long = s.getLong(i)
 
     fun decimal(i: Int): Double = s.getDouble(i)
@@ -130,9 +132,17 @@ class BaseDatos private constructor(private val conexion: ConexionSql) : Transac
         /**
          * Versión 2: la partida nueva empieza con 2000 monedas. Las partidas creadas con la versión 1 reciben
          * 1000 monedas de compensación una sola vez, al migrar (`migrarDe1a2`). Versión 3 (Sprint N): niveles de animal en
-         * lugar de edad, beneficio y venta según nivel (`migrarDe2a3`).
+         * lugar de edad, beneficio y venta según nivel (`migrarDe2a3`). Versión 4: orden de cumplimiento de las misiones
+         * (`migrarDe3a4`). Versión 5: beneficio base por animal a la mitad (`migrarDe4a5`). Versión 6: desbloqueo de especies
+         * por prestigio reajustado y misión de prestigio hasta el prestigio 100 (`migrarDe5a6`).
+         * Versión 7: espacios más caros, algo más de probabilidad de enfermar y sin espacios dados de baja (`migrarDe6a7`).
+         * Versión 8: desbloqueo de especies repartido entre rangos (`migrarDe7a8`).
+         * Versión 9: reinicio total de los datos (regalo de bienvenida, primer espacio de 6 gratis, sin espacios de 2 ni 4)
+         * (`migrarDe8a9`). Versión 10: mejor amigo recíproco (`migrarDe9a10`).
+         * Versión 11: cada espacio guarda lo que costó, para devolverlo al venderlo (`migrarDe10a11`).
+         * Versión 12: espacios de 25 y 30 animales (`migrarDe11a12`).
          */
-        const val VERSION = 3
+        const val VERSION = 12
 
         /** Compensación única a las partidas creadas con la versión 1 (que empezaban con 1000 monedas). */
         const val COMPENSACION_V2 = 1000.0
@@ -143,17 +153,21 @@ class BaseDatos private constructor(private val conexion: ConexionSql) : Transac
         /** Base de datos en el fichero indicado por el contenedor de plataforma. */
         fun enArchivo(ruta: String): BaseDatos = abrir(ruta, archivo = true)
 
+        /** Como [enArchivo], pero migra solo hasta [version] (tests de migraciones anteriores al reinicio de la versión 9). */
+        internal fun enArchivoMigrandoHasta(ruta: String, version: Int): BaseDatos =
+            sobre(abrirConexion(ruta), archivo = true, hasta = version)
+
         private fun abrir(nombre: String, archivo: Boolean): BaseDatos = sobre(abrirConexion(nombre), archivo)
 
         /** Base de datos sobre una conexión ya abierta (la web la abre tras cargar el motor y los datos guardados). */
-        internal fun sobre(conexion: ConexionSql, archivo: Boolean): BaseDatos {
+        internal fun sobre(conexion: ConexionSql, archivo: Boolean, hasta: Int = VERSION): BaseDatos {
             val bd = BaseDatos(conexion)
-            bd.configurar(archivo)
+            bd.configurar(archivo, hasta)
             return bd
         }
     }
 
-    private fun configurar(archivo: Boolean) {
+    private fun configurar(archivo: Boolean, hasta: Int) {
         val nuevo = (uno("PRAGMA user_version") { it.entero(0) } ?: 0) == 0
         if (nuevo) {
             // Debe fijarse antes de crear la primera tabla y antes de activar el modo WAL.
@@ -170,7 +184,16 @@ class BaseDatos private constructor(private val conexion: ConexionSql) : Transac
             val actual = uno("PRAGMA user_version") { it.entero(0) }
             if (actual == 1) migrarDe1a2()
             if ((uno("PRAGMA user_version") { it.entero(0) }) == 2) migrarDe2a3()
-            check((uno("PRAGMA user_version") { it.entero(0) }) == VERSION) { "Versión de base de datos no soportada" }
+            if ((uno("PRAGMA user_version") { it.entero(0) }) == 3) migrarDe3a4()
+            if ((uno("PRAGMA user_version") { it.entero(0) }) == 4) migrarDe4a5()
+            if ((uno("PRAGMA user_version") { it.entero(0) }) == 5) migrarDe5a6()
+            if ((uno("PRAGMA user_version") { it.entero(0) }) == 6) migrarDe6a7()
+            if ((uno("PRAGMA user_version") { it.entero(0) }) == 7) migrarDe7a8()
+            if (hasta >= 9 && (uno("PRAGMA user_version") { it.entero(0) }) == 8) migrarDe8a9()
+            if (hasta >= 10 && (uno("PRAGMA user_version") { it.entero(0) }) == 9) migrarDe9a10()
+            if (hasta >= 11 && (uno("PRAGMA user_version") { it.entero(0) }) == 10) migrarDe10a11()
+            if (hasta >= 12 && (uno("PRAGMA user_version") { it.entero(0) }) == 11) migrarDe11a12()
+            check((uno("PRAGMA user_version") { it.entero(0) }) == hasta) { "Versión de base de datos no soportada" }
         }
     }
 
@@ -240,6 +263,155 @@ class BaseDatos private constructor(private val conexion: ConexionSql) : Transac
             }
         } finally {
             conexion.ejecutar("PRAGMA foreign_keys = ON")
+        }
+    }
+
+    /** Versión 4: las misiones cumplidas recuerdan el orden en que se cumplieron (las ya cumplidas, por identificador). */
+    internal fun migrarDe3a4() {
+        ejecutar {
+            conexion.ejecutar("ALTER TABLE ProgresoMision ADD COLUMN orden_cumplida INTEGER")
+            conexion.ejecutar(
+                "UPDATE ProgresoMision SET orden_cumplida = (SELECT COUNT(*) FROM ProgresoMision q WHERE q.id_partida = ProgresoMision.id_partida " +
+                    "AND q.estado = 'CUMPLIDA' AND q.id_instancia_mision <= ProgresoMision.id_instancia_mision) WHERE estado = 'CUMPLIDA'",
+            )
+            conexion.ejecutar("PRAGMA user_version = 4")
+        }
+    }
+
+    /** Versión 5: el beneficio base por animal y ciclo de cada rango baja a la mitad (valores de `valores_y_pesos.json`). */
+    internal fun migrarDe4a5() {
+        ejecutar {
+            conexion.ejecutar("UPDATE RangoEspecie SET beneficio_base_animal_ciclo = beneficio_base_animal_ciclo / 2.0")
+            conexion.ejecutar("PRAGMA user_version = 5")
+        }
+    }
+
+    /**
+     * Versión 6: cada especie recupera el prestigio que la desbloquea según `desbloqueos_prestigio` de
+     * `valores_y_pesos.json`; se retiran los desbloqueos por prestigio de especies que aún no tocan (las de inicio y
+     * las ganadas por recompensa se conservan, igual que los animales ya comprados) y la misión de prestigio llega al 100.
+     */
+    internal fun migrarDe5a6() {
+        ejecutar {
+            conexion.ejecutar(
+                "UPDATE Especie SET nivel_desbloqueo = CASE id_especie WHEN 'erizo' THEN 0 WHEN 'zarigueya' THEN 0 WHEN 'nutria' THEN 0 WHEN 'capibara' THEN 0 WHEN 'tortuga' THEN 0 WHEN 'cisne' THEN 0 WHEN 'suricata' THEN 2 WHEN 'flamenco' THEN 2 WHEN 'antilope' THEN 4 WHEN 'cebra' THEN 4 WHEN 'mono' THEN 7 WHEN 'lemur' THEN 7 WHEN 'nu' THEN 10 WHEN 'bufalo' THEN 10 WHEN 'delfin' THEN 14 WHEN 'tucan' THEN 18 WHEN 'pinguino' THEN 18 WHEN 'foca' THEN 22 WHEN 'canguro' THEN 22 WHEN 'lobo' THEN 26 WHEN 'koala' THEN 31 WHEN 'reno' THEN 31 WHEN 'oso_pardo' THEN 36 WHEN 'hipopotamo' THEN 41 WHEN 'alce' THEN 46 WHEN 'lince_iberico' THEN 46 WHEN 'pantera' THEN 51 WHEN 'chimpance' THEN 55 WHEN 'leon' THEN 59 WHEN 'elefante' THEN 63 WHEN 'guepardo' THEN 67 WHEN 'leopardo' THEN 71 WHEN 'rinoceronte' THEN 75 WHEN 'jirafa' THEN 79 WHEN 'cocodrilo' THEN 83 WHEN 'oso_polar' THEN 87 WHEN 'gorila' THEN 91 WHEN 'tigre' THEN 95 ELSE nivel_desbloqueo END WHERE estado_catalogo = 'COMERCIAL'",
+            )
+            conexion.ejecutar(
+                "DELETE FROM DesbloqueoEspecie WHERE origen = 'PRESTIGIO' AND id_especie IN " +
+                    "(SELECT s.id_especie FROM Especie s WHERE s.nivel_desbloqueo > " +
+                    "(SELECT p.prestigio_actual FROM Partida p WHERE p.id_partida = DesbloqueoEspecie.id_partida))",
+            )
+            conexion.ejecutar(
+                "UPDATE ParametroMision SET valor_maximo = 100 WHERE id_mision = 'subir_prestigio' " +
+                    "AND nombre_parametro = 'nivel_prestigio_requerido'",
+            )
+            conexion.ejecutar("PRAGMA user_version = 6")
+        }
+    }
+
+    /** Versión 7: nuevos costes de espacio y probabilidad de enfermedad por rango (valores de `valores_y_pesos.json`). */
+    internal fun migrarDe6a7() {
+        ejecutar {
+            conexion.ejecutar(
+                "UPDATE CosteEspacio SET importe = CASE capacidad_max WHEN 2 THEN 130.0 WHEN 4 THEN 235.0 WHEN 6 THEN 325.0 " +
+                    "WHEN 8 THEN 415.0 WHEN 10 THEN 520.0 WHEN 15 THEN 715.0 WHEN 20 THEN 910.0 ELSE importe END",
+            )
+            conexion.ejecutar(
+                "UPDATE RangoEspecie SET probabilidad_enfermedad = CASE id_rango WHEN 1 THEN 0.015 WHEN 2 THEN 0.015 " +
+                    "WHEN 3 THEN 0.02 WHEN 4 THEN 0.02 WHEN 5 THEN 0.025 ELSE probabilidad_enfermedad END",
+            )
+            // Las bajas de espacio ahora borran la fila: se retiran las que quedaron como INACTIVO (sin animales).
+            val sinAnimales = "estado = 'INACTIVO' AND NOT EXISTS (SELECT 1 FROM Animal a WHERE a.id_partida = Espacio.id_partida " +
+                "AND a.id_espacio = Espacio.id_espacio)"
+            conexion.ejecutar(
+                "DELETE FROM MetricaSatisfaccion WHERE id_espacio IN (SELECT id_espacio FROM Espacio WHERE $sinAnimales)",
+            )
+            conexion.ejecutar(
+                "DELETE FROM Notificacion WHERE entidad = 'ESPACIO' AND id_entidad IN (SELECT id_espacio FROM Espacio WHERE $sinAnimales)",
+            )
+            conexion.ejecutar("DELETE FROM Espacio WHERE $sinAnimales")
+            conexion.ejecutar("PRAGMA user_version = 7")
+        }
+    }
+
+    /**
+     * Versión 8: el prestigio que desbloquea cada especie vuelve a repartirse mezclando rangos (`desbloqueos_prestigio` de
+     * `valores_y_pesos.json`). Se retiran los desbloqueos por prestigio que aún no tocan; los siguientes ciclos añaden los que sí.
+     */
+    internal fun migrarDe7a8() {
+        ejecutar {
+            conexion.ejecutar("UPDATE Especie SET nivel_desbloqueo = CASE id_especie WHEN 'erizo' THEN 0 WHEN 'zarigueya' THEN 0 WHEN 'nutria' THEN 0 WHEN 'capibara' THEN 0 WHEN 'tortuga' THEN 0 WHEN 'cisne' THEN 0 WHEN 'suricata' THEN 1 WHEN 'cebra' THEN 2 WHEN 'mono' THEN 3 WHEN 'antilope' THEN 4 WHEN 'bufalo' THEN 5 WHEN 'delfin' THEN 7 WHEN 'lemur' THEN 10 WHEN 'nu' THEN 10 WHEN 'koala' THEN 13 WHEN 'lobo' THEN 16 WHEN 'flamenco' THEN 19 WHEN 'foca' THEN 19 WHEN 'hipopotamo' THEN 22 WHEN 'oso_pardo' THEN 25 WHEN 'canguro' THEN 28 WHEN 'tucan' THEN 31 WHEN 'reno' THEN 31 WHEN 'pantera' THEN 34 WHEN 'elefante' THEN 37 WHEN 'alce' THEN 40 WHEN 'pinguino' THEN 43 WHEN 'lince_iberico' THEN 43 WHEN 'leopardo' THEN 47 WHEN 'chimpance' THEN 51 WHEN 'guepardo' THEN 55 WHEN 'rinoceronte' THEN 59 WHEN 'leon' THEN 63 WHEN 'jirafa' THEN 67 WHEN 'oso_polar' THEN 71 WHEN 'cocodrilo' THEN 75 WHEN 'gorila' THEN 79 WHEN 'tigre' THEN 87 ELSE nivel_desbloqueo END WHERE estado_catalogo = 'COMERCIAL'")
+            conexion.ejecutar(
+                "DELETE FROM DesbloqueoEspecie WHERE origen = 'PRESTIGIO' AND id_especie IN " +
+                    "(SELECT s.id_especie FROM Especie s WHERE s.nivel_desbloqueo > " +
+                    "(SELECT p.prestigio_actual FROM Partida p WHERE p.id_partida = DesbloqueoEspecie.id_partida))",
+            )
+            conexion.ejecutar("PRAGMA user_version = 8")
+        }
+    }
+
+    /**
+     * Versión 9: borra todos los datos (partida, catálogo y avisos) y recrea el esquema vigente. La siguiente apertura de la
+     * aplicación crea una partida nueva con su regalo de bienvenida.
+     */
+    internal fun migrarDe8a9() {
+        conexion.ejecutar("PRAGMA foreign_keys = OFF")
+        try {
+            ejecutar {
+                val objetos = leer("SELECT type, name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'") { it.texto(0) to it.texto(1) }
+                objetos.filter { it.first == "view" }.forEach { conexion.ejecutar("DROP VIEW IF EXISTS \"${it.second}\"") }
+                objetos.filter { it.first == "table" }.forEach { conexion.ejecutar("DROP TABLE IF EXISTS \"${it.second}\"") }
+                EsquemaGenerado.sentencias.forEach { conexion.ejecutar(it) }
+                conexion.ejecutar("PRAGMA user_version = 9")
+            }
+        } finally {
+            conexion.ejecutar("PRAGMA foreign_keys = ON")
+        }
+    }
+
+    /**
+     * Versión 10: el mejor amigo es recíproco. Si A tiene a B de amigo y B no tiene ninguno, B pasa a tener a A (con varios
+     * candidatos gana el de menor identificador); los vínculos que aun así queden sin reciprocidad se quitan.
+     */
+    /**
+     * Los espacios existentes reciben como coste pagado el precio actual de su capacidad: no se conserva cuánto costó
+     * cada uno (ni cuál fue el gratuito), así que es la mejor aproximación.
+     */
+    internal fun migrarDe10a11() {
+        ejecutar {
+            conexion.ejecutar(
+                "ALTER TABLE Espacio ADD COLUMN coste_pagado REAL NOT NULL DEFAULT 0 " +
+                    "CHECK (coste_pagado >= 0 AND coste_pagado = ROUND(coste_pagado, 2))",
+            )
+            conexion.ejecutar(
+                "UPDATE Espacio SET coste_pagado = COALESCE((SELECT importe FROM CosteEspacio c WHERE c.capacidad_max = Espacio.capacidad_max), 0)",
+            )
+            conexion.ejecutar("PRAGMA user_version = 11")
+        }
+    }
+
+    /** Versión 12: nuevas capacidades de espacio, 25 y 30 animales (valores de `valores_y_pesos.json`). */
+    internal fun migrarDe11a12() {
+        ejecutar {
+            conexion.ejecutar("INSERT OR IGNORE INTO CosteEspacio (capacidad_max, importe) VALUES (25, 1105.0)")
+            conexion.ejecutar("INSERT OR IGNORE INTO CosteEspacio (capacidad_max, importe) VALUES (30, 1300.0)")
+            conexion.ejecutar("PRAGMA user_version = 12")
+        }
+    }
+
+    internal fun migrarDe9a10() {
+        ejecutar {
+            conexion.ejecutar(
+                "UPDATE Animal SET id_mejor_amigo = (SELECT MIN(a.id_animal) FROM Animal a WHERE a.id_partida = Animal.id_partida " +
+                    "AND a.id_mejor_amigo = Animal.id_animal AND a.estado_vital = 'VIVO') " +
+                    "WHERE id_mejor_amigo IS NULL AND estado_vital = 'VIVO' AND EXISTS (SELECT 1 FROM Animal a " +
+                    "WHERE a.id_partida = Animal.id_partida AND a.id_mejor_amigo = Animal.id_animal AND a.estado_vital = 'VIVO')",
+            )
+            conexion.ejecutar(
+                "UPDATE Animal SET id_mejor_amigo = NULL WHERE id_mejor_amigo IS NOT NULL AND NOT EXISTS (SELECT 1 FROM Animal b " +
+                    "WHERE b.id_partida = Animal.id_partida AND b.id_animal = Animal.id_mejor_amigo AND b.id_mejor_amigo = Animal.id_animal)",
+            )
+            conexion.ejecutar("PRAGMA user_version = 10")
         }
     }
 

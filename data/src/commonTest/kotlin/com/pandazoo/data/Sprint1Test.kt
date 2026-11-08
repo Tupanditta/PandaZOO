@@ -5,6 +5,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import com.pandazoo.application.caso.AdquirirInsumos
 import com.pandazoo.application.caso.ComandoAdquirirEspacio
+import com.pandazoo.application.caso.ComandoDarDeBajaEspacio
 import com.pandazoo.application.caso.ComandoAdquirirInsumos
 import com.pandazoo.application.caso.ComandoConfigurarEspacio
 import com.pandazoo.application.caso.CompraRealizada
@@ -170,21 +171,63 @@ class Sprint1Test {
     // ---- T1.4 ----
     @Test
     fun `T1_4 cada capacidad de la tabla se acepta con su coste`() {
-        darFondos("10000.00")
-        val tabla = mapOf(2 to "100.00", 4 to "180.00", 6 to "250.00", 8 to "320.00", 10 to "400.00", 15 to "550.00", 20 to "700.00")
+        darFondos("20000.00")
+        // El primer espacio de 6 es gratis; los demás cuestan lo que indica la tabla.
+        val tabla = mapOf(6 to "0.00", 8 to "415.00", 10 to "520.00", 15 to "715.00", 20 to "910.00", 25 to "1105.00", 30 to "1300.00")
         tabla.forEach { (capacidad, coste) ->
             val r = exito(comprarEspacio("bosque_templado", "Zona $capacidad", capacidad))
             r.coste shouldBe d(coste)
         }
         e.contar("Espacio") shouldBe 7
         e.bd.leer("SELECT capacidad_max FROM Espacio ORDER BY capacidad_max") { it.entero(0) }
-            .shouldContainExactly(2, 4, 6, 8, 10, 15, 20)
+            .shouldContainExactly(6, 8, 10, 15, 20, 25, 30)
+        exito(comprarEspacio("bosque_templado", "Segundo de seis", 6)).coste shouldBe d("325.00")
+    }
+
+    @Test
+    fun `el primer espacio de 6 es gratis una sola vez aunque se de de baja`() {
+        val saldo = e.fondos()
+        val primero = exito(comprarEspacio("bosque_templado", "Primero", 6))
+        primero.coste shouldBe Dinero.CERO
+        e.fondos() shouldBe saldo
+        e.consultarTienda.capacidades(e.idPartida).first { it.capacidad == 6 }.coste shouldBe d("325.00")
+        e.darDeBajaEspacio.ejecutar(ComandoDarDeBajaEspacio(e.idPartida, primero.idEspacio, nueva()))
+        exito(comprarEspacio("bosque_templado", "Otro", 6)).coste shouldBe d("325.00")
+        e.fondos() shouldBe saldo - d("325.00")
+    }
+
+    @Test
+    fun `al vender un espacio vacio se recupera todo lo que costo y el gratuito no devuelve nada`() {
+        val gratis = exito(comprarEspacio("bosque_templado", "Gratis", 6))
+        val pagado = exito(comprarEspacio("bosque_templado", "Pagado", 8))
+        pagado.coste shouldBe d("415.00")
+        val saldo = e.fondos()
+        val libre = e.darDeBajaEspacio.ejecutar(ComandoDarDeBajaEspacio(e.idPartida, gratis.idEspacio, nueva()))
+        (libre as Resultado.Exito).valor.reembolso shouldBe Dinero.CERO
+        e.fondos() shouldBe saldo
+        val vendido = e.darDeBajaEspacio.ejecutar(ComandoDarDeBajaEspacio(e.idPartida, pagado.idEspacio, nueva()))
+        (vendido as Resultado.Exito).valor.reembolso shouldBe d("415.00")
+        e.fondos() shouldBe saldo + d("415.00")
+    }
+
+    @Test
+    fun `solo el espacio de 6 puede ser gratis y otras capacidades cuestan siempre`() {
+        e.consultarTienda.capacidades(e.idPartida).map { it.capacidad to it.coste.toString() }.shouldContainExactly(
+            6 to "0.00", 8 to "415.00", 10 to "520.00", 15 to "715.00", 20 to "910.00", 25 to "1105.00", 30 to "1300.00",
+        )
+        exito(comprarEspacio("bosque_templado", "Ocho", 8)).coste shouldBe d("415.00")
+        e.consultarTienda.capacidades(e.idPartida).first { it.capacidad == 6 }.coste shouldBe Dinero.CERO
+    }
+
+    @Test
+    fun `no existen espacios de 2 ni de 4 animales`() {
+        listOf(2, 4).forEach { rechazo(comprarEspacio("bosque_templado", "Chico", it)) shouldBe MotivoRechazo.CapacidadNoPermitida }
     }
 
     @Test
     fun `T1_4 capacidad fuera de la tabla se rechaza`() {
         val antes = instantanea()
-        listOf(0, 1, 3, 5, 7, 12, 25, -4).forEach {
+        listOf(0, 1, 3, 5, 7, 12, 35, -4).forEach {
             rechazo(comprarEspacio("bosque_templado", "Zona", it)) shouldBe MotivoRechazo.CapacidadNoPermitida
         }
         instantanea() shouldBe antes
@@ -193,25 +236,25 @@ class Sprint1Test {
     @Test
     fun `T1_4 nombre duplicado en el mismo habitat se rechaza y en otro habitat se acepta`() {
         darFondos("5000.00")
-        exito(comprarEspacio("bosque_templado", "Pradera", 4))
-        rechazo(comprarEspacio("bosque_templado", "Pradera", 4)) shouldBe MotivoRechazo.DenominacionDuplicada
-        rechazo(comprarEspacio("bosque_templado", "  pradera ", 2)) shouldBe MotivoRechazo.DenominacionDuplicada
-        exito(comprarEspacio("humedal_agua_dulce", "Pradera", 4))
+        exito(comprarEspacio("bosque_templado", "Pradera", 8))
+        rechazo(comprarEspacio("bosque_templado", "Pradera", 8)) shouldBe MotivoRechazo.DenominacionDuplicada
+        rechazo(comprarEspacio("bosque_templado", "  pradera ", 10)) shouldBe MotivoRechazo.DenominacionDuplicada
+        exito(comprarEspacio("humedal_agua_dulce", "Pradera", 8))
         e.contar("Espacio") shouldBe 2
     }
 
     @Test
     fun `T1_4 denominacion vacia o demasiado larga se rechaza`() {
-        rechazo(comprarEspacio("bosque_templado", "   ", 4)) shouldBe MotivoRechazo.DenominacionInvalida
-        rechazo(comprarEspacio("bosque_templado", "x".repeat(41), 4)) shouldBe MotivoRechazo.DenominacionInvalida
+        rechazo(comprarEspacio("bosque_templado", "   ", 8)) shouldBe MotivoRechazo.DenominacionInvalida
+        rechazo(comprarEspacio("bosque_templado", "x".repeat(41), 8)) shouldBe MotivoRechazo.DenominacionInvalida
         e.contar("Espacio") shouldBe 0
     }
 
     @Test
     fun `T1_4 espacio con saldo insuficiente no se crea ni se cobra`() {
         darFondos("99.99")
-        rechazo(comprarEspacio("bosque_templado", "Pradera", 2)) shouldBe
-            MotivoRechazo.SaldoInsuficiente(d("100.00"), d("99.99"))
+        rechazo(comprarEspacio("bosque_templado", "Pradera", 8)) shouldBe
+            MotivoRechazo.SaldoInsuficiente(d("415.00"), d("99.99"))
         e.contar("Espacio") shouldBe 0
         e.fondos() shouldBe d("99.99")
     }
@@ -324,10 +367,10 @@ class Sprint1Test {
 
     @Test
     fun `T1_7 reintentar la misma compra de espacio no crea otro espacio`() {
-        val primera = comprarEspacio("bosque_templado", "Pradera", 4, "fija")
-        val segunda = comprarEspacio("bosque_templado", "Pradera", 4, "fija")
+        val primera = comprarEspacio("bosque_templado", "Pradera", 8, "fija")
+        val segunda = comprarEspacio("bosque_templado", "Pradera", 8, "fija")
         e.contar("Espacio") shouldBe 1
-        e.fondos() shouldBe d("1820.00")
+        e.fondos() shouldBe d("1585.00")
         exito(segunda) shouldBe exito(primera)
         (segunda as Resultado.Exito).repetido shouldBe true
     }
@@ -400,7 +443,7 @@ class Sprint1Test {
         (v.fondos as Seccion.Disponible).valor shouldBe d("2000.00")
         (v.beneficiosPendientes as Seccion.Disponible).valor shouldBe d("0.00")
         (v.existencias as Seccion.Disponible).valor.map { it.nombre to it.cantidad }
-            .shouldContainExactly("Bambú" to 30, "Insumo médico" to 3)
+            .shouldContainExactly("Bambú" to 30, "Medicina" to 3)
         e.bd.escribir(
             "INSERT INTO BeneficioPendiente (id_partida, importe, estado, origen, numero_ciclo, clave_idempotencia, fecha_creacion, fecha_reclamacion) " +
                 "VALUES (?, 12.34, 'PENDIENTE', 'CICLO', 1, 'b1', 0, NULL), (?, 5.00, 'RECLAMADO', 'CICLO', 2, 'b2', 0, 1), (?, 0.66, 'PENDIENTE', 'CICLO', 3, 'b3', 0, NULL)",
@@ -426,10 +469,10 @@ class Sprint1Test {
         val recursos = e.consultarTienda.recursos()
         recursos.map { Triple(it.nombre, it.unidad, it.precio) }.shouldContainExactly(
             Triple("Bambú", "kg", d("0.50")),
-            Triple("Insumo médico", "unidades", d("10.00")),
+            Triple("Medicina", "unidades", d("10.00")),
         )
         e.consultarTienda.capacidades().map { it.capacidad to it.coste.toString() }.shouldContainExactly(
-            2 to "100.00", 4 to "180.00", 6 to "250.00", 8 to "320.00", 10 to "400.00", 15 to "550.00", 20 to "700.00",
+            6 to "325.00", 8 to "415.00", 10 to "520.00", 15 to "715.00", 20 to "910.00", 25 to "1105.00", 30 to "1300.00",
         )
     }
 

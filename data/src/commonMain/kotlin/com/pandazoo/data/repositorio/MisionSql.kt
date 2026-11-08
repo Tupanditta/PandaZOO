@@ -35,7 +35,7 @@ class MisionSql(private val bd: BaseDatos) : MisionRepositorio {
         }
         return bd.leer(
             "SELECT p.id_instancia_mision, p.id_mision, m.tipo_objetivo, m.naturaleza_progreso, p.progreso, p.estado, " +
-                "m.tipo_recompensa, m.id_item_recompensa, m.cantidad_recompensa FROM ProgresoMision p " +
+                "m.tipo_recompensa, m.id_item_recompensa, m.cantidad_recompensa, p.orden_cumplida FROM ProgresoMision p " +
                 "JOIN Mision m ON m.id_mision = p.id_mision WHERE p.id_partida = ?$filtro ORDER BY p.id_mision",
             *args,
         ) {
@@ -50,6 +50,7 @@ class MisionSql(private val bd: BaseDatos) : MisionRepositorio {
                 numericos = numericos[id].orEmpty(),
                 textos = textos[id].orEmpty(),
                 recompensa = RecompensaConfigurada(TipoRecompensa.valueOf(it.texto(6)), it.textoONulo(7), it.decimal(8)),
+                ordenCumplida = it.enteroONulo(9),
             )
         }
     }
@@ -62,9 +63,12 @@ class MisionSql(private val bd: BaseDatos) : MisionRepositorio {
         ) { it.texto(0) to Progresion(it.texto(1), it.decimal(2), it.decimal(3), it.decimal(4)) }.toMap()
 
     override fun fijarProgreso(idPartida: IdPartida, idInstancia: String, progreso: Double, estado: EstadoMision) {
+        // El orden de cumplimiento se asigna una sola vez, al pasar a `CUMPLIDA`: el siguiente número de la partida.
         bd.escribir(
-            "UPDATE ProgresoMision SET progreso = ?, estado = ? WHERE id_partida = ? AND id_instancia_mision = ?",
-            progreso, estado.name, idPartida, idInstancia,
+            "UPDATE ProgresoMision SET progreso = ?, estado = ?, orden_cumplida = CASE WHEN ? = 'CUMPLIDA' THEN COALESCE(orden_cumplida, " +
+                "(SELECT COALESCE(MAX(q.orden_cumplida), 0) + 1 FROM ProgresoMision q WHERE q.id_partida = ?)) ELSE NULL END " +
+                "WHERE id_partida = ? AND id_instancia_mision = ?",
+            progreso, estado.name, estado.name, idPartida, idPartida, idInstancia,
         )
     }
 
@@ -177,26 +181,20 @@ class MisionSql(private val bd: BaseDatos) : MisionRepositorio {
         )
     }
 
-    override fun desbloquearEspecie(idPartida: IdPartida, idEspecie: String, numeroCiclo: Int, fecha: Long) {
-        bd.escribir(
-            "INSERT OR IGNORE INTO DesbloqueoEspecie (id_partida, id_especie, origen, fecha) VALUES (?, ?, 'RECOMPENSA', ?)",
-            idPartida, idEspecie, fecha,
-        )
-        bd.escribir(
-            "INSERT INTO Notificacion (id_partida, tipo, severidad, codigo, entidad, id_entidad, numero_ciclo, estado, fecha) " +
-                "SELECT ?, 'INFORMATIVA', 'BAJA', 'ESPECIE_DESBLOQUEADA', 'ESPECIE', ?, ?, 'PENDIENTE', ? WHERE NOT EXISTS (" +
-                "SELECT 1 FROM Notificacion WHERE id_partida = ? AND tipo = 'INFORMATIVA' AND codigo = 'ESPECIE_DESBLOQUEADA' AND id_entidad = ?)",
-            idPartida, idEspecie, numeroCiclo, fecha, idPartida, idEspecie,
-        )
-    }
-
     override fun especiesConUnidad(idPartida: IdPartida): Set<String> =
         bd.leer(
-            "SELECT DISTINCT id_especie_seleccionada FROM RecompensaMision WHERE id_partida = ? AND unidad_pendiente = 1",
-            idPartida,
+            "SELECT id_especie_seleccionada FROM RecompensaMision WHERE id_partida = ? AND unidad_pendiente = 1 " +
+                "UNION SELECT id_especie FROM UnidadGratuita WHERE id_partida = ? AND unidad_pendiente = 1",
+            idPartida, idPartida,
         ) { it.texto(0) }.toSet()
 
     override fun consumirUnidad(idPartida: IdPartida, idEspecie: String): Boolean {
+        bd.escribir(
+            "UPDATE UnidadGratuita SET unidad_pendiente = 0 WHERE id_unidad = (SELECT MIN(id_unidad) FROM UnidadGratuita " +
+                "WHERE id_partida = ? AND unidad_pendiente = 1 AND id_especie = ?)",
+            idPartida, idEspecie,
+        )
+        if ((bd.uno("SELECT changes()") { it.entero(0) } ?: 0) > 0) return true
         bd.escribir(
             "UPDATE RecompensaMision SET unidad_pendiente = 0 WHERE id_recompensa = (SELECT MIN(id_recompensa) FROM RecompensaMision " +
                 "WHERE id_partida = ? AND unidad_pendiente = 1 AND id_especie_seleccionada = ?)",

@@ -32,7 +32,13 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.ExperimentalTextApi
@@ -217,7 +223,7 @@ private val TonosClaro = mapOf(
     "Poco común" to TonoRango(Color(0xFF4F9A5E), Color(0xFFE0F0DC)),
     "Raro" to TonoRango(Color(0xFF3C7FB8), Color(0xFFDCEAF6)),
     "Épico" to TonoRango(Color(0xFF8456B5), Color(0xFFEADFF4)),
-    "Exclusivo" to TonoRango(Color(0xFFC79A1E), Color(0xFFF7E8B8)),
+    "Exclusivo" to TonoRango(Color(0xFFB59044), Color(0xFFF1E8CF)),
 )
 
 private val TonosOscuro = mapOf(
@@ -225,7 +231,7 @@ private val TonosOscuro = mapOf(
     "Poco común" to TonoRango(Color(0xFF7CC48A), Color(0xFF1F3A25)),
     "Raro" to TonoRango(Color(0xFF7FB4E3), Color(0xFF1D3547)),
     "Épico" to TonoRango(Color(0xFFBE9AE6), Color(0xFF33244A)),
-    "Exclusivo" to TonoRango(Color(0xFFE6BF4A), Color(0xFF4A3B10)),
+    "Exclusivo" to TonoRango(Color(0xFFD2B574), Color(0xFF3A3220)),
 )
 
 @Composable
@@ -235,25 +241,87 @@ internal fun tonoRango(rango: String): TonoRango {
     return tonos[rango] ?: TonoRango(MaterialTheme.colorScheme.secondary, MaterialTheme.colorScheme.surface)
 }
 
-/** Ficha: unidad visual con filete izquierdo de color y borde fino (spec. sección 5.3). */
+@Composable
+private fun esOscuro() = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+/** Degradado del contorno exclusivo: dorado apagado con un destello claro, para no desentonar con el resto de la interfaz. */
+internal val BrilloExclusivo = Brush.linearGradient(listOf(Color(0xFFE3CE95), Color(0xFFB59044), Color(0xFFF1E3B8), Color(0xFFB59044), Color(0xFFE3CE95)))
+
+/** Contorno de una ficha según su rango: degradado brillante en épico y exclusivo; el resto, el borde fino de siempre. */
+@Composable
+private fun bordeRango(rango: String?, filete: Color): BorderStroke {
+    val base = MaterialTheme.colorScheme.outlineVariant
+    return when (rango) {
+        "Exclusivo" -> BorderStroke(2.dp, BrilloExclusivo)
+        "Épico" -> BorderStroke(2.dp, Brush.linearGradient(listOf(filete, Color(0xFFD9BFFF), filete, Color(0xFFB98CF0), filete)))
+        else -> BorderStroke(1.dp, base)
+    }
+}
+
+/** Reflejo diagonal sobre la ficha exclusiva (estático: una animación infinita impide que la interfaz quede en reposo). */
+internal fun Modifier.reflejos(activo: Boolean): Modifier =
+    if (!activo) this else drawWithContent {
+        drawContent()
+        val w = size.width
+        val h = size.height
+        drawRect(
+            Brush.linearGradient(
+                0.28f to Color.Transparent, 0.38f to Color.White.copy(alpha = 0.20f), 0.46f to Color.Transparent,
+                0.58f to Color.Transparent, 0.62f to Color.White.copy(alpha = 0.14f), 0.68f to Color.Transparent,
+                start = Offset(0f, 0f), end = Offset(w, h),
+            ),
+        )
+    }
+
+/**
+ * Ficha: unidad visual con filete izquierdo de color y borde fino (spec. sección 5.3). Con [rango] añade el brillo
+ * propio del rango: contorno brillante y resplandor en los épicos; además reflejos en los exclusivos.
+ */
 @Composable
 internal fun Ficha(
     modifier: Modifier = Modifier,
     filete: Color = MaterialTheme.colorScheme.primary,
     atenuada: Boolean = false,
     fondo: Color = MaterialTheme.colorScheme.surface,
+    rango: String? = null,
     contenido: @Composable () -> Unit,
 ) {
+    val brillante = rango == "Épico" || rango == "Exclusivo"
+    val forma = MaterialTheme.shapes.medium
     Card(
-        modifier = modifier.fillMaxWidth().alpha(if (atenuada) 0.6f else 1f),
-        shape = MaterialTheme.shapes.medium,
+        modifier = modifier.fillMaxWidth().alpha(if (atenuada) 0.6f else 1f)
+            .then(if (brillante) Modifier.shadow(8.dp, forma, ambientColor = filete, spotColor = filete) else Modifier),
+        shape = forma,
         colors = CardDefaults.cardColors(containerColor = fondo),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = bordeRango(rango, filete),
     ) {
-        Row(Modifier.height(IntrinsicSize.Min)) {
+        Row(Modifier.height(IntrinsicSize.Min).reflejos(rango == "Exclusivo")) {
             Box(Modifier.width(4.dp).fillMaxHeight().background(filete))
             Column(Modifier.padding(16.dp).weight(1f)) { contenido() }
         }
+    }
+}
+
+/**
+ * Nombre de un animal o especie. En el rango exclusivo es más luminoso: degradado dorado con resplandor.
+ */
+@Composable
+internal fun NombreRango(texto: String, rango: String?, estilo: TextStyle = MaterialTheme.typography.titleMedium, modifier: Modifier = Modifier) {
+    if (rango == "Exclusivo") {
+        val oscuro = esOscuro()
+        val colores = if (oscuro) listOf(Color(0xFFEFE0B4), Color(0xFFD2B574), Color(0xFFF4E9C8), Color(0xFFD2B574))
+        else listOf(Color(0xFF86672A), Color(0xFFB08A35), Color(0xFF94722C), Color(0xFFB08A35))
+        Text(
+            texto,
+            modifier = modifier,
+            style = estilo.copy(
+                brush = Brush.linearGradient(colores),
+                fontWeight = FontWeight.Bold,
+                shadow = Shadow(color = if (oscuro) Color(0xFFD2B574) else Color(0xFFE9D9A8), offset = Offset(0f, 0f), blurRadius = if (oscuro) 9f else 6f),
+            ),
+        )
+    } else {
+        Text(texto, modifier = modifier, style = estilo, color = MaterialTheme.colorScheme.onSurface)
     }
 }
 
@@ -261,9 +329,15 @@ internal fun Ficha(
 @Composable
 internal fun FilaDato(etiqueta: String, valor: String) {
     Column(Modifier.fillMaxWidth()) {
+        // Ambos textos pueden ocupar varias líneas: cada uno recibe un reparto del ancho en lugar de empujar al otro.
         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(etiqueta, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(valor, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onSurface)
+            Text(etiqueta, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f, fill = false))
+            Text(
+                valor,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold, textAlign = TextAlign.End),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f, fill = false).padding(start = 12.dp),
+            )
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
@@ -280,5 +354,26 @@ internal fun AvisoUi(texto: String, tipo: TipoAviso, modifier: Modifier = Modifi
         Box(Modifier.width(4.dp).fillMaxHeight().background(color))
         Text(tipo.icono, color = color, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 12.dp))
         Text(texto, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(12.dp).weight(1f))
+    }
+}
+
+/** Ocupación de un espacio: etiqueta y cifra como el resto de datos, con una barra fina que se llena con los animales alojados. */
+@Composable
+internal fun OcupacionEspacio(e: EspacioUi) {
+    val lleno = e.capacidad > 0 && e.ocupacion >= e.capacidad
+    val color = if (!e.activo) MaterialTheme.colorScheme.outline else if (lleno) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
+    val fraccion = if (e.capacidad > 0) (e.ocupacion.toFloat() / e.capacidad).coerceIn(0f, 1f) else 0f
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Ocupación", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                if (e.activo) "${e.ocupacion}/${e.capacidad}" else "${e.ocupacion}/${e.capacidad} · De baja",
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        Box(Modifier.fillMaxWidth().height(6.dp).background(MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(3.dp))) {
+            Box(Modifier.fillMaxWidth(fraccion).fillMaxHeight().background(color, RoundedCornerShape(3.dp)))
+        }
     }
 }

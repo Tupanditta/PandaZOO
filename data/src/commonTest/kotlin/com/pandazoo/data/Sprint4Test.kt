@@ -285,7 +285,7 @@ class Sprint4Test {
         fijarInsumos(2)
         val antes = instantanea()
         val m = rechazo(tratar(a)) as MotivoRechazo.InsumosInsuficientes
-        m.faltantes shouldBe listOf(FaltanteInsumo("Insumo médico", 3, 2))
+        m.faltantes shouldBe listOf(FaltanteInsumo("Medicina", 3, 2))
         salud(a) shouldBe "ENFERMO"
         instantanea() shouldBe antes
     }
@@ -297,7 +297,7 @@ class Sprint4Test {
         e.bd.escribir("UPDATE Animal SET ciclos_enfermedad = 2 WHERE id_animal = ?", a)
         fijarInsumos(5)
         val previa = e.consultarCuidado.tratamiento(e.idPartida, a)
-        previa.map { Triple(it.nombre, it.necesario, it.disponible) } shouldBe listOf(Triple("Insumo médico", 3, 5))
+        previa.map { Triple(it.nombre, it.necesario, it.disponible) } shouldBe listOf(Triple("Medicina", 3, 5))
 
         exito(tratar(a)).unidades shouldBe 3
         insumos() shouldBe 2

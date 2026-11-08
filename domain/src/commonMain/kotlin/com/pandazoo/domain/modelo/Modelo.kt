@@ -10,7 +10,7 @@ enum class TipoRecurso(val unidad: String) {
     INSUMO("unidades"),
 }
 
-/** Recurso comprable: bambú (alimento) o insumo médico. */
+/** Recurso comprable: bambú (alimento) o medicina. */
 data class Recurso(val tipo: TipoRecurso, val codigo: String)
 
 /** Recurso con su nombre legible, unidad y precio unitario. `precio` es nulo si no está configurado. */

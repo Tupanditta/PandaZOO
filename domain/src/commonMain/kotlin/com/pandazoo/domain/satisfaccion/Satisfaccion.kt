@@ -29,6 +29,21 @@ data class DesgloseSatisfaccion(
     val valor: Double,
 )
 
+/** Una parte de `S_soc`: peso del vínculo en la especie y grado (0..1) con que se cumple. */
+data class AportacionSocial(val nombre: String, val peso: Double, val grado: Double)
+
+data class DetalleSocial(val aportaciones: List<AportacionSocial>, val valor: Double)
+
+/** [desglose] con los pesos de `S_bio` y `S_soc` y las partes de `S_soc` y `M_crit`, para explicar la satisfacción. */
+data class DetalleSatisfaccion(
+    val desglose: DesgloseSatisfaccion,
+    val pesoBio: Double,
+    val pesoSoc: Double,
+    val social: DetalleSocial,
+    val mAlimentacion: Double,
+    val mEnfermedad: Double,
+)
+
 /** Índice de los animales vivos alojados de la partida; resuelve vínculos y parentesco sin recorrer listas. */
 class IndiceVivos(animales: List<AnimalVivo>) {
     private val porId: Map<String, AnimalVivo> = animales.associateBy { it.id }
@@ -105,7 +120,10 @@ class ReglaSatisfaccion(cfg: ConfiguracionJuego) {
         return DesgloseSatisfaccion(sBio, sSoc, pHab, mCrit, bruto.coerceIn(0.0, 1.0))
     }
 
-    private fun sSoc(animal: AnimalVivo, especie: EspecieCfg, delEspacio: List<AnimalVivo>, indice: IndiceVivos): Double {
+    private fun sSoc(animal: AnimalVivo, especie: EspecieCfg, delEspacio: List<AnimalVivo>, indice: IndiceVivos): Double =
+        detalleSocial(animal, especie, delEspacio, indice).valor
+
+    private fun detalleSocial(animal: AnimalVivo, especie: EspecieCfg, delEspacio: List<AnimalVivo>, indice: IndiceVivos): DetalleSocial {
         val w = especie.social.pesos
         val cPareja = if (indice.vivo(animal.idPareja)) 1.0 else 0.0
         val cAmigo = if (indice.vivo(animal.idMejorAmigo)) 1.0 else 0.0
@@ -126,7 +144,31 @@ class ReglaSatisfaccion(cfg: ConfiguracionJuego) {
 
         val bruto = w.pareja * cPareja + w.amigo * cAmigo + w.padre * cPadre + w.madre * cMadre +
             w.hermanos * cHermanos + w.afinidad * cAfinidad
-        return bruto.coerceIn(0.0, 1.0)
+        return DetalleSocial(
+            aportaciones = listOf(
+                AportacionSocial("Pareja", w.pareja, cPareja),
+                AportacionSocial("Mejor amigo", w.amigo, cAmigo),
+                AportacionSocial("Padre", w.padre, cPadre),
+                AportacionSocial("Madre", w.madre, cMadre),
+                AportacionSocial("Hermanos", w.hermanos, cHermanos),
+                AportacionSocial("Afinidad con el espacio", w.afinidad, cAfinidad),
+            ),
+            valor = bruto.coerceIn(0.0, 1.0),
+        )
+    }
+
+    /** Desglose completo para mostrarlo: los mismos valores que [calcular] más los pesos y las partes de `S_soc` y `M_crit`. */
+    fun detalle(animal: AnimalVivo, idBioma: String, delEspacio: List<AnimalVivo>, indice: IndiceVivos): DetalleSatisfaccion {
+        val especie = especies[animal.idEspecie] ?: error("Especie no configurada")
+        val f = factoresCriticos[animal.idEspecie] ?: error("Faltan los factores M_crit de una especie")
+        return DetalleSatisfaccion(
+            desglose = calcular(animal, idBioma, delEspacio, indice),
+            pesoBio = especie.pesos.bio,
+            pesoSoc = especie.pesos.soc,
+            social = detalleSocial(animal, especie, delEspacio, indice),
+            mAlimentacion = f.alimentacion[animal.nivelAlimentacion.toString()] ?: error("Falta un nivel de M_alimentación"),
+            mEnfermedad = f.enfermedad[if (animal.enfermo) "ENFERMO" else "SANO"] ?: error("Falta un factor M_enfermedad"),
+        )
     }
 
     private fun clave(a: String, b: String) = if (a <= b) a to b else b to a

@@ -50,10 +50,16 @@ internal object Vinculos {
         return null
     }
 
+    /**
+     * El mejor amigo es recíproco: si B es mejor amigo de A, A lo es de B. Por eso ambos deben estar libres; la especie
+     * no importa. Para cambiar de amigo hay que quitar primero el actual.
+     */
     fun validarAmigo(candidato: AnimalResumen?, propio: AnimalResumen?, idEspacio: String): MotivoRechazo? {
         if (candidato == null || !candidato.vivo) return MotivoRechazo.AmigoInvalido
         if (candidato.id == propio?.id) return MotivoRechazo.AutoReferencia
         if (candidato.idEspacio != idEspacio) return MotivoRechazo.AmigoInvalido
+        if (candidato.idMejorAmigo != null && candidato.idMejorAmigo != propio?.id) return MotivoRechazo.AmigoOcupado
+        if (propio?.idMejorAmigo != null && propio.idMejorAmigo != candidato.id) return MotivoRechazo.AmigoOcupado
         return null
     }
 
@@ -268,7 +274,10 @@ data class ComandoReubicarAnimal(
 /** `origenVacio` indica que debe ofrecerse la baja opcional del espacio de origen (CU-04, paso 6). */
 data class AnimalReubicado(val idAnimal: String, val idEspacioOrigen: String, val origenVacio: Boolean)
 
-/** CU-04 Reubicar espécimen (RF-05, RF-29). La compatibilidad con el hábitat de destino no bloquea el traslado. */
+/**
+ * CU-04 Reubicar espécimen (RF-05, RF-29). La compatibilidad con el hábitat de destino no bloquea el traslado.
+ * Si el animal tenía mejor amigo, el vínculo se rompe: para ser mejores amigos hay que estar en el mismo espacio.
+ */
 class ReubicarAnimal(
     private val ejecutor: EjecutorOperacion,
     private val zoo: ZooRepositorio,
@@ -302,8 +311,14 @@ class ReubicarAnimal(
         if (destino.estado != EstadoEntidad.ACTIVO) return rechazo(MotivoRechazo.EspacioInactivo)
         if (destino.ocupacion >= destino.capacidadMax) return rechazo(MotivoRechazo.EspacioLleno)
 
+        // Los mejores amigos comparten espacio: al trasladar a uno dejan de serlo (el vínculo es recíproco).
+        val espaciosAfectados = mutableSetOf(origen, c.idEspacioDestino)
+        animal.idMejorAmigo?.let { idAmigo ->
+            animales.animal(c.idPartida, idAmigo)?.idEspacio?.let { espaciosAfectados += it }
+            animales.fijarMejorAmigo(c.idPartida, c.idAnimal, null)
+        }
         animales.mover(c.idPartida, c.idAnimal, c.idEspacioDestino)
-        recalculo.alConsolidar(c.idPartida, AlcanceRecalculo.Espacios(setOf(origen, c.idEspacioDestino)))
+        recalculo.alConsolidar(c.idPartida, AlcanceRecalculo.Espacios(espaciosAfectados))
         val vacio = (zoo.espacio(c.idPartida, origen)?.ocupacion ?: 0) == 0
         return Resultado.Exito(AnimalReubicado(c.idAnimal, origen, vacio))
     }
@@ -384,12 +399,17 @@ class VenderAnimal(
 
 data class ComandoDarDeBajaEspacio(val idPartida: IdPartida, val idEspacio: String, val idSolicitud: String)
 
-data class EspacioDadoDeBaja(val idEspacio: String)
+data class EspacioDadoDeBaja(val idEspacio: String, val reembolso: Dinero = Dinero.CERO)
 
-/** CU-14 Dar de baja espacio vacío (RF-07): baja lógica, sin borrar nada ni invalidar referencias. */
+/**
+ * CU-14 Vender espacio vacío (RF-07): el espacio se borra, sus animales ya no estaban (vendidos o trasladados) y se
+ * recupera todo el dinero que costó (nada si fue el gratuito).
+ */
 class DarDeBajaEspacio(
     private val ejecutor: EjecutorOperacion,
     private val zoo: ZooRepositorio,
+    private val economia: EconomiaRepositorio,
+    private val reloj: Reloj,
 ) {
     fun ejecutar(c: ComandoDarDeBajaEspacio): Resultado<EspacioDadoDeBaja> {
         val op = Operacion(
@@ -399,8 +419,11 @@ class DarDeBajaEspacio(
             origen = "CU-14",
             idSolicitud = c.idSolicitud,
             huella = "espacio=${c.idEspacio}",
-            codificar = { it.idEspacio },
-            decodificar = { EspacioDadoDeBaja(it) },
+            codificar = { "${it.idEspacio}|${it.reembolso.centimos}" },
+            decodificar = {
+                val (id, reembolso) = it.split("|")
+                EspacioDadoDeBaja(id, Dinero.deCentimos(reembolso.toLong()))
+            },
             idEntidad = { it.idEspacio },
         )
         return ejecutor.ejecutar(op) { baja(c) }
@@ -411,8 +434,13 @@ class DarDeBajaEspacio(
         if (espacio.estado != EstadoEntidad.ACTIVO) return rechazo(MotivoRechazo.EspacioInactivo)
         if (espacio.ocupacion > 0) return rechazo(MotivoRechazo.EspacioNoVacio)
         if (zoo.tieneDependencias(c.idPartida, c.idEspacio)) return rechazo(MotivoRechazo.EspacioConDependencias)
+        val reembolso = zoo.costePagado(c.idPartida, c.idEspacio)
         zoo.darDeBaja(c.idPartida, c.idEspacio)
-        return Resultado.Exito(EspacioDadoDeBaja(c.idEspacio))
+        if (reembolso > Dinero.CERO) {
+            economia.actualizarFondos(c.idPartida, economia.fondos(c.idPartida) + reembolso)
+            economia.registrarMovimiento(c.idPartida, TipoMovimiento.VENTA, reembolso, "CU-14", 0, reloj.ahoraSegundos())
+        }
+        return Resultado.Exito(EspacioDadoDeBaja(c.idEspacio, reembolso))
     }
 }
 

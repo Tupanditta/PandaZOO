@@ -161,7 +161,7 @@ class ValidadorConfiguracionTest {
     fun `TN_1 rechaza valor_venta_base distinto del coste y ventas decrecientes con el rango`() {
         errores(conRango(0) { it.copy(valorVentaBase = 199.0) }).algunoContiene("valor_venta_base debe ser igual al coste").shouldBeTrue()
         // Rango 5 vale menos que el 4: el valor de venta decrece con el rango.
-        errores(conRango(4) { it.copy(valorVentaBase = 1000.0) }).algunoContiene("decrece").shouldBeTrue()
+        errores(conRango(4) { it.copy(valorVentaBase = 500.0) }).algunoContiene("decrece").shouldBeTrue()
     }
 
     @Test

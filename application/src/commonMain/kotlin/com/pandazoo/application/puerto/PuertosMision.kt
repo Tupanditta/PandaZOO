@@ -22,6 +22,8 @@ data class InstanciaMision(
     val numericos: Map<String, Double>,
     val textos: Map<String, String>,
     val recompensa: RecompensaConfigurada,
+    /** Orden en que se cumplió (1, 2, 3…) entre las instancias de la partida; `null` si no está cumplida. */
+    val ordenCumplida: Int? = null,
 )
 
 /** Recompensa de una instancia cumplida, tal y como se persiste (`RecompensaMision`). */
@@ -76,9 +78,6 @@ interface MisionRepositorio : UnidadesGratuitas {
         numeroCiclo: Int,
         fecha: Long,
     )
-
-    /** Desbloquea la especie con origen `RECOMPENSA` y emite el aviso informativo si no existía. */
-    fun desbloquearEspecie(idPartida: IdPartida, idEspecie: String, numeroCiclo: Int, fecha: Long)
 
     fun nombreEspecie(idEspecie: String): String?
 

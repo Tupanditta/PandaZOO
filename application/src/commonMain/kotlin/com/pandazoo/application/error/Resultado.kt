@@ -22,6 +22,9 @@ sealed class MotivoRechazo(val codigo: String) {
 
     data object CapacidadNoPermitida : MotivoRechazo("CAPACIDAD_NO_PERMITIDA")
 
+    /** La capacidad pedida no supera la actual: un espacio solo puede crecer. */
+    data object CapacidadNoAmpliable : MotivoRechazo("CAPACIDAD_NO_AMPLIABLE")
+
     data object DenominacionInvalida : MotivoRechazo("DENOMINACION_INVALIDA")
 
     data object DenominacionDuplicada : MotivoRechazo("DENOMINACION_DUPLICADA")
@@ -57,6 +60,7 @@ sealed class MotivoRechazo(val codigo: String) {
     data object ParejaOcupada : MotivoRechazo("PAREJA_OCUPADA")
 
     data object AmigoInvalido : MotivoRechazo("AMIGO_INVALIDO")
+    data object AmigoOcupado : MotivoRechazo("AMIGO_OCUPADO")
 
     data object AutoReferencia : MotivoRechazo("AUTOREFERENCIA")
 
@@ -120,6 +124,9 @@ sealed class MotivoRechazo(val codigo: String) {
     data object ProgenitoresNoValidos : MotivoRechazo("PROGENITORES_NO_VALIDOS")
 
     data object AvisoInexistente : MotivoRechazo("AVISO_INEXISTENTE")
+
+    /** Solo se pueden descartar los avisos de severidad baja y media. */
+    data object AvisoNoDescartable : MotivoRechazo("AVISO_NO_DESCARTABLE")
 
     /** La instancia no existe o ya se reclamó y fue sustituida por la siguiente (CU-15, 4.a). */
     data object MisionInexistente : MotivoRechazo("MISION_INEXISTENTE")

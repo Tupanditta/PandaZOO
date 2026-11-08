@@ -71,6 +71,9 @@ class AnimalSql(private val bd: BaseDatos) : AnimalRepositorio {
         if (nuevo.idPareja != null) {
             bd.escribir("UPDATE Animal SET id_pareja = ? WHERE id_partida = ? AND id_animal = ?", nuevo.id, idPartida, nuevo.idPareja)
         }
+        if (nuevo.idMejorAmigo != null) {
+            bd.escribir("UPDATE Animal SET id_mejor_amigo = ? WHERE id_partida = ? AND id_animal = ?", nuevo.id, idPartida, nuevo.idMejorAmigo)
+        }
     }
 
     override fun actualizarFicha(idPartida: IdPartida, idAnimal: String, nombre: String, habilidades: List<String>, rasgos: List<String>) {
@@ -92,7 +95,12 @@ class AnimalSql(private val bd: BaseDatos) : AnimalRepositorio {
     }
 
     override fun fijarMejorAmigo(idPartida: IdPartida, idAnimal: String, idAmigo: String?) {
+        // Recíproco: libera a quien tuviera a este animal como amigo y, si procede, enlaza a ambos.
+        bd.escribir("UPDATE Animal SET id_mejor_amigo = NULL WHERE id_partida = ? AND id_mejor_amigo = ?", idPartida, idAnimal)
         bd.escribir("UPDATE Animal SET id_mejor_amigo = ? WHERE id_partida = ? AND id_animal = ?", idAmigo, idPartida, idAnimal)
+        if (idAmigo != null) {
+            bd.escribir("UPDATE Animal SET id_mejor_amigo = ? WHERE id_partida = ? AND id_animal = ?", idAnimal, idPartida, idAmigo)
+        }
     }
 
     override fun mover(idPartida: IdPartida, idAnimal: String, idEspacio: String) {
@@ -136,7 +144,7 @@ class AnimalSql(private val bd: BaseDatos) : AnimalRepositorio {
             f.entero(6) == 1 -> EstadoTienda.COMERCIAL
             else -> EstadoTienda.BLOQUEADA
         }
-        return EspecieTienda(f.texto(0), f.texto(1), f.texto(3), estado, Dinero.desdeBd(f.decimal(5)))
+        return EspecieTienda(f.texto(0), f.texto(1), f.texto(3), estado, Dinero.desdeBd(f.decimal(5)), f.enteroONulo(7))
     }
 
     private fun resumen(f: Fila) =
@@ -163,7 +171,8 @@ class AnimalSql(private val bd: BaseDatos) : AnimalRepositorio {
 
         const val SELECT_ESPECIE =
             "SELECT s.id_especie, s.nombre_comun, s.id_rango, r.nombre, s.estado_catalogo, c.importe, " +
-                "EXISTS (SELECT 1 FROM DesbloqueoEspecie d WHERE d.id_partida = ? AND d.id_especie = s.id_especie) " +
+                "EXISTS (SELECT 1 FROM DesbloqueoEspecie d WHERE d.id_partida = ? AND d.id_especie = s.id_especie), " +
+                "s.nivel_desbloqueo " +
                 "FROM Especie s JOIN RangoEspecie r ON r.id_rango = s.id_rango JOIN CosteRango c ON c.id_rango = s.id_rango " +
                 "WHERE 1 = 1"
 

@@ -14,6 +14,7 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.NavigationBar
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -38,6 +39,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import com.pandazoo.application.caso.AdquirirEspacio
+import com.pandazoo.domain.economia.Dinero
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.window.Dialog
+import androidx.compose.material3.Surface
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -48,7 +54,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import com.pandazoo.application.puerto.SeveridadAviso
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.runtime.key
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -68,6 +79,7 @@ class Atajos(
     val alMonitor: () -> Unit,
     val alPrestigio: () -> Unit,
     val alBeneficios: () -> Unit,
+    val alGuia: () -> Unit,
     val alHabitats: () -> Unit,
     val alMisiones: () -> Unit,
     val alNotificaciones: () -> Unit,
@@ -76,6 +88,9 @@ class Atajos(
 val LocalAtajos = compositionLocalOf<Atajos> { error("Faltan los atajos de navegación") }
 
 enum class Seccion3 { HABITATS, MISIONES, NOTIFICACIONES }
+
+/** Sección de la barra inferior a la que pertenece la pantalla actual; `null` en las que no cuelgan de ninguna. */
+val LocalSeccion = compositionLocalOf<Seccion3?> { null }
 
 @Composable
 internal fun Dato(icono: ImageVector?, valor: String, descripcion: String, alPulsar: () -> Unit, modifier: Modifier = Modifier) {
@@ -94,7 +109,7 @@ internal fun Dato(icono: ImageVector?, valor: String, descripcion: String, alPul
     }
 }
 
-/** Cabecera global: título, satisfacción global, icono de tienda y fila de saldo, bambú e insumos médicos. */
+/** Cabecera global: título, satisfacción global, icono de tienda y fila de saldo, bambú e medicinas. */
 @Composable
 private fun Cabecera(titulo: String, alVolver: (() -> Unit)?) {
     val c = LocalContenedor.current
@@ -116,6 +131,10 @@ private fun Cabecera(titulo: String, alVolver: (() -> Unit)?) {
             Text(titulo, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.weight(1f).padding(start = if (alVolver == null) 16.dp else 0.dp, end = 8.dp), maxLines = 1)
             Dato(Iconos.Satisfaccion, e?.satisfaccion ?: "…", "Abrir monitor de satisfacción", atajos.alMonitor)
             Box(
+                Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button, onClickLabel = "Abrir guía", onClick = atajos.alGuia),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Iconos.Guia, contentDescription = "Abrir guía", tint = MaterialTheme.colorScheme.onPrimaryContainer) }
+            Box(
                 Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button, onClickLabel = "Abrir tienda", onClick = atajos.alTienda),
                 contentAlignment = Alignment.Center,
             ) { Icon(Iconos.Tienda, contentDescription = "Abrir tienda", tint = MaterialTheme.colorScheme.onPrimaryContainer) }
@@ -123,14 +142,15 @@ private fun Cabecera(titulo: String, alVolver: (() -> Unit)?) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Dato(Iconos.Saldo, e?.saldo ?: "…", "Ver beneficios", atajos.alBeneficios, Modifier.weight(1f))
             Dato(Iconos.Bambu, e?.bambu ?: "…", "Comprar bambú", atajos.alTienda, Modifier.weight(1f))
-            Dato(Iconos.InsumosMedicos, e?.insumos ?: "…", "Comprar insumos médicos", atajos.alTienda, Modifier.weight(1f))
+            Dato(Iconos.InsumosMedicos, e?.insumos ?: "…", "Comprar medicinas", atajos.alTienda, Modifier.weight(1f))
             Dato(Iconos.Prestigio, e?.prestigio ?: "…", "Abrir panel de prestigio", atajos.alPrestigio, Modifier.weight(1.3f))
         }
     }
 }
 
 @Composable
-private fun BarraInferior(actual: Seccion3) {
+private fun BarraInferior() {
+    val actual = LocalSeccion.current
     val a = LocalAtajos.current
     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
         listOf(
@@ -140,7 +160,7 @@ private fun BarraInferior(actual: Seccion3) {
         ).forEach { (sec, par, accion) ->
             NavigationBarItem(
                 selected = sec == actual,
-                onClick = { if (sec != actual) accion() },
+                onClick = accion,
                 icon = { Icon(par.first, contentDescription = null) },
                 label = { Text(par.second) },
                 colors = NavigationBarItemDefaults.colors(indicatorColor = MaterialTheme.colorScheme.primaryContainer),
@@ -150,7 +170,7 @@ private fun BarraInferior(actual: Seccion3) {
 }
 
 @Composable
-internal fun Marco(titulo: String, alVolver: (() -> Unit)?, seccion: Seccion3? = null, contenido: @Composable (PaddingValues) -> Unit) {
+internal fun Marco(titulo: String, alVolver: (() -> Unit)?, contenido: @Composable (PaddingValues) -> Unit) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -159,7 +179,7 @@ internal fun Marco(titulo: String, alVolver: (() -> Unit)?, seccion: Seccion3? =
                 Box(Modifier.fillMaxWidth().height(3.dp).background(MaterialTheme.colorScheme.secondary))
             }
         },
-        bottomBar = { if (seccion != null) BarraInferior(seccion) },
+        bottomBar = { BarraInferior() },
         content = contenido,
     )
 }
@@ -176,8 +196,8 @@ internal fun Fila(etiqueta: String, valor: String) = FilaDato(etiqueta, valor)
 internal fun FichaSaldo(saldo: String) {
     Ficha(filete = MaterialTheme.colorScheme.primary) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Saldo disponible", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(saldo, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
+            Text("Saldo disponible", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f, fill = false))
+            Text(saldo, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(start = 12.dp))
         }
     }
 }
@@ -243,6 +263,8 @@ fun PantallaBeneficios(alVolver: () -> Unit) {
     val vista by vm.vista.collectAsState()
     val confirmando by vm.confirmando.collectAsState()
     val mensaje by vm.mensaje.collectAsState()
+    val desglose by vm.desglose.collectAsState()
+    var abiertos by remember { mutableStateOf(emptySet<String>()) }
     Marco("Beneficios", alVolver) { pad ->
         Column(Modifier.padding(pad).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             val v = vista
@@ -255,26 +277,44 @@ fun PantallaBeneficios(alVolver: () -> Unit) {
                     Fila("Saldo actual", v.saldo)
                 }
                 BotonPrincipal("Reclamar beneficios", vm::pedirReclamar, enabled = v.puedeReclamar)
-                if (!v.puedeReclamar) Text("No hay beneficios pendientes de reclamar.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 MensajeUi(mensaje)
-                Ficha(filete = MaterialTheme.colorScheme.secondary) {
-                    TituloFicha("Beneficios por ciclo")
-                    if (v.porCiclo.isEmpty()) {
-                        Text("Aún no hay ciclos confirmados.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else {
-                        v.porCiclo.forEach { Fila(it.etiqueta, it.valor) }
+                // Como el monitor de satisfacción: hábitat, espacio y animal desplegables, con lo que genera cada uno por ciclo.
+                desglose.forEach { h ->
+                    val abierto = h.clave in abiertos
+                    Ficha(Modifier.clickable { abiertos = if (abierto) abiertos - h.clave else abiertos + h.clave }, filete = MaterialTheme.colorScheme.primary) {
+                        FilaNodo(abierto, h.titulo, h.valor, h.hijos.isNotEmpty())
+                    }
+                    if (abierto) h.hijos.forEach { e ->
+                        val abiertoE = e.clave in abiertos
+                        Ficha(Modifier.padding(start = 16.dp).clickable { abiertos = if (abiertoE) abiertos - e.clave else abiertos + e.clave }, filete = MaterialTheme.colorScheme.tertiary) {
+                            FilaNodo(abiertoE, e.titulo, e.valor, e.hijos.isNotEmpty())
+                        }
+                        if (abiertoE) e.hijos.forEach { a ->
+                            Ficha(Modifier.padding(start = 32.dp), filete = MaterialTheme.colorScheme.secondary) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(a.titulo, modifier = Modifier.weight(1f))
+                                    Text(a.valor, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 12.dp))
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
     confirmando?.let {
-        AlertDialog(
-            onDismissRequest = vm::cancelar,
-            title = { Text("Reclamar beneficios") },
-            text = { Text("Se acreditarán ${Textos.dinero(it)} a tu saldo. La reclamación no se puede deshacer.") },
-            confirmButton = { TextButton(onClick = vm::reclamar) { Text("Confirmar reclamación") } },
-            dismissButton = { TextButton(onClick = vm::cancelar) { Text("Cancelar") } },
+        VentanaFlotante(
+            VentanaUi(
+                icono = Iconos.Saldo,
+                titulo = "Reclamar beneficios",
+                datos = listOf(
+                    DatoVentana("+${Textos.dinero(it)}", "recibes"),
+                    DatoVentana(vista?.saldo ?: "", "saldo actual"),
+                ),
+                confirmar = "Confirmar reclamación",
+            ),
+            alConfirmar = vm::reclamar,
+            alCancelar = vm::cancelar,
         )
     }
 }
@@ -293,19 +333,37 @@ fun PantallaMisiones() {
     val vm: MisionesViewModel = viewModel(factory = fabrica { MisionesViewModel(c) })
     val misiones by vm.misiones.collectAsState()
     val confirmando by vm.confirmando.collectAsState()
+    val premio by vm.premio.collectAsState()
     val mensaje by vm.mensaje.collectAsState()
-    Marco("Misiones", null, Seccion3.MISIONES) { pad ->
+    Marco("Misiones", null) { pad ->
         Column(Modifier.padding(pad).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             MensajeUi(mensaje)
             if (misiones.isEmpty()) {
                 Text("No hay misiones que mostrar.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             misiones.forEach { m ->
-                Ficha(filete = if (m.cumplida) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary) {
+                val color = when {
+                    m.exclusiva -> Color(0xFFB59044)
+                    m.cumplida -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.secondary
+                }
+                Ficha(filete = color, rango = if (m.exclusiva) "Exclusivo" else null) {
                     Text(m.descripcion, style = MaterialTheme.typography.titleMedium)
-                    Fila("Progreso", if (m.cumplida) "Cumplida · ${m.progreso}" else m.progreso)
-                    Fila("Recompensa", m.recompensa)
+                    Spacer(Modifier.height(10.dp))
+                    Box(Modifier.fillMaxWidth().height(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                        Box(Modifier.fillMaxWidth(m.fraccion.coerceIn(0f, 1f)).fillMaxHeight().background(color))
+                    }
+                    Fila("Progreso", m.progreso)
+                    if (m.exclusiva) {
+                        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Recompensa", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            NombreRango(m.recompensa, "Exclusivo", modifier = Modifier.weight(1f), estilo = MaterialTheme.typography.bodyLarge.copy(textAlign = TextAlign.End))
+                        }
+                    } else {
+                        Fila("Recompensa", m.recompensa)
+                    }
                     if (m.reclamable) {
+                        Spacer(Modifier.height(8.dp))
                         BotonPrincipal("Reclamar recompensa", { vm.pedirReclamar(m) })
                     }
                 }
@@ -313,26 +371,57 @@ fun PantallaMisiones() {
         }
     }
     confirmando?.let {
-        AlertDialog(
-            onDismissRequest = vm::cancelar,
-            title = { Text("Reclamar recompensa") },
-            text = { Text("Recibirás: ${it.recompensa}. La misión se renovará con un nuevo objetivo. La reclamación no se puede deshacer.") },
-            confirmButton = { TextButton(onClick = vm::reclamar) { Text("Confirmar reclamación") } },
-            dismissButton = { TextButton(onClick = vm::cancelar) { Text("Cancelar") } },
+        VentanaFlotante(
+            VentanaUi(
+                icono = Iconos.Prestigio,
+                titulo = "Reclamar recompensa",
+                datos = listOf(DatoVentana(it.recompensa, "recompensa")),
+                confirmar = "Confirmar reclamación",
+            ),
+            alConfirmar = vm::reclamar,
+            alCancelar = vm::cancelar,
         )
     }
+    premio?.let { VentanaPremio(it, vm::cerrarPremio) }
 }
 
-/** CU-21: historial de avisos con severidad, estado y fecha; abrir uno pendiente lo marca como visto. */
+/** Una fila de aviso que se descarta deslizándola hacia cualquier lado (solo severidad baja y media). */
+@Composable
+private fun AvisoDeslizable(a: AvisoItemUi, alDescartar: () -> Unit, alPulsar: (() -> Unit)?) {
+    val contenido: @Composable () -> Unit = {
+        AvisoUi(a.texto, a.tono, if (alPulsar != null) Modifier.clickable(role = Role.Button, onClick = alPulsar) else Modifier)
+    }
+    if (!a.descartable) {
+        contenido()
+        return
+    }
+    val estado = rememberSwipeToDismissBoxState(
+        confirmValueChange = {
+            if (it != SwipeToDismissBoxValue.Settled) alDescartar()
+            it != SwipeToDismissBoxValue.Settled
+        },
+    )
+    SwipeToDismissBox(
+        state = estado,
+        backgroundContent = {
+            Box(
+                Modifier.fillMaxSize().clip(MaterialTheme.shapes.small).background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 20.dp),
+                contentAlignment = if (estado.dismissDirection == SwipeToDismissBoxValue.StartToEnd) Alignment.CenterStart else Alignment.CenterEnd,
+            ) { Icon(Iconos.Cerrar, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+        },
+        content = { contenido() },
+    )
+}
+
+/** CU-21: avisos abiertos. El color indica la severidad; los de baja y media se deslizan para descartarlos. */
 @Composable
 fun PantallaNotificaciones(alSeguimiento: () -> Unit = {}, alRegistrarCria: (Ref) -> Unit = {}) {
     val c = LocalContenedor.current
     val vm: AvisosViewModel = viewModel(factory = fabrica { AvisosViewModel(c) })
     val avisos by vm.avisos.collectAsState()
     val filtro by vm.filtro.collectAsState()
-    val detalle by vm.detalle.collectAsState()
     val mensaje by vm.mensaje.collectAsState()
-    Marco("Avisos", null, Seccion3.NOTIFICACIONES) { pad ->
+    Marco("Avisos", null) { pad ->
         Column(Modifier.padding(pad).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             BotonPrincipal("Seguimiento crítico", alSeguimiento)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -346,30 +435,19 @@ fun PantallaNotificaciones(alSeguimiento: () -> Unit = {}, alRegistrarCria: (Ref
                 Text("No hay avisos por ahora.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             avisos.forEach { a ->
-                AvisoUi(
-                    "${a.etiqueta} · ${a.estado} · ${a.fecha}\n${a.texto}",
-                    a.tono,
-                    Modifier.clickable { vm.abrir(a) },
-                )
+                key(a.id) {
+                    AvisoDeslizable(
+                        a,
+                        alDescartar = { vm.descartar(a) },
+                        alPulsar = when {
+                            a.critico -> ({ vm.abrir(a, alSeguimiento) })
+                            a.reproduccion -> ({ vm.abrir(a) { alRegistrarCria(Ref(a.id.toString())) } })
+                            else -> null
+                        },
+                    )
+                }
             }
         }
-    }
-    detalle?.let { a ->
-        AlertDialog(
-            onDismissRequest = vm::cerrarDetalle,
-            title = { Text(a.etiqueta) },
-            text = { Text("${a.texto}\n\n${a.estado} · ${a.fecha}") },
-            confirmButton = {
-                if (a.critico) {
-                    TextButton(onClick = { vm.cerrarDetalle(); alSeguimiento() }) { Text("Ver seguimiento") }
-                } else if (a.reproduccion) {
-                    TextButton(onClick = { vm.cerrarDetalle(); alRegistrarCria(Ref(a.id.toString())) }) { Text("Registrar cría") }
-                } else {
-                    TextButton(onClick = vm::cerrarDetalle) { Text("Cerrar") }
-                }
-            },
-            dismissButton = { if (a.critico || a.reproduccion) TextButton(onClick = vm::cerrarDetalle) { Text("Cerrar") } },
-        )
     }
 }
 
@@ -395,7 +473,7 @@ fun PantallaSeguimientoCritico(alVolver: () -> Unit, alFicha: (Ref) -> Unit) {
     }
 }
 
-/** CU-07: comprar bambú o insumos médicos. */
+/** CU-07: comprar bambú o medicinas. */
 @Composable
 fun PantallaTienda(alVolver: () -> Unit, alAnimales: () -> Unit) {
     val c = LocalContenedor.current
@@ -411,7 +489,7 @@ fun PantallaTienda(alVolver: () -> Unit, alAnimales: () -> Unit) {
         Column(Modifier.padding(pad).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             FichaSaldo(saldo)
             OutlinedButton(onClick = alAnimales, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Comprar animales") }
-            if (ofertas.isEmpty()) Text("No hay recursos disponibles para comprar.")
+            if (ofertas.isEmpty()) Text("No hay recursos disponibles para comprar.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             ofertas.forEachIndexed { i, o ->
                 OpcionRecurso(seleccion == i, o) {
                     seleccion = i
@@ -482,26 +560,8 @@ fun PantallaHabitats(alHabitat: (Ref) -> Unit) {
     val c = LocalContenedor.current
     val vm: HabitatsViewModel = viewModel(factory = fabrica { HabitatsViewModel(c) })
     val habitats by vm.habitats.collectAsState()
-    val mensaje by vm.mensaje.collectAsState()
-    Marco("Hábitats", null, Seccion3.HABITATS) { pad ->
+    Marco("Hábitats", null) { pad ->
         LazyColumn(Modifier.padding(pad).fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (c.depuracion) {
-                item {
-                    OutlinedButton(onClick = vm::generarDatosDePrueba, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                        Text("Generar datos de prueba (depuración)")
-                    }
-                    OutlinedButton(onClick = vm::eliminarDatosDePrueba, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                        Text("Eliminar datos de prueba (depuración)")
-                    }
-                    OutlinedButton(onClick = vm::anadirPanda, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                        Text("Añadir panda (depuración)")
-                    }
-                    OutlinedButton(onClick = vm::adelantarCiclo, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                        Text("Adelantar ciclo (depuración)")
-                    }
-                    MensajeUi(mensaje)
-                }
-            }
             items(habitats) { h ->
                 Ficha(
                     Modifier.clickable(enabled = h.disponible) { alHabitat(h.ref) },
@@ -522,10 +582,14 @@ fun PantallaEspacios(habitat: Ref, alVolver: () -> Unit, alComprar: () -> Unit, 
     val vm: EspaciosViewModel = viewModel(key = "espacios-${habitat.valor}", factory = fabrica { EspaciosViewModel(c, habitat) })
     val espacios by vm.espacios.collectAsState()
     val nombre by vm.nombreHabitat.collectAsState()
+    val hayHambre by vm.hayHambre.collectAsState()
+    val grupal by vm.confirmandoGrupal.collectAsState()
+    val mensaje by vm.mensaje.collectAsState()
     Marco(nombre.ifEmpty { "Espacios" }, alVolver) { pad ->
         Column(Modifier.padding(pad).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             BotonPrincipal("Comprar espacio", alComprar)
-            if (espacios.isEmpty()) Text("Este hábitat aún no tiene espacios.")
+            if (espacios.isNotEmpty()) BotonPrincipal("Alimentar a todos", vm::pedirAlimentarGrupo, enabled = hayHambre)
+            MensajeUi(mensaje)
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(espacios) { e ->
                     Ficha(
@@ -534,11 +598,47 @@ fun PantallaEspacios(habitat: Ref, alVolver: () -> Unit, alComprar: () -> Unit, 
                         atenuada = !e.activo,
                     ) {
                         Text(e.nombre, style = MaterialTheme.typography.titleMedium)
-                        Text(e.detalle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        OcupacionEspacio(e)
                     }
                 }
             }
         }
+    }
+    grupal?.let {
+        VentanaFlotante(it.ventana, alConfirmar = vm::confirmarGrupal, alCancelar = vm::cancelarGrupal)
+    }
+}
+
+/** Capacidad de un espacio: insignia con el número de plazas, el nombre y el coste en una pastilla. */
+@Composable
+private fun OpcionCapacidad(o: CapacidadUi, onClick: () -> Unit) {
+    val e = MaterialTheme.colorScheme
+    val forma = MaterialTheme.shapes.large
+    val gratis = o.coste == Dinero.CERO
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 88.dp).clip(forma)
+            .background(e.surface)
+            .border(1.dp, e.outlineVariant, forma)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Box(Modifier.size(56.dp).clip(MaterialTheme.shapes.medium).background(e.primaryContainer), contentAlignment = Alignment.Center) {
+            Text("${o.capacidad}", style = MaterialTheme.typography.headlineSmall, color = e.onPrimaryContainer)
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("${o.capacidad} animales", style = MaterialTheme.typography.titleMedium, color = e.onSurface)
+            Text("Plazas del espacio", style = MaterialTheme.typography.labelMedium, color = e.onSurfaceVariant)
+        }
+        Text(
+            if (gratis) "Gratis" else Textos.dinero(o.coste),
+            style = MaterialTheme.typography.titleSmall,
+            color = if (gratis) e.onSecondaryContainer else e.onPrimaryContainer,
+            modifier = Modifier.clip(CircleShape)
+                .background(if (gratis) e.secondaryContainer else e.primaryContainer)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        )
     }
 }
 
@@ -557,40 +657,77 @@ fun PantallaComprarEspacio(habitat: Ref, alVolver: () -> Unit) {
     Marco("Comprar espacio", alVolver) { pad ->
         Column(Modifier.padding(pad).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             FichaSaldo(saldo)
-            OutlinedTextField(
-                value = nombre,
-                onValueChange = { nombre = it },
-                label = { Text("Denominación del espacio") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Text("Capacidad", style = MaterialTheme.typography.titleMedium)
+            Text("Elige la capacidad del espacio", style = MaterialTheme.typography.titleMedium)
             capacidades.forEach { o ->
-                Opcion(capacidad == o.capacidad, o.etiqueta) { capacidad = o.capacidad }
+                OpcionCapacidad(o) {
+                    vm.descartarMensaje()
+                    capacidad = o.capacidad
+                }
             }
-            BotonPrincipal("Confirmar compra", { capacidad?.let { vm.comprar(nombre, it) } }, enabled = capacidad != null && nombre.isNotBlank())
-            MensajeUi(mensaje)
+        }
+    }
+    // La denominación se pide solo cuando ya se ha elegido la capacidad, en una ventana flotante.
+    capacidades.firstOrNull { it.capacidad == capacidad }?.let { elegida ->
+        VentanaDenominacion(
+            capacidad = elegida.capacidad,
+            coste = if (elegida.coste == Dinero.CERO) "Gratis" else Textos.dinero(elegida.coste),
+            nombre = nombre,
+            alCambiarNombre = { nombre = it },
+            mensaje = mensaje,
+            alComprar = { vm.comprar(nombre, elegida.capacidad) },
+            alCerrar = {
+                capacidad = null
+                nombre = ""
+            },
+        )
+    }
+}
+
+/** Ventana flotante que pide la denominación; el botón de comprar, con el coste, aparece cuando el nombre es válido. */
+@Composable
+private fun VentanaDenominacion(
+    capacidad: Int,
+    coste: String,
+    nombre: String,
+    alCambiarNombre: (String) -> Unit,
+    mensaje: Mensaje?,
+    alComprar: () -> Unit,
+    alCerrar: () -> Unit,
+) {
+    val valido = nombre.trim().isNotEmpty() && nombre.trim().length <= AdquirirEspacio.MAX_DENOMINACION
+    Dialog(onDismissRequest = alCerrar) {
+        Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Espacio de $capacidad animales", style = MaterialTheme.typography.titleLarge)
+                OutlinedTextField(
+                    value = nombre,
+                    onValueChange = alCambiarNombre,
+                    label = { Text("Denominación del espacio") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (valido) BotonPrincipal("Comprar — $coste", alComprar)
+                MensajeUi(mensaje)
+            }
         }
     }
 }
 
-/** CU-02: cambiar denominación y/o hábitat de un espacio. La capacidad no se puede modificar. */
+/** CU-02: cambiar la denominación de un espacio. Ni la capacidad ni el hábitat se pueden modificar. */
 @Composable
 fun PantallaConfigurarEspacio(espacio: Ref, alVolver: () -> Unit) {
     val c = LocalContenedor.current
     val vm: ConfigurarEspacioViewModel = viewModel(key = "config-${espacio.valor}", factory = fabrica { ConfigurarEspacioViewModel(c, espacio) })
     val actual by vm.actual.collectAsState()
-    val habitatActual by vm.habitatActual.collectAsState()
-    val habitats by vm.habitats.collectAsState()
     val mensaje by vm.mensaje.collectAsState()
     val guardado by vm.guardado.collectAsState()
+    val ampliaciones by vm.ampliaciones.collectAsState()
+    val ampliacion by vm.confirmandoAmpliacion.collectAsState()
     var nombre by rememberSaveable(actual?.nombre) { mutableStateOf(actual?.nombre ?: "") }
-    var destino by remember(habitatActual) { mutableStateOf(habitatActual) }
     LaunchedEffect(guardado) { if (guardado) alVolver() }
     Marco("Configurar espacio", alVolver) { pad ->
         Column(Modifier.padding(pad).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            actual?.let { Ficha(filete = MaterialTheme.colorScheme.tertiary) { Text(it.detalle) } }
-            Text("La capacidad no se puede modificar.", fontStyle = FontStyle.Italic, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            actual?.let { Ficha(filete = MaterialTheme.colorScheme.tertiary) { OcupacionEspacio(it) } }
             OutlinedTextField(
                 value = nombre,
                 onValueChange = { nombre = it },
@@ -598,13 +735,29 @@ fun PantallaConfigurarEspacio(espacio: Ref, alVolver: () -> Unit) {
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
-            Text("Hábitat", style = MaterialTheme.typography.titleMedium)
-            habitats.forEach { h ->
-                Opcion(destino == h.ref, h.nombre) { destino = h.ref }
+            BotonPrincipal("Guardar", { vm.guardar(nombre) }, enabled = nombre.isNotBlank())
+            Text("Ampliar capacidad", style = MaterialTheme.typography.titleMedium)
+            if (ampliaciones.isEmpty()) {
+                Text("Este espacio ya tiene la capacidad máxima.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                ampliaciones.forEach { o ->
+                    OpcionCapacidad(o) { vm.elegirAmpliacion(o) }
+                }
             }
-            BotonPrincipal("Guardar", { vm.guardar(nombre, destino) }, enabled = nombre.isNotBlank())
             MensajeUi(mensaje)
         }
+    }
+    ampliacion?.let {
+        VentanaFlotante(
+            VentanaUi(
+                icono = Iconos.Saldo,
+                titulo = "Ampliar a ${it.capacidad} animales",
+                datos = listOf(DatoVentana(Textos.dinero(it.coste), "pagas", Iconos.Saldo)),
+                confirmar = "Confirmar ampliación",
+            ),
+            alConfirmar = vm::confirmarAmpliacion,
+            alCancelar = vm::cancelarAmpliacion,
+        )
     }
 }
 
@@ -623,9 +776,21 @@ fun PantallaPrestigio(alVolver: () -> Unit) {
                 Ficha(filete = MaterialTheme.colorScheme.primary) {
                     TituloFicha("Prestigio actual")
                     Text(p.nivel, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
-                    p.siguiente?.let { Text("Para el siguiente: $it", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
                 p.avisos.forEach { AvisoUi(it, TipoAviso.ADVERTENCIA) }
+                Ficha(filete = MaterialTheme.colorScheme.tertiary) {
+                    val s = p.siguiente
+                    if (s == null) {
+                        TituloFicha("Siguiente prestigio")
+                        Text("Prestigio máximo alcanzado", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        TituloFicha("Siguiente prestigio · ${s.nivel}")
+                        Fila("Animales vivos", s.animales)
+                        Fila("Satisfacción global", s.satisfaccion)
+                        if (s.especies.isNotEmpty()) Fila("Desbloquea especies", s.especies.joinToString(", "))
+                        if (s.habitats.isNotEmpty()) Fila("Desbloquea hábitats", s.habitats.joinToString(", "))
+                    }
+                }
                 Ficha(filete = MaterialTheme.colorScheme.secondary) {
                     TituloFicha("Estadísticas del parque")
                     Fila("Animales vivos alojados", p.animales)
@@ -633,7 +798,7 @@ fun PantallaPrestigio(alVolver: () -> Unit) {
                 }
                 Ficha(filete = MaterialTheme.colorScheme.tertiary) {
                     TituloFicha("Máximos históricos")
-                    Fila("Nivel de prestigio", p.maximoNivel)
+                    Fila("Prestigio", p.maximoNivel)
                     Fila("Animales vivos", p.maximoAnimales)
                     Fila("Satisfacción global", p.maximoSatisfaccion)
                 }
@@ -652,7 +817,7 @@ fun PantallaMonitor(alVolver: () -> Unit) {
     fun alternar(clave: String) {
         abiertos = if (clave in abiertos) abiertos - clave else abiertos + clave
     }
-    Marco("Monitor de satisfacción", alVolver) { pad ->
+    Marco("Satisfacción", alVolver) { pad ->
         Column(Modifier.padding(pad).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val m = estado
             if (m == null) {
@@ -682,7 +847,7 @@ fun PantallaMonitor(alVolver: () -> Unit) {
                                     Ficha(Modifier.padding(start = 32.dp), filete = MaterialTheme.colorScheme.secondary) {
                                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                             Text(a.etiqueta, modifier = Modifier.weight(1f))
-                                            Text(a.valor, style = MaterialTheme.typography.bodyLarge)
+                                            Text(a.valor, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 12.dp))
                                         }
                                     }
                                 }
@@ -696,7 +861,7 @@ fun PantallaMonitor(alVolver: () -> Unit) {
 }
 
 @Composable
-private fun FilaNodo(abierto: Boolean, nombre: String, valor: String, desplegable: Boolean) {
+internal fun FilaNodo(abierto: Boolean, nombre: String, valor: String, desplegable: Boolean) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(
             (if (!desplegable) "" else if (abierto) "▾ " else "▸ ") + nombre,
