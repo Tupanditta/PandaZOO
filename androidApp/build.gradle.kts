@@ -15,6 +15,8 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+        // Solo móviles reales: sin x86/x86_64 (emuladores), que añadían ~2,4 MB de bibliotecas nativas.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     // La firma sale de ~/.pandazoo/firma.properties (fuera del repositorio) o de la variable PANDAZOO_FIRMA.

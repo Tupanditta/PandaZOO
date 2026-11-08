@@ -25,6 +25,8 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew :webApp:jsBrowserDistribution
+      - name: Quitar mapas de depuración (no sirven al usuario)
+        run: find webApp/build/dist/js/productionExecutable -name "*.map" -delete
       - uses: actions/upload-pages-artifact@v3
         with:
           path: webApp/build/dist/js/productionExecutable
