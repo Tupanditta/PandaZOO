@@ -42,3 +42,6 @@ jobs:
     steps:
       - id: despliegue
         uses: actions/deploy-pages@v4
+        with:
+          # El valor por defecto (10 min) se queda corto cuando GitHub Pages tarda en procesar el despliegue.
+          timeout: 1800000
