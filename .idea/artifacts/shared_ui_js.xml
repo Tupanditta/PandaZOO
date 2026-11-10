@@ -1,8 +1,6 @@
 <component name="ArtifactManager">
   <artifact type="jar" name="shared-ui-js">
     <output-path>$PROJECT_DIR$/shared-ui/build/libs</output-path>
-    <root id="archive" name="shared-ui-js.jar">
-      <element id="module-output" name="PandaZOO.shared-ui.jsMain" />
-    </root>
+    <root id="archive" name="shared-ui-js.jar" />
   </artifact>
 </component>

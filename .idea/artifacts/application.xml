@@ -1,8 +1,6 @@
 <component name="ArtifactManager">
   <artifact type="jar" name="application">
     <output-path>$PROJECT_DIR$/application/build/libs</output-path>
-    <root id="archive" name="application.jar">
-      <element id="module-output" name="PandaZOO.application.androidMain" />
-    </root>
+    <root id="archive" name="application.jar" />
   </artifact>
 </component>

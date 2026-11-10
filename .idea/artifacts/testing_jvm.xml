@@ -1,8 +1,6 @@
 <component name="ArtifactManager">
   <artifact type="jar" name="testing-jvm">
     <output-path>$PROJECT_DIR$/testing/build/libs</output-path>
-    <root id="archive" name="testing-jvm.jar">
-      <element id="module-output" name="PandaZOO.testing.jvmMain" />
-    </root>
+    <root id="archive" name="testing-jvm.jar" />
   </artifact>
 </component>

@@ -1,8 +1,6 @@
 <component name="ArtifactManager">
   <artifact type="jar" name="webApp-js">
     <output-path>$PROJECT_DIR$/webApp/build/libs</output-path>
-    <root id="archive" name="webApp-js.jar">
-      <element id="module-output" name="PandaZOO.webApp.jsMain" />
-    </root>
+    <root id="archive" name="webApp-js.jar" />
   </artifact>
 </component>
