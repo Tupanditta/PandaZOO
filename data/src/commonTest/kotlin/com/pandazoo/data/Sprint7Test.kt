@@ -264,6 +264,44 @@ class Sprint7Test {
         e.consultarReproduccion.ejecutar(e.idPartida, aviso)!!.motivoDeshabilitada shouldBe MotivoRechazo.ConcepcionNoVigente
     }
 
+    /** Simula cerrar la app en `t0` justo al confirmar un ciclo y reabrirla tras `ciclos` ciclos completos (CU-12). */
+    private fun reabrirTras(ciclos: Int) {
+        val t0 = 1_700_000_000L
+        e.bd.escribir("UPDATE EstadoSimulacion SET instante_ultimo_ciclo = ?, remanente_temporizador = 600", t0)
+        e.reloj.segundos = t0 + 600L * ciclos
+        exito(e.procesarDiferido().ejecutar(e.idPartida)).ciclosProcesados shouldBe ciclos
+    }
+
+    @Test
+    fun `T7_10 en diferido el umbral se mide con la satisfaccion al cerrar la app aunque baje la alimentacion`() {
+        val (_, a, b) = pareja()
+        exito(ciclo()) // Ciclo 1 en vivo: concibe y la pareja queda bloqueada hasta que caduque en el ciclo 5.
+        estadoConcepcion() shouldBe "CONCEBIDA"
+        fijarRango(umbral = 0.99, probabilidad = 1.0, penalizacion = 0.0)
+        fijarSatisfaccion(a, 1.0)
+        fijarSatisfaccion(b, 1.0)
+        reabrirTras(8) // Ciclos 2..9: la alimentación baja a 40 y la satisfacción recalculada queda bajo el umbral.
+        // En el ciclo 5 caduca la primera y vuelve a concebir; se registra en el último ciclo de la sesión (9).
+        (e.bd.uno("SELECT satisfaccion_actual FROM Animal WHERE id_animal = ?", a) { it.decimal(0) }!! < 0.99) shouldBe true
+        e.bd.leer("SELECT numero_ciclo || ':' || estado || ':' || ciclo_expiracion FROM ReproduccionCiclo ORDER BY numero_ciclo") {
+            it.texto(0)
+        } shouldBe listOf("9:CONCEBIDA:12") // La caducada del ciclo 1 la borra la purga de retención.
+    }
+
+    @Test
+    fun `T7_10 una concepcion en diferido sigue aceptable tres ciclos despues de volver`() {
+        pareja()
+        reabrirTras(10) // Concibe en el primer ciclo diferido, pero cuenta como concebida en el último (10).
+        e.bd.uno("SELECT numero_ciclo || ':' || estado || ':' || ciclo_expiracion FROM ReproduccionCiclo") { it.texto(0) } shouldBe "10:CONCEBIDA:13"
+        val aviso = idAviso()
+        e.consultarReproduccion.ejecutar(e.idPartida, aviso)!!.habilitada shouldBe true
+        fijarRango(0.5, 0.0, 0.0)
+        repeat(3) { exito(ciclo()) }
+        estadoConcepcion() shouldBe "CONCEBIDA"
+        exito(ciclo())
+        estadoConcepcion() shouldBe "EXPIRADA"
+    }
+
     @Test
     fun `T7_5 la concepcion caducada conserva su estado y aceptarla se rechaza sin cambios`() {
         pareja()

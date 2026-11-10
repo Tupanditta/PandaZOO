@@ -28,6 +28,11 @@ import com.pandazoo.domain.reproduccion.ReglasReproduccion
  * identificadores, cada pareja válida: ambos progenitores con la satisfacción vigente al inicio del ciclo (sin redondear)
  * en el umbral del rango y un sorteo con probabilidad `max(0, p − penalización × hijos vivos comunes)`.
  * Una pareja concibe como máximo una vez por ciclo y no se evalúa mientras tenga una concepción abierta.
+ *
+ * En diferido (CU-12) nadie puede alimentar a los animales, así que el umbral se mide con la satisfacción de cada
+ * animal al empezar la sesión, igual que los límites de RF-22 y RF-23; y la ventana de aceptación de las concepciones
+ * de la sesión cuenta desde su último ciclo, para que no caduquen antes de que el jugador vuelva: se registran como
+ * concebidas en ese último ciclo (así `ciclo_disponible` y `ciclo_expiracion` siguen la regla de siempre).
  */
 class EtapaReproduccion(
     private val reproduccion: ReproduccionRepositorio,
@@ -35,9 +40,12 @@ class EtapaReproduccion(
     private val azar: Azar,
     private val reloj: Reloj,
 ) : EtapaCiclo {
-    override fun ejecutar(idPartida: IdPartida, numeroCiclo: Int, vivos: List<AnimalEnCiclo>) {
+    override fun ejecutar(idPartida: IdPartida, numeroCiclo: Int, vivos: List<AnimalEnCiclo>) = ejecutar(idPartida, numeroCiclo, vivos, null)
+
+    override fun ejecutar(idPartida: IdPartida, numeroCiclo: Int, vivos: List<AnimalEnCiclo>, diferido: ContextoDiferido?) {
         reproduccion.expirarVencidas(idPartida, numeroCiclo)
-        val satisfaccion = vivos.associate { it.id to it.satisfaccionInicial }
+        val satisfaccion = vivos.associate { it.id to if (diferido == null) it.satisfaccionInicial else it.inicioSesion.satisfaccion }
+        val cicloRegistro = diferido?.ultimoCiclo ?: numeroCiclo
         val ahora = reloj.ahoraSegundos()
         for (p in reproduccion.parejasReproductoras(idPartida)) {
             if (p.concepcionAbierta) continue
@@ -46,13 +54,13 @@ class EtapaReproduccion(
             if (!ReglasReproduccion.cumpleUmbral(sa, sb, p.umbral)) continue
             val probabilidad = ReglasReproduccion.probabilidad(p.probabilidad, p.factoresPorHijo, p.hijosVivos)
             if (!ReglasReproduccion.concibe(azar.siguienteDouble(), probabilidad)) continue
-            reproduccion.registrarConcepcion(idPartida, numeroCiclo, p.idA, p.idB, ahora)
+            reproduccion.registrarConcepcion(idPartida, cicloRegistro, p.idA, p.idB, ahora)
             auditoria.registrar(
                 RegistroAuditoria(
                     idPartida = idPartida,
                     tipo = "CONCEPCION",
                     entidad = "REPRODUCCION",
-                    idEntidad = "$numeroCiclo:${p.idA}:${p.idB}",
+                    idEntidad = "$cicloRegistro:${p.idA}:${p.idB}",
                     origen = "CICLO_PERIODICO",
                     resultado = ResultadoAuditoria.CONFIRMADO,
                     numeroCiclo = numeroCiclo,

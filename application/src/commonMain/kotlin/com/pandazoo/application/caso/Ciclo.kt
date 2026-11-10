@@ -52,6 +52,10 @@ fun interface TrazaCiclo {
 /** Punto de extensión de las etapas de reproducción (Sprint 7) y misiones (Sprint 9). */
 fun interface EtapaCiclo {
     fun ejecutar(idPartida: IdPartida, numeroCiclo: Int, vivos: List<AnimalEnCiclo>)
+
+    /** Variante que recibe el contexto de la sesión diferida (`null` en un ciclo en vivo); por defecto lo ignora. */
+    fun ejecutar(idPartida: IdPartida, numeroCiclo: Int, vivos: List<AnimalEnCiclo>, diferido: ContextoDiferido?) =
+        ejecutar(idPartida, numeroCiclo, vivos)
 }
 
 object Etapas {
@@ -74,8 +78,10 @@ object Etapas {
  * @property inicioSesion estado de los animales vivos y alojados antes del primer ciclo diferido, por identificador.
  * @property instante instante virtual en que termina este ciclo (segundos Unix): es la marca de actividad que queda
  * persistida, de modo que una interrupción reanuda desde ese punto sin perder ni regalar tiempo.
+ * @property ultimoCiclo número del último ciclo de la sesión diferida: las concepciones de la sesión cuentan su ventana
+ * de aceptación desde él, para que sigan disponibles al volver.
  */
-class ContextoDiferido(val inicioSesion: Map<String, AnimalCiclo>, val instante: Long)
+class ContextoDiferido(val inicioSesion: Map<String, AnimalCiclo>, val instante: Long, val ultimoCiclo: Int)
 
 data class ComandoEjecutarCiclo(val idPartida: IdPartida, val numero: Int, val diferido: ContextoDiferido? = null)
 
@@ -202,7 +208,7 @@ class EjecutarCiclo(
         traza?.etapa(Etapas.NIVEL, supervivientes)
 
         // 3.6 Reproducción: punto de extensión del Sprint 7.
-        reproduccion?.ejecutar(idPartida, c.numero, supervivientes)
+        reproduccion?.ejecutar(idPartida, c.numero, supervivientes, diferido)
         traza?.etapa(Etapas.REPRODUCCION, supervivientes)
 
         // 3.7 Beneficios: tras las defunciones y el nivel, con la satisfacción individual vigente al inicio del ciclo (RF-15).

@@ -99,17 +99,17 @@ class ProcesarDiferido(
         // Las restricciones offline se miden contra el estado de cada animal al empezar la sesión.
         val inicioSesion = ciclos.animalesVivosAlojados(idPartida).associateBy { it.id }
         val primero = estado.siguiente
+        val ultimo = primero + plan.ciclos - 1
         var procesados = 0
         for (k in 0 until plan.ciclos) {
             if (cancelado()) return Resultado.Exito(ResumenDiferido(transcurridos, procesados, 0, remanente))
             // Instante virtual en que termina el ciclo k: `marca + R + k · 600`, nunca posterior a `ahora`.
             val instante = marca + remanente + k.toLong() * ReglasCiclo.DURACION_CICLO_SEGUNDOS
-            val r = ejecutarCiclo.ejecutar(ComandoEjecutarCiclo(idPartida, primero + k, ContextoDiferido(inicioSesion, instante)))
+            val r = ejecutarCiclo.ejecutar(ComandoEjecutarCiclo(idPartida, primero + k, ContextoDiferido(inicioSesion, instante, ultimo)))
             if (r is Resultado.Rechazado) return r
             procesados++
         }
 
-        val ultimo = primero + plan.ciclos - 1
         transaccion.ejecutar {
             ciclos.guardarRemanente(idPartida, plan.remanenteSegundos, ahora)
             auditoria.registrar(

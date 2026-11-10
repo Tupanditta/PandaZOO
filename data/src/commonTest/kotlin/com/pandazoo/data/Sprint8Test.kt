@@ -307,11 +307,12 @@ class Sprint8Test {
         estadoVital(moribundo) shouldBe "MUERTO"
         estadoVital(enfermo) shouldBe "MUERTO"
         estadoVital(a) shouldBe "VIVO"
-        // Las concepciones de los primeros ciclos caducaron dentro de la sesion y su aviso se descarto. Las finalizadas fuera de
-        // la ventana de retencion (3 ciclos) ya se purgaron (BBDD 5.2); las que quedan siguen siendo coherentes con sus avisos.
-        e.contar("ReproduccionCiclo", "numero_ciclo < ${8 - e.cfg.retencion.reproduccionFinalizada} AND estado <> 'CONCEBIDA'") shouldBe 0
-        (e.contar("Notificacion", "codigo = 'REPRODUCCION_DISPONIBLE' AND estado = 'DESCARTADA'") >= 1) shouldBe true
-        (e.contar("Notificacion", "codigo = 'REPRODUCCION_DISPONIBLE' AND estado = 'DESCARTADA'") >= e.contar("ReproduccionCiclo", "estado = 'EXPIRADA'")) shouldBe true
+        // La pareja concibe una sola vez en la sesion y la concepcion cuenta como del ultimo ciclo (8): no caduca dentro de la
+        // sesion y su aviso sigue pendiente al volver, aceptable hasta el ciclo 11.
+        e.bd.leer("SELECT numero_ciclo || ':' || estado || ':' || ciclo_expiracion FROM ReproduccionCiclo") { it.texto(0) } shouldBe
+            listOf("8:CONCEBIDA:11")
+        e.contar("Notificacion", "codigo = 'REPRODUCCION_DISPONIBLE' AND estado = 'PENDIENTE'") shouldBe 1
+        e.contar("Notificacion", "codigo = 'REPRODUCCION_DISPONIBLE' AND estado = 'DESCARTADA'") shouldBe 0
         // Sin duplicados de beneficios ni de alertas de salud abiertas por animal.
         (e.bd.uno("SELECT COUNT(DISTINCT numero_ciclo) FROM BeneficioPendiente") { it.entero(0) } ?: 0) shouldBe e.contar("BeneficioPendiente")
         e.contar("Notificacion", "codigo = 'ALERTA_SALUD' AND estado IN ('PENDIENTE', 'VISTA')") shouldBe 0
